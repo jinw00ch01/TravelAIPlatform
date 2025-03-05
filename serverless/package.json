@@ -1,0 +1,34 @@
+{
+  "name": "travel-ai-serverless",
+  "version": "1.0.0",
+  "description": "AI 여행 서비스 플랫폼 - 서버리스 백엔드",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "build": "sam build",
+    "deploy": "sam deploy --guided",
+    "package": "sam package --output-template-file packaged.yaml",
+    "start-local": "sam local start-api",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "serverless",
+    "aws",
+    "lambda",
+    "travel",
+    "ai"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "aws-sdk": "^2.1468.0"
+  },
+  "devDependencies": {
+    "aws-sam-cli": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
