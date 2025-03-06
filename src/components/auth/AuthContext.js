@@ -73,7 +73,7 @@ export const AuthProvider = ({ children }) => {
     Hub.listen('auth', hubListener);
 
     return () => {
-      Hub.remove('auth', hubListener);
+      Hub.removeListener('auth', hubListener);
     };
   }, []);
 

@@ -41,7 +41,7 @@ const AuthCallback = () => {
     }
 
     return () => {
-      Hub.remove('auth', authListener);
+      Hub.removeListener('auth', authListener);
     };
   }, [navigate, isAuthenticated]);
 
