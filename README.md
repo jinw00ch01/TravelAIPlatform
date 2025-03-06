@@ -211,6 +211,6 @@ ISC
 
 ## 연락처
 
-프로젝트 관리자: [이메일 주소]
+프로젝트 관리자: [herofactorycjw1998@gmail.com]]
 
-프로젝트 링크: [GitHub 저장소 URL]
+프로젝트 링크: [https://github.com/jinw00ch01/TravelAIPlatform]
