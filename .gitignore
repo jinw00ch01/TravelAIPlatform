@@ -10,6 +10,11 @@
 # Production
 /build
 
+# AWS SAM
+.aws-sam/
+**/aws-sam/
+serverless/.aws-sam/
+
 # Misc
 .env
 .DS_Store
