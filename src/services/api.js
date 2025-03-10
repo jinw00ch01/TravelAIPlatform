@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { fetchAuthSession } from 'aws-amplify/auth';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+// API_URL 환경 변수에서 가져오기
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
 
 const apiClient = axios.create({
   baseURL: API_URL,
@@ -19,7 +20,11 @@ apiClient.interceptors.request.use(
       const token = tokens.idToken.toString();
       config.headers.Authorization = `Bearer ${token}`;
     } catch (error) {
-      // 로그인 안 된 상태라면 그냥 통과
+      // 로그인 안 된 상태에서 로컬 개발 환경인 경우 테스트용 토큰 추가
+      if (process.env.NODE_ENV === 'development' && API_URL.includes('localhost')) {
+        config.headers.Authorization = 'Bearer test-token';
+      }
+      // 그 외에는 그냥 통과
     }
     return config;
   },
@@ -33,7 +38,7 @@ export const travelApi = {
   // 여행 계획 생성 요청
   createTravelPlan: async (travelData) => {
     try {
-      const response = await apiClient.post('/travel/plan', travelData);
+      const response = await apiClient.post('/api/travel/plan', travelData);
       return response.data;
     } catch (error) {
       console.error('여행 계획 생성 실패:', error);
@@ -51,7 +56,7 @@ export const travelApi = {
         formData.append('preferences', JSON.stringify(preferences));
       }
       
-      const response = await apiClient.post('/travel/image-search', formData, {
+      const response = await apiClient.post('/api/travel/image-search', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -67,7 +72,7 @@ export const travelApi = {
   // 여행 계획 상세 조회
   getTravelPlan: async (planId) => {
     try {
-      const response = await apiClient.get(`/travel/plan/${planId}`);
+      const response = await apiClient.get(`/api/travel/plan/${planId}`);
       return response.data;
     } catch (error) {
       console.error('여행 계획 조회 실패:', error);
@@ -78,7 +83,7 @@ export const travelApi = {
   // 사용자의 여행 계획 목록 조회
   getUserTravelPlans: async () => {
     try {
-      const response = await apiClient.get('/travel/user-plans');
+      const response = await apiClient.get('/api/travel/user-plans');
       return response.data;
     } catch (error) {
       console.error('여행 계획 목록 조회 실패:', error);
@@ -89,7 +94,7 @@ export const travelApi = {
   // 여행 계획 공유
   shareTravelPlan: async (planId, shareOptions) => {
     try {
-      const response = await apiClient.post(`/travel/plan/${planId}/share`, shareOptions);
+      const response = await apiClient.post(`/api/travel/plan/${planId}/share`, shareOptions);
       return response.data;
     } catch (error) {
       console.error('여행 계획 공유 실패:', error);
@@ -100,7 +105,7 @@ export const travelApi = {
   // 여행 계획 삭제
   deleteTravelPlan: async (planId) => {
     try {
-      const response = await apiClient.delete(`/travel/plan/${planId}`);
+      const response = await apiClient.delete(`/api/travel/plan/${planId}`);
       return response.data;
     } catch (error) {
       console.error('여행 계획 삭제 실패:', error);
@@ -111,7 +116,7 @@ export const travelApi = {
   // 여행 계획 업데이트
   updateTravelPlan: async (planId, updateData) => {
     try {
-      const response = await apiClient.put(`/travel/plan/${planId}`, updateData);
+      const response = await apiClient.put(`/api/travel/plan/${planId}`, updateData);
       return response.data;
     } catch (error) {
       console.error('여행 계획 업데이트 실패:', error);

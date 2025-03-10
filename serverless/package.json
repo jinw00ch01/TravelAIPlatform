@@ -23,10 +23,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "aws-sdk": "^2.1468.0"
-  },
-  "devDependencies": {
-    "aws-sam-cli": "^1.0.0"
+    "aws-sdk": "^2.1692.0",
+    "axios": "^1.8.1",
+    "dotenv": "^16.4.7",
+    "uuid": "^11.1.0"
   },
   "engines": {
     "node": ">=18.0.0"

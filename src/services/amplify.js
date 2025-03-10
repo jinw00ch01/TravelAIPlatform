@@ -1,28 +1,36 @@
 import { Amplify } from 'aws-amplify';
 
-// 예: AWS Cognito, S3 설정 (아래는 샘플 값, 실제 리소스 값으로 대체)
+// AWS Cognito, S3 설정 - Amplify 6.x 버전에 맞게 수정
 Amplify.configure({
   Auth: {
-    region: 'ap-northeast-2',   // 예시: 서울 리전
-    userPoolId: 'ap-northeast-2_XXXXXXXXX',
-    userPoolWebClientId: 'XXXXXXXXXXXXX',
-    mandatorySignIn: true,
-    authenticationFlowType: 'USER_PASSWORD_AUTH',
-    oauth: {
-      domain: 'your-cognito-domain.auth.ap-northeast-2.amazoncognito.com',
-      scope: ['email', 'profile', 'openid'],
-      redirectSignIn: 'http://localhost:3000/',
-      redirectSignOut: 'http://localhost:3000/',
-      responseType: 'code'
+    Cognito: {
+      userPoolId: process.env.REACT_APP_USER_POOL_ID,
+      userPoolClientId: process.env.REACT_APP_USER_POOL_CLIENT_ID,
+      region: process.env.REACT_APP_REGION || 'ap-northeast-2',
+      loginWith: {
+        oauth: {
+          domain: process.env.REACT_APP_OAUTH_DOMAIN.replace('https://', ''),
+          scopes: ['email', 'profile', 'openid'],
+          redirectSignIn: [process.env.REACT_APP_REDIRECT_SIGN_IN],
+          redirectSignOut: [process.env.REACT_APP_REDIRECT_SIGN_OUT],
+          responseType: 'code'
+        }
+      }
     }
   },
   Storage: {
-    AWSS3: {
-      bucket: 'your-s3-bucket-name',
-      region: 'ap-northeast-2',
+    S3: {
+      bucket: process.env.REACT_APP_S3_BUCKET_NAME,
+      region: process.env.REACT_APP_REGION || 'ap-northeast-2'
     }
   },
-  // API, Analytics, PubSub 등의 추가 설정도 가능
+  API: {
+    REST: {
+      TravelAPI: {
+        endpoint: process.env.REACT_APP_API_URL
+      }
+    }
+  }
 });
 
 export default Amplify; 

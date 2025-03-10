@@ -39,7 +39,7 @@ Resources:
   UserPool:
     Type: AWS::Cognito::UserPool
     Properties:
-      UserPoolName: TravelAiUserPool
+      UserPoolName: TravelAIPlatformUserPool
       AutoVerifiedAttributes:
         - email
       UsernameAttributes:
@@ -99,7 +99,7 @@ Resources:
     Type: AWS::Cognito::UserPoolClient
     Properties:
       UserPoolId: !Ref UserPool
-      ClientName: travel-ai-app-client
+      ClientName: TravelAIWebApp  
       GenerateSecret: false
       SupportedIdentityProviders:
         - COGNITO

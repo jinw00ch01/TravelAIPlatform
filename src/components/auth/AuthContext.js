@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Amplify } from 'aws-amplify';
+
 import {
   getCurrentUser,
   signIn,
@@ -12,6 +12,7 @@ import {
   federatedSignIn,
   getJwtToken
 } from '../../utils/auth';
+
 import { Hub } from 'aws-amplify/utils';
 
 // 인증 컨텍스트 생성
@@ -29,15 +30,22 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const result = await getCurrentUser();
-        if (result.success) {
+        const { success, user, notAuthenticated } = await getCurrentUser();
+        
+        if (success && user) {
           setAuthState({
             isAuthenticated: true,
-            user: result.user,
+            user,
+            isLoading: false,
+          });
+        } else if (notAuthenticated) {
+          // 인증되지 않은 상태는 정상적인 상황으로 처리
+          setAuthState({
+            isAuthenticated: false,
+            user: null,
             isLoading: false,
           });
         } else {
-          // 인증되지 않은 사용자는 정상적인 상황으로 처리
           setAuthState({
             isAuthenticated: false,
             user: null,
@@ -57,8 +65,7 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
 
     // Amplify 인증 이벤트 리스너 설정
-    const hubListener = (data) => {
-      const { payload } = data;
+    const unsubscribe = Hub.listen('auth', ({ payload }) => {
       if (payload.event === 'signIn') {
         checkAuth();
       } else if (payload.event === 'signOut') {
@@ -68,12 +75,10 @@ export const AuthProvider = ({ children }) => {
           isLoading: false,
         });
       }
-    };
-
-    Hub.listen('auth', hubListener);
+    });
 
     return () => {
-      Hub.removeListener('auth', hubListener);
+      unsubscribe(); // 최신 Amplify에서는 리스너 함수 자체가 구독 취소 함수
     };
   }, []);
 
