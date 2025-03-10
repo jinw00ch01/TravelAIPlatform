@@ -12,7 +12,7 @@ Globals:
           Ref: TravelPlansTable
         MEDIA_BUCKET:
           Ref: MediaBucket
-        OPENAI_API_KEY: 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
+        OPENAI_API_KEY: '{{resolve:ssm:/travel-ai/openai-api-key:1}}'
         FRONTEND_URL: http://localhost:3000
 Resources:
   TravelApi:

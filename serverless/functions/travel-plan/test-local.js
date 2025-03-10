@@ -40,7 +40,7 @@ async function testHandler() {
     // 환경 변수 설정
     process.env.NODE_ENV = 'local';
     process.env.TRAVEL_PLANS_TABLE = 'TravelPlans';
-    process.env.OPENAI_API_KEY = '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';
+    process.env.OPENAI_API_KEY = 'your-openai-api-key-here'; // 실제 테스트 시 유효한 키로 교체하세요
     
     const result = await handler(event);
     console.log('응답:', JSON.stringify(result, null, 2));
