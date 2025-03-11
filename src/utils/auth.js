@@ -80,12 +80,8 @@ export const calculateSecretHash = (username, clientId, clientSecret) => {
 };
 
 // 회원가입
-export const signUp = async (email, password, name) => {
+export const signUp = async (email, password, name, birthdate, phoneNumber) => {
   try {
-    // 현재 날짜를 YYYY-MM-DD 형식으로 변환 (birthdate 속성용)
-    const today = new Date();
-    const birthdate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    
     console.log('회원가입 시작 - 파라미터 준비');
     
     // 회원가입 파라미터 생성
@@ -96,8 +92,8 @@ export const signUp = async (email, password, name) => {
         userAttributes: {
           email,
           name,
-          birthdate,
-          phone_number: '+821012345678'
+          birthdate: birthdate, // 사용자가 입력한 생년월일
+          phone_number: phoneNumber // 사용자가 입력한 전화번호
         }
       }
     };

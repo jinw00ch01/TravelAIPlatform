@@ -69,10 +69,12 @@ const SignUp = () => {
       return;
     }
     
+    console.log('사용자가 입력한 생년월일:', birthdate);
+    
     try {
       // 회원가입 시도
       console.log('회원가입 시도...');
-      const result = await signUp(email, password, name);
+      const result = await signUp(email, password, name, birthdate, phoneNumber);
       
       if (!result.success) {
         // 이미 가입된 사용자인 경우

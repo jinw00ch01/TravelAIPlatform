@@ -88,7 +88,19 @@ export const AuthProvider = ({ children }) => {
     signIn: async (email, password) => {
       const result = await signIn(email, password);
       if (result.success) {
-        await checkAuth();
+        // 로그인 성공 시 즉시 상태 업데이트
+        try {
+          const userResult = await getCurrentUser();
+          if (userResult.success && userResult.user) {
+            setAuthState({
+              isAuthenticated: true,
+              user: userResult.user,
+              isLoading: false,
+            });
+          }
+        } catch (error) {
+          console.error('로그인 후 사용자 정보 가져오기 실패:', error);
+        }
       }
       return result;
     },
@@ -125,15 +137,32 @@ export const AuthProvider = ({ children }) => {
 
   // 인증 상태 확인 함수
   const checkAuth = async () => {
-    const result = await getCurrentUser();
-    if (result.success) {
+    try {
+      const result = await getCurrentUser();
+      if (result.success && result.user) {
+        setAuthState({
+          isAuthenticated: true,
+          user: result.user,
+          isLoading: false,
+        });
+        return result;
+      } else {
+        setAuthState({
+          isAuthenticated: false,
+          user: null,
+          isLoading: false,
+        });
+        return result;
+      }
+    } catch (error) {
+      console.error('인증 상태 확인 중 오류:', error);
       setAuthState({
-        isAuthenticated: true,
-        user: result.user,
+        isAuthenticated: false,
+        user: null,
         isLoading: false,
       });
+      return { success: false, error };
     }
-    return result;
   };
 
   return (

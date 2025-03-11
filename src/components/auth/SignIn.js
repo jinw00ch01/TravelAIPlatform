@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { signIn, federatedSignIn, forgotPassword } from '../../utils/auth';
+import { federatedSignIn, forgotPassword } from '../../utils/auth';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from './AuthContext';
 
 const SignIn = () => {
   const [email, setEmail] = useState('');
@@ -11,6 +12,7 @@ const SignIn = () => {
   const [resetEmailSent, setResetEmailSent] = useState(false);
   
   const navigate = useNavigate();
+  const { signIn } = useAuth();
 
   const handleSignIn = async (e) => {
     e.preventDefault();
@@ -26,9 +28,9 @@ const SignIn = () => {
       navigate('/');
     } else {
       // 오류 메시지 표시
-      if (result.error.code === 'UserNotConfirmedException') {
+      if (result.error && result.error.code === 'UserNotConfirmedException') {
         setError('이메일 인증이 완료되지 않았습니다. 이메일을 확인해주세요.');
-      } else if (result.error.code === 'NotAuthorizedException') {
+      } else if (result.error && result.error.code === 'NotAuthorizedException') {
         setError('이메일 또는 비밀번호가 올바르지 않습니다.');
       } else {
         setError('로그인 중 오류가 발생했습니다. 다시 시도해주세요.');
