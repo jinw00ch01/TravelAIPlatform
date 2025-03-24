@@ -1,173 +1,182 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
-import { travelApi } from '../services/api'; // AWS Lambda 호출 API
-import { useAuth } from '../components/auth/AuthContext';
+import React, { useRef, useState } from "react";
+import { Button } from "../components/ui/button";
+import { Card, CardContent } from "../components/ui/card";
+import { Input } from "../components/ui/input";
 
-function PlanTravel() {
-  const { register, handleSubmit, formState: { errors } } = useForm();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const { currentUser } = useAuth();
-  const navigate = useNavigate();
+export const PlanTravel = () => {
+  const fileInputRef = useRef(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [searchText, setSearchText] = useState("");
 
-  // 여행 계획 생성 요청 제출
-  async function onSubmit(data) {
-    if (!currentUser) {
-      navigate('/login');
-      return;
-    }
+  const processTextFile = async (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = (e) => reject(e);
+      reader.readAsText(file);
+    });
+  };
 
+  const processImageFile = async (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = (e) => reject(e);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const sendToGemini = async (content, type) => {
     try {
-      setLoading(true);
-      setError('');
-      
-      // 변경: AWS Lambda 호출
-      const response = await travelApi.createTravelPlan({
-        destination: data.destination,
-        prompt: data.prompt,
-        budget: parseFloat(data.budget) || 0,
-        startDate: data.startDate || null,
-        endDate: data.endDate || null,
-        preferences: data.preferences || [],
-        travelers: parseInt(data.travelers) || 1
+      // TODO: Gemini API 엔드포인트로 실제 요청을 보내는 로직 구현
+      const response = await fetch('YOUR_GEMINI_API_ENDPOINT', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content,
+          type, // 'text' or 'image'
+        }),
       });
-      // Lambda 내부에서 DynamoDB에 저장했다는 응답을 받는다고 가정
 
-      navigate(`/itinerary/${response.planId}`);
-    } catch (err) {
-      console.error('여행 계획 생성 실패:', err);
-      setError('여행 계획을 생성하는데 문제가 발생했습니다. 다시 시도해주세요.');
-    } finally {
-      setLoading(false);
+      if (!response.ok) {
+        throw new Error('Gemini API request failed');
+      }
+
+      const result = await response.json();
+      console.log('Gemini API response:', result);
+      return result;
+    } catch (error) {
+      console.error('Error sending to Gemini:', error);
+      throw error;
     }
-  }
+  };
+
+  const handleFileUpload = async (event) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsProcessing(true);
+    try {
+      for (const file of files) {
+        const fileType = file.type;
+        let content;
+
+        if (fileType.startsWith('text/')) {
+          // 텍스트 파일 처리
+          content = await processTextFile(file);
+          await sendToGemini(content, 'text');
+        } else if (fileType.startsWith('image/')) {
+          // 이미지 파일 처리
+          content = await processImageFile(file);
+          await sendToGemini(content, 'image');
+        } else {
+          console.warn('Unsupported file type:', fileType);
+        }
+      }
+    } catch (error) {
+      console.error('Error processing files:', error);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleSearch = async () => {
+    if (!searchText.trim()) return;
+
+    setIsProcessing(true);
+    try {
+      await sendToGemini(searchText, 'text');
+    } catch (error) {
+      console.error('Error sending search text to Gemini:', error);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   return (
-    <div className="max-w-2xl mx-auto my-10 p-6 bg-white rounded-lg shadow-md">
-      <h2 className="text-2xl font-bold mb-6">AI 여행 계획 생성</h2>
-      
-      {error && <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">{error}</div>}
-      
-      <form onSubmit={handleSubmit(onSubmit)}>
-        <div className="mb-4">
-          <label className="block text-gray-700 mb-2" htmlFor="prompt">
-            여행 계획 요청 <span className="text-red-500">*</span>
-          </label>
-          <textarea
-            id="prompt"
-            rows="4"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-            placeholder="예시: 200만원의 예산내에서 10월 15일 출국 10월 24일 귀국 일정으로 오사카로 가는 항공편과 숙소 추천해줘."
-            {...register('prompt', { required: '여행 계획 요청을 입력해주세요.' })}
-          ></textarea>
-          {errors.prompt && <p className="mt-1 text-red-500 text-sm">{errors.prompt.message}</p>}
-          <p className="mt-1 text-sm text-gray-500">
-            여행지, 기간, 예산, 선호하는 활동 등 구체적으로 적을수록 더 정확한 계획을 받을 수 있습니다.
-          </p>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="block text-gray-700 mb-2" htmlFor="destination">
-              목적지
-            </label>
-            <input
-              id="destination"
-              type="text"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-              placeholder="예: 오사카, 일본"
-              {...register('destination')}
-            />
+    <div className="bg-[#f8f8f8] flex flex-row justify-center w-full">
+      <div className="bg-[#f8f8f8] overflow-x-hidden w-full max-w-[1920px] h-[1080px]">
+        <div className="relative w-full h-[766px]">
+          {/* Blue background section */}
+          <div className="absolute w-full h-[692px] top-0 left-0 bg-[#0048ffe6]" />
+
+          {/* Main heading */}
+          <h1 className="w-full max-w-[507px] top-[208px] left-1/2 -translate-x-1/2 text-white text-[50px] leading-[50px] absolute [font-family:'Jua',Helvetica] font-normal text-center tracking-[0]">
+            여행을 떠나시나요?
+          </h1>
+
+          {/* SearchIcon section */}
+          <div className="absolute w-full max-w-[650px] h-[88px] top-[350px] left-1/2 -translate-x-1/2">
+            <div className="relative h-[88px]">
+              <Card className="w-full border-[#d9d9d9]">
+                <CardContent className="p-0">
+                  <div className="flex items-center">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      className="hidden"
+                      accept=".txt,.jpg,.jpeg,.png"
+                      multiple
+                      onChange={handleFileUpload}
+                      disabled={isProcessing}
+                    />
+                    <Button
+                      className="absolute w-[25px] h-[25px] top-[30px] left-[8px] bg-[#f8f8f8] rounded-[12.5px] border border-solid border-[#0048ffe6] flex items-center justify-center z-10 p-0 min-w-0"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isProcessing}
+                    >
+                      <svg
+                        width="15"
+                        height="15"
+                        viewBox="0 0 15 15"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          d="M7.5 0C3.36 0 0 3.36 0 7.5C0 11.64 3.36 15 7.5 15C11.64 15 15 11.64 15 7.5C15 3.36 11.64 0 7.5 0ZM11.25 8.25H8.25V11.25H6.75V8.25H3.75V6.75H6.75V3.75H8.25V6.75H11.25V8.25Z"
+                          fill="#0048FF"
+                        />
+                      </svg>
+                    </Button>
+                    <Input
+                      className="min-h-[60px] pl-10 text-[#b3b3b3] font-single-line-body-base text-[length:var(--single-line-body-base-font-size)] tracking-[var(--single-line-body-base-letter-spacing)] leading-[var(--single-line-body-base-line-height)] border-none bg-white"
+                      placeholder="+버튼을 눌러 이미지나 텍스트파일을 추가할 수 있습니다."
+                      value={searchText}
+                      onChange={(e) => setSearchText(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                      disabled={isProcessing}
+                    />
+                    <Button
+                      className="absolute right-0 w-[25px] h-[25px] top-[30px] right-[10px] bg-[#0048ffe6] rounded-[12.5px] p-0 min-w-0 flex items-center justify-center"
+                      size="icon"
+                      onClick={handleSearch}
+                      disabled={isProcessing}
+                    >
+                      <img
+                        className="w-[9px] h-2.5"
+                        alt="SearchIcon arrow"
+                        src="https://c.animaapp.com/m8mvwkhbmqwOZ5/img/polygon-1.svg"
+                      />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
-          
-          <div>
-            <label className="block text-gray-700 mb-2" htmlFor="budget">
-              예산 (원)
-            </label>
-            <input
-              id="budget"
-              type="number"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-              placeholder="예: 2000000"
-              {...register('budget')}
-            />
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="block text-gray-700 mb-2" htmlFor="startDate">
-              출발일
-            </label>
-            <input
-              id="startDate"
-              type="date"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-              {...register('startDate')}
-            />
-          </div>
-          
-          <div>
-            <label className="block text-gray-700 mb-2" htmlFor="endDate">
-              귀국일
-            </label>
-            <input
-              id="endDate"
-              type="date"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-              {...register('endDate')}
-            />
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="block text-gray-700 mb-2" htmlFor="travelers">
-              여행자 수
-            </label>
-            <input
-              id="travelers"
-              type="number"
-              min="1"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-              placeholder="예: 2"
-              {...register('travelers')}
-            />
-          </div>
-          
-          <div>
-            <label className="block text-gray-700 mb-2" htmlFor="preferences">
-              여행 스타일
-            </label>
-            <select
-              id="preferences"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-              {...register('preferences')}
-            >
-              <option value="">선택하지 않음</option>
-              <option value="nature">자연/경치</option>
-              <option value="city">도시/번화가</option>
-              <option value="beach">해변/바다</option>
-              <option value="mountain">산/등산</option>
-              <option value="culture">문화/역사</option>
-              <option value="food">음식/미식</option>
-              <option value="relaxation">휴양/힐링</option>
-              <option value="adventure">모험/액티비티</option>
-            </select>
+
+          {/* Manual planning text */}
+          <div 
+            className="absolute w-full text-right top-[458px] right-[100px] text-white text-base font-medium cursor-pointer hover:underline"
+            onClick={() => console.log("Manual planning clicked")}
+          >
+             {'AI의 도움없이 일정 만들기>>'}
           </div>
         </div>
-        
-        <button
-          type="submit"
-          className="w-full bg-primary text-white py-2 px-4 rounded-md hover:bg-primary-dark transition-colors"
-          disabled={loading}
-        >
-          {loading ? '여행 계획 생성 중...' : 'AI로 여행 계획 생성하기'}
-        </button>
-      </form>
+      </div>
     </div>
   );
-}
+};
 
 export default PlanTravel;

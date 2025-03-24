@@ -19,15 +19,9 @@ function Home() {
                   텍스트나 이미지로 원하는 여행을 알려주세요.
                 </p>
                 <div className="mt-10 max-w-sm mx-auto sm:max-w-none sm:flex sm:justify-center">
-                  <div className="space-y-4 sm:space-y-0 sm:mx-auto sm:inline-grid sm:grid-cols-2 sm:gap-5">
+                  <div className="space-y-4 sm:space-y-0 sm:mx-auto sm:inline-grid sm:grid-cols-1 sm:gap-5">
                     <Link
                       to="/plan"
-                      className="flex items-center justify-center px-4 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-primary-dark bg-white hover:bg-gray-50 sm:px-8"
-                    >
-                      여행 계획하기
-                    </Link>
-                    <Link
-                      to="/login"
                       className="flex items-center justify-center px-4 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-secondary hover:bg-secondary-dark sm:px-8"
                     >
                       시작하기
@@ -123,7 +117,7 @@ function Home() {
           <div className="mt-8 flex lg:mt-0 lg:flex-shrink-0">
             <div className="inline-flex rounded-md shadow">
               <Link
-                to="/register"
+                to="/plan"
                 className="inline-flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-primary bg-white hover:bg-gray-50"
               >
                 무료로 시작하기

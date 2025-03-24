@@ -37,23 +37,9 @@ function App() {
                 <Route path="/signup" element={<SignUp />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
-                <Route 
-                  path="/dashboard" 
-                  element={
-                    <ProtectedRoute>
-                      <Dashboard />
-                    </ProtectedRoute>
-                  } 
-                />
-                <Route 
-                  path="/plan" 
-                  element={
-                    <ProtectedRoute>
-                      <PlanTravel />
-                    </ProtectedRoute>
-                  } 
-                />
-                <Route path="/itinerary/:id" element={<ViewItinerary />} />
+                <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                <Route path="/plan" element={<ProtectedRoute><PlanTravel /></ProtectedRoute>} />
+                <Route path="/itinerary/:id" element={<ProtectedRoute><ViewItinerary /></ProtectedRoute>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </main>
