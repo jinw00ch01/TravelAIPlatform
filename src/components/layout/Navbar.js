@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 
 function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { isAuthenticated, user, signOut } = useAuth();
+  const { isAuthenticated, signOut } = useAuth();
   const navigate = useNavigate();
   
   async function handleLogout() {

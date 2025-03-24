@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "@headlessui/react": "^1.7.17",
+    "@headlessui/react": "^1.7.19",
     "@heroicons/react": "^2.0.18",
     "@radix-ui/react-slot": "^1.1.2",
+    "@react-google-maps/api": "^2.20.6",
     "aws-amplify": "^6.13.4",
     "axios": "^1.8.1",
     "class-variance-authority": "^0.7.1",

@@ -5,7 +5,7 @@ function Home() {
   return (
     <div>
       {/* 히어로 섹션 */}
-      <div className="relative bg-gradient-to-r from-primary-dark to-primary pt-16 pb-32 overflow-hidden">
+      <div className="relative bg-primary-dark pt-16 pb-32 overflow-hidden">
         <div className="relative">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="relative sm:overflow-hidden">
@@ -38,7 +38,7 @@ function Home() {
       <div className="py-16 bg-gray-50 overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
-            <h2 className="text-base font-semibold text-primary tracking-wide uppercase">AI 여행 서비스</h2>
+            <h2 className="text-base font-semibold text-primary-dark tracking-wide uppercase">AI 여행 서비스</h2>
             <p className="mt-1 text-4xl font-extrabold text-gray-900 sm:text-5xl sm:tracking-tight">
               스마트한 여행의 시작
             </p>
@@ -53,7 +53,7 @@ function Home() {
                 <div className="flow-root bg-white rounded-lg shadow-lg px-6 pb-8">
                   <div className="-mt-6">
                     <div>
-                      <span className="inline-flex items-center justify-center p-3 bg-primary rounded-md shadow-lg">
+                      <span className="inline-flex items-center justify-center p-3 bg-primary-dark rounded-md shadow-lg">
                         <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                         </svg>
@@ -71,7 +71,7 @@ function Home() {
                 <div className="flow-root bg-white rounded-lg shadow-lg px-6 pb-8">
                   <div className="-mt-6">
                     <div>
-                      <span className="inline-flex items-center justify-center p-3 bg-primary rounded-md shadow-lg">
+                      <span className="inline-flex items-center justify-center p-3 bg-primary-dark rounded-md shadow-lg">
                         <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
@@ -89,7 +89,7 @@ function Home() {
                 <div className="flow-root bg-white rounded-lg shadow-lg px-6 pb-8">
                   <div className="-mt-6">
                     <div>
-                      <span className="inline-flex items-center justify-center p-3 bg-primary rounded-md shadow-lg">
+                      <span className="inline-flex items-center justify-center p-3 bg-primary-dark rounded-md shadow-lg">
                         <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                         </svg>
@@ -108,7 +108,7 @@ function Home() {
       </div>
 
       {/* CTA 섹션 */}
-      <div className="bg-primary">
+      <div className="bg-primary-dark">
         <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8 lg:py-16 lg:flex lg:items-center lg:justify-between">
           <h2 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
             <span className="block">지금 바로 AI와 함께</span>
@@ -118,7 +118,7 @@ function Home() {
             <div className="inline-flex rounded-md shadow">
               <Link
                 to="/plan"
-                className="inline-flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-primary bg-white hover:bg-gray-50"
+                className="inline-flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-primary-dark bg-white hover:bg-gray-50"
               >
                 무료로 시작하기
               </Link>

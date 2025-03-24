@@ -19,10 +19,10 @@ console.log('REACT_APP_CLIENT_SECRET 존재 여부:', process.env.REACT_APP_CLIE
 console.log('REACT_APP_SECRET_HASH 값:', process.env.REACT_APP_SECRET_HASH);
 console.log('환경 변수 확인 (끝)');
 
-// 전역 변수로 클라이언트 시크릿 저장
-const CLIENT_SECRET = process.env.REACT_APP_CLIENT_SECRET;
-const CLIENT_ID = process.env.REACT_APP_USER_POOL_CLIENT_ID;
-const SECRET_HASH = process.env.REACT_APP_SECRET_HASH;
+// 사용하지 않는 상수 제거 또는 주석 처리
+// const CLIENT_SECRET = process.env.REACT_APP_CLIENT_SECRET;
+// const CLIENT_ID = process.env.REACT_APP_CLIENT_ID;
+// const SECRET_HASH = process.env.REACT_APP_SECRET_HASH;
 
 // Cognito 설정
 export const configureAuth = () => {

@@ -17,6 +17,7 @@ import SignIn from './components/auth/SignIn';
 import SignUp from './components/auth/SignUp';
 import ResetPassword from './components/auth/ResetPassword';
 import AuthCallback from './components/auth/AuthCallback';
+import TravelPlanner from './pages/TravelPlanner';
 
 const queryClient = new QueryClient();
 
@@ -39,6 +40,7 @@ function App() {
                 <Route path="/auth/callback" element={<AuthCallback />} />
                 <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                 <Route path="/plan" element={<ProtectedRoute><PlanTravel /></ProtectedRoute>} />
+                <Route path="/planner" element={<ProtectedRoute><TravelPlanner /></ProtectedRoute>} />
                 <Route path="/itinerary/:id" element={<ProtectedRoute><ViewItinerary /></ProtectedRoute>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

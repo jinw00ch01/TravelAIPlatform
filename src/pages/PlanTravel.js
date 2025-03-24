@@ -2,8 +2,10 @@ import React, { useRef, useState } from "react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
+import { useNavigate } from "react-router-dom";
 
 export const PlanTravel = () => {
+  const navigate = useNavigate();
   const fileInputRef = useRef(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [searchText, setSearchText] = useState("");
@@ -96,21 +98,21 @@ export const PlanTravel = () => {
   };
 
   return (
-    <div className="bg-[#f8f8f8] flex flex-row justify-center w-full">
-      <div className="bg-[#f8f8f8] overflow-x-hidden w-full max-w-[1920px] h-[1080px]">
-        <div className="relative w-full h-[766px]">
-          {/* Blue background section */}
-          <div className="absolute w-full h-[692px] top-0 left-0 bg-[#0048ffe6]" />
+    <div className="min-h-screen bg-gray-50 flex justify-center">
+      <div className="w-full max-w-[1920px] min-h-screen">
+        <div className="relative h-[766px]">
+          {/* Hero background section */}
+          <div className="absolute w-full h-[692px] top-0 left-0 bg-primary-dark" />
 
           {/* Main heading */}
-          <h1 className="w-full max-w-[507px] top-[208px] left-1/2 -translate-x-1/2 text-white text-[50px] leading-[50px] absolute [font-family:'Jua',Helvetica] font-normal text-center tracking-[0]">
+          <h1 className="w-full max-w-[507px] top-[208px] left-1/2 -translate-x-1/2 text-white text-[50px] leading-[50px] absolute font-jua text-center">
             여행을 떠나시나요?
           </h1>
 
-          {/* SearchIcon section */}
+          {/* Search section */}
           <div className="absolute w-full max-w-[650px] h-[88px] top-[350px] left-1/2 -translate-x-1/2">
             <div className="relative h-[88px]">
-              <Card className="w-full border-[#d9d9d9]">
+              <Card className="w-full border-gray-200">
                 <CardContent className="p-0">
                   <div className="flex items-center">
                     <input
@@ -123,7 +125,7 @@ export const PlanTravel = () => {
                       disabled={isProcessing}
                     />
                     <Button
-                      className="absolute w-[25px] h-[25px] top-[30px] left-[8px] bg-[#f8f8f8] rounded-[12.5px] border border-solid border-[#0048ffe6] flex items-center justify-center z-10 p-0 min-w-0"
+                      className="absolute w-[25px] h-[25px] top-[30px] left-[8px] bg-gray-50 rounded-full border border-primary/90 flex items-center justify-center z-10 p-0 min-w-0 hover:bg-gray-100"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={isProcessing}
                     >
@@ -136,12 +138,13 @@ export const PlanTravel = () => {
                       >
                         <path
                           d="M7.5 0C3.36 0 0 3.36 0 7.5C0 11.64 3.36 15 7.5 15C11.64 15 15 11.64 15 7.5C15 3.36 11.64 0 7.5 0ZM11.25 8.25H8.25V11.25H6.75V8.25H3.75V6.75H6.75V3.75H8.25V6.75H11.25V8.25Z"
-                          fill="#0048FF"
+                          fill="currentColor"
+                          className="text-primary"
                         />
                       </svg>
                     </Button>
                     <Input
-                      className="min-h-[60px] pl-10 text-[#b3b3b3] font-single-line-body-base text-[length:var(--single-line-body-base-font-size)] tracking-[var(--single-line-body-base-letter-spacing)] leading-[var(--single-line-body-base-line-height)] border-none bg-white"
+                      className="min-h-[60px] pl-10 text-gray-400 text-base tracking-normal leading-normal border-none bg-white placeholder:text-gray-400"
                       placeholder="+버튼을 눌러 이미지나 텍스트파일을 추가할 수 있습니다."
                       value={searchText}
                       onChange={(e) => setSearchText(e.target.value)}
@@ -149,7 +152,7 @@ export const PlanTravel = () => {
                       disabled={isProcessing}
                     />
                     <Button
-                      className="absolute right-0 w-[25px] h-[25px] top-[30px] right-[10px] bg-[#0048ffe6] rounded-[12.5px] p-0 min-w-0 flex items-center justify-center"
+                      className="absolute right-0 w-[25px] h-[25px] top-[30px] right-[10px] bg-primary/90 rounded-full p-0 min-w-0 flex items-center justify-center hover:bg-primary-dark/90"
                       size="icon"
                       onClick={handleSearch}
                       disabled={isProcessing}
@@ -169,7 +172,7 @@ export const PlanTravel = () => {
           {/* Manual planning text */}
           <div 
             className="absolute w-full text-right top-[458px] right-[100px] text-white text-base font-medium cursor-pointer hover:underline"
-            onClick={() => console.log("Manual planning clicked")}
+            onClick={() => navigate("/planner")}
           >
              {'AI의 도움없이 일정 만들기>>'}
           </div>

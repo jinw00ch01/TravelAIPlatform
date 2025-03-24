@@ -199,6 +199,12 @@ const SignUp = () => {
           </div>
         )}
         
+        {successMessage && (
+          <div className="text-green-600 mt-2">
+            {successMessage}
+          </div>
+        )}
+        
         {showConfirmation ? (
           <div className="mt-4">
             <h3 className="text-lg font-semibold mb-2">이메일 확인</h3>
