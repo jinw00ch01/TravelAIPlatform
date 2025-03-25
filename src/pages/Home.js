@@ -26,18 +26,6 @@ function Home() {
                     >
                       시작하기
                     </Link>
-                    <Link
-                      to="/itinerary"
-                      className="flex items-center justify-center px-4 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-primary hover:bg-primary-dark sm:px-8"
-                    >
-                      일정 관리
-                    </Link>
-                    <Link
-                      to="/cart"
-                      className="flex items-center justify-center px-4 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-primary hover:bg-primary-dark sm:px-8"
-                    >
-                      장바구니
-                    </Link>
                   </div>
                 </div>
               </div>
