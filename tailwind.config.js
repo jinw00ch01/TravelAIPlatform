@@ -17,6 +17,9 @@ module.exports = {
           dark: '#e6a400',
         },
       },
+      fontFamily: {
+        jua: ['Jua', 'sans-serif'],
+      },
     },
   },
   plugins: [],

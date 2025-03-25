@@ -3,12 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "@headlessui/react": "^1.7.17",
+    "@headlessui/react": "^1.7.19",
     "@heroicons/react": "^2.0.18",
+    "@radix-ui/react-slot": "^1.1.2",
+    "@react-google-maps/api": "^2.20.6",
     "aws-amplify": "^6.13.4",
     "axios": "^1.8.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "crypto-js": "^4.2.0",
     "firebase": "^10.14.1",
+    "lucide-react": "^0.483.0",
     "react": "^18.2.0",
     "react-calendar": "^5.1.0",
     "react-dom": "^18.2.0",
@@ -16,6 +21,7 @@
     "react-query": "^3.39.3",
     "react-router-dom": "^6.29.0",
     "react-scripts": "5.0.1",
+    "tailwind-merge": "^3.0.2",
     "web-vitals": "^4.2.4"
   },
   "scripts": {
