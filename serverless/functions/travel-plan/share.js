@@ -1,4 +1,5 @@
 const AWS = require('aws-sdk');
+const { corsSettings } = require('../utils/corsSettings');
 
 // AWS 서비스 초기화
 const dynamoDb = new AWS.DynamoDB.DocumentClient();
@@ -81,11 +82,7 @@ exports.handler = async (event) => {
 function formatResponse(statusCode, body) {
   return {
     statusCode: statusCode,
-    headers: {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Credentials': true
-    },
+    headers: corsSettings.getHeaders(),
     body: JSON.stringify(body)
   };
 } 

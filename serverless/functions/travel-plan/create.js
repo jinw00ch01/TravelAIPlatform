@@ -1,10 +1,12 @@
 const AWS = require('aws-sdk');
 const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
-require('dotenv').config();
+require('dotenv').config({ path: process.env.NODE_ENV === 'local' ? '../../.env' : '/var/task/.env' });
+const { corsSettings } = require('../utils/corsSettings');
 
 // AWS 서비스 초기화
 let dynamoDbOptions = {};
+const ssm = new AWS.SSM();
 
 // 로컬 테스트 환경인 경우
 if (process.env.NODE_ENV === 'local') {
@@ -20,7 +22,27 @@ if (process.env.NODE_ENV === 'local') {
 
 const dynamoDb = new AWS.DynamoDB.DocumentClient(dynamoDbOptions);
 const tableName = process.env.TRAVEL_PLANS_TABLE;
-const openaiApiKey = process.env.OPENAI_API_KEY;
+let openaiApiKey;
+
+// SSM 파라미터에서 OpenAI API 키 가져오기
+async function getOpenAIApiKey() {
+  if (process.env.NODE_ENV === 'local') {
+    return process.env.OPENAI_API_KEY;  // 로컬 테스트 시 .env 파일 사용
+  }
+  
+  const params = {
+    Name: process.env.OPENAI_API_KEY_PARAM,
+    WithDecryption: true
+  };
+  
+  try {
+    const response = await ssm.getParameter(params).promise();
+    return response.Parameter.Value;
+  } catch (error) {
+    console.error('SSM 파라미터 조회 오류:', error);
+    throw error;
+  }
+}
 
 /**
  * 여행 계획 생성 Lambda 함수
@@ -28,6 +50,9 @@ const openaiApiKey = process.env.OPENAI_API_KEY;
  */
 exports.handler = async (event) => {
   console.log('이벤트 수신:', JSON.stringify(event, null, 2));
+  
+  // OpenAI API 키 가져오기
+  openaiApiKey = await getOpenAIApiKey();
   
   try {
     // API Gateway를 통해 들어온 요청 파싱
@@ -332,11 +357,7 @@ async function generateTravelPlan(query, preferences = {}) {
 function formatResponse(statusCode, body) {
   return {
     statusCode: statusCode,
-    headers: {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Credentials': true
-    },
+    headers: corsSettings.getHeaders(),
     body: JSON.stringify(body)
   };
 } 

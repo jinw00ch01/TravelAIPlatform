@@ -17,6 +17,7 @@ import SignIn from './components/auth/SignIn';
 import SignUp from './components/auth/SignUp';
 import ResetPassword from './components/auth/ResetPassword';
 import AuthCallback from './components/auth/AuthCallback';
+import AuthError from './components/auth/AuthError';
 
 const queryClient = new QueryClient();
 
@@ -37,6 +38,7 @@ function App() {
                 <Route path="/signup" element={<SignUp />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/auth/error" element={<AuthError />} />
                 <Route 
                   path="/dashboard" 
                   element={

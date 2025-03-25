@@ -34,3 +34,8 @@ yarn-error.log*
 # IDE
 .vscode/
 .idea/
+
+ngrok.exe
+
+auth-callback.js
+auth-callback-event.json

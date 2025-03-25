@@ -1,15 +1,37 @@
 const AWS = require('aws-sdk');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
-require('dotenv').config();
+require('dotenv').config({ path: process.env.NODE_ENV === 'local' ? '../../.env' : '/var/task/.env' });
+const { corsSettings } = require('../utils/corsSettings');
 
 // AWS 서비스 초기화
 const rekognition = new AWS.Rekognition();
 const s3 = new AWS.S3();
 const dynamoDb = new AWS.DynamoDB.DocumentClient();
+const ssm = new AWS.SSM();
 const tableName = process.env.TRAVEL_PLANS_TABLE;
 const bucketName = process.env.MEDIA_BUCKET;
-const openaiApiKey = process.env.OPENAI_API_KEY;
+let openaiApiKey;
+
+// SSM 파라미터에서 OpenAI API 키 가져오기
+async function getOpenAIApiKey() {
+  if (process.env.NODE_ENV === 'local') {
+    return process.env.OPENAI_API_KEY;  // 로컬 테스트 시 .env 파일 사용
+  }
+  
+  const params = {
+    Name: process.env.OPENAI_API_KEY_PARAM,
+    WithDecryption: true
+  };
+  
+  try {
+    const response = await ssm.getParameter(params).promise();
+    return response.Parameter.Value;
+  } catch (error) {
+    console.error('SSM 파라미터 조회 오류:', error);
+    throw error;
+  }
+}
 
 /**
  * 이미지 검색 Lambda 함수
@@ -17,6 +39,9 @@ const openaiApiKey = process.env.OPENAI_API_KEY;
  */
 exports.handler = async (event) => {
   console.log('이벤트 수신:', JSON.stringify(event, null, 2));
+  
+  // OpenAI API 키 가져오기
+  openaiApiKey = await getOpenAIApiKey();
   
   try {
     let imageKey;
@@ -313,11 +338,7 @@ ${preferences.travelStyle ? `여행 스타일: ${preferences.travelStyle}` : ''}
 function formatResponse(statusCode, body) {
   return {
     statusCode: statusCode,
-    headers: {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Credentials': true
-    },
+    headers: corsSettings.getHeaders(),
     body: JSON.stringify(body)
   };
 } 

@@ -2,7 +2,18 @@
  * AWS Cognito 인증 관련 유틸리티 함수
  */
 
-import { signUp as signUpAuth, confirmSignUp as confirmSignUpAuth, signIn as signInAuth, signOut as signOutAuth, getCurrentUser as getCurrentUserAuth, fetchAuthSession, resetPassword, confirmResetPassword, updateUserAttributes as updateUserAttributesAuth } from 'aws-amplify/auth';
+import { 
+  signUp as signUpAuth, 
+  confirmSignUp as confirmSignUpAuth, 
+  signIn as signInAuth, 
+  signOut as signOutAuth, 
+  getCurrentUser as getCurrentUserAuth, 
+  fetchAuthSession, 
+  resetPassword, 
+  confirmResetPassword, 
+  updateUserAttributes as updateUserAttributesAuth,
+  signInWithRedirect
+} from 'aws-amplify/auth';
 import { Amplify } from 'aws-amplify';
 import { Hub } from 'aws-amplify/utils';
 import CryptoJS from 'crypto-js';
@@ -30,10 +41,26 @@ export const configureAuth = () => {
   const userPoolId = process.env.REACT_APP_USER_POOL_ID;
   const userPoolClientId = process.env.REACT_APP_USER_POOL_CLIENT_ID;
   const region = process.env.REACT_APP_REGION || 'ap-northeast-2';
+  const oauthDomain = process.env.REACT_APP_OAUTH_DOMAIN;
+  
+  // 리디렉션 URL 파싱 (쉼표로 구분된 URL 목록을 배열로 변환)
+  const redirectSignInRaw = process.env.REACT_APP_REDIRECT_SIGN_IN || '';
+  const redirectSignOutRaw = process.env.REACT_APP_REDIRECT_SIGN_OUT || '';
+  
+  const redirectSignIn = redirectSignInRaw.split(',').map(url => url.trim());
+  const redirectSignOut = redirectSignOutRaw.split(',').map(url => url.trim());
   
   console.log('Amplify 설정 업데이트 - SPA 모드');
   console.log('사용자 풀 ID:', userPoolId);
   console.log('앱 클라이언트 ID:', userPoolClientId);
+  console.log('리디렉션 URL (로그인):', redirectSignIn);
+  console.log('리디렉션 URL (로그아웃):', redirectSignOut);
+  console.log('OAuth 도메인:', oauthDomain);
+  
+  // OAuth 도메인이 프로토콜을 포함하고 있는지 확인
+  if (oauthDomain && oauthDomain.startsWith('https://')) {
+    console.warn('경고: OAuth 도메인에 https:// 접두사가 포함되어 있습니다. 접두사를 제거하세요.');
+  }
   
   // Amplify v6 설정
   const config = {
@@ -48,10 +75,10 @@ export const configureAuth = () => {
           phone: false,
           username: false,
           oauth: {
-            domain: process.env.REACT_APP_OAUTH_DOMAIN,
+            domain: oauthDomain,
             scopes: ['email', 'openid', 'profile'],
-            redirectSignIn: [process.env.REACT_APP_REDIRECT_SIGN_IN],
-            redirectSignOut: [process.env.REACT_APP_REDIRECT_SIGN_OUT],
+            redirectSignIn: redirectSignIn,
+            redirectSignOut: redirectSignOut,
             responseType: 'code'
           }
         }
@@ -61,6 +88,17 @@ export const configureAuth = () => {
   
   console.log('Amplify 설정 적용:', JSON.stringify(config, null, 2));
   Amplify.configure(config);
+  
+  // 디버깅: Hub 이벤트 리스너 설정
+  Hub.listen('auth', (data) => {
+    console.log('글로벌 Auth 이벤트:', data.payload.event);
+    
+    // 오류 이벤트인 경우 상세 로깅
+    if (data.payload.event.includes('failure')) {
+      console.error('Auth 오류 발생:', data.payload.event);
+      console.error('오류 상세 정보:', data.payload.data);
+    }
+  });
   
   return config;
 };
@@ -223,11 +261,35 @@ export const signIn = async (email, password) => {
 // 소셜 로그인
 export const federatedSignIn = async (provider) => {
   try {
-    await signInAuth({ provider });
+    // provider 값을 문자열 타입으로 명시적 변환
+    const providerName = String(provider);
+    
+    console.log(`소셜 로그인 시도: ${providerName}`);
+    
+    // 현재 URL과 환경 변수 확인
+    const currentOrigin = window.location.origin;
+    console.log('현재 접속 URL:', currentOrigin);
+    console.log('환경 변수의 리디렉션 URL:', process.env.REACT_APP_REDIRECT_SIGN_IN);
+    
+    // 리디렉션 방식으로 소셜 로그인 시도 - 환경 변수에 설정된 URL 사용
+    // Amplify는 자동으로 config에 지정된 redirectSignIn 배열에서 적절한 URL을 선택합니다
+    await signInWithRedirect({
+      provider: providerName
+    });
+    
+    // 리디렉션되기 때문에 이 코드는 실행되지 않음
     return { success: true };
   } catch (error) {
     console.error('소셜 로그인 오류:', error);
-    return { success: false, error: error.message };
+    
+    // 친숙한 오류 메시지로 변환
+    let errorMessage = error.message;
+    if (error.message && error.message.includes('InvalidOriginException')) {
+      errorMessage = '리디렉션 URL 불일치 오류: 현재 사용 중인 URL(origin)이 Cognito에 등록되지 않았습니다. AWS Cognito 콘솔에서 앱 클라이언트 설정의 콜백 URL에 ' + 
+                    window.location.origin + '/auth/callback 를 추가하세요.';
+    }
+    
+    return { success: false, error: errorMessage };
   }
 };
 
@@ -319,7 +381,9 @@ export const updateUserAttributes = async (attributes) => {
 
 // 인증 이벤트 리스너 설정
 export const setupAuthListener = (callback) => {
-  return Hub.listen('auth', callback);
+  // Hub.listen은 리스너를 등록하고 구독 취소 함수를 반환합니다
+  const unsubscribe = Hub.listen('auth', callback);
+  return unsubscribe;
 };
 
 // 회원가입 - 대안 AWS SDK 사용 방법 (Amplify가 SECRET_HASH를 제대로 처리하지 못할 경우)

@@ -1,5 +1,6 @@
 const AWS = require('aws-sdk');
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
+const { corsSettings } = require('../utils/corsSettings');
 
 exports.handler = async (event) => {
   try {
@@ -18,10 +19,7 @@ exports.handler = async (event) => {
     if (!planData.Item) {
       return {
         statusCode: 404,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Content-Type': 'application/json'
-        },
+        headers: corsSettings.getHeaders(),
         body: JSON.stringify({ message: '여행 계획을 찾을 수 없습니다.' })
       };
     }
@@ -29,10 +27,7 @@ exports.handler = async (event) => {
     if (planData.Item.userId !== userId) {
       return {
         statusCode: 403,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Content-Type': 'application/json'
-        },
+        headers: corsSettings.getHeaders(),
         body: JSON.stringify({ message: '이 여행 계획을 수정할 권한이 없습니다.' })
       };
     }
@@ -57,10 +52,7 @@ exports.handler = async (event) => {
     
     return {
       statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json'
-      },
+      headers: corsSettings.getHeaders(),
       body: JSON.stringify(result.Attributes)
     };
   } catch (error) {
@@ -68,10 +60,7 @@ exports.handler = async (event) => {
     
     return {
       statusCode: 500,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json'
-      },
+      headers: corsSettings.getHeaders(),
       body: JSON.stringify({ message: '여행 계획 업데이트 중 오류가 발생했습니다.' })
     };
   }

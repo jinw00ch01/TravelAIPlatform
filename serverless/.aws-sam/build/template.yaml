@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Travel AI Platform Serverless Backend
+Description: Travel AI Platform API and Functions
 Globals:
   Function:
     Timeout: 30
@@ -9,11 +9,13 @@ Globals:
     Environment:
       Variables:
         TRAVEL_PLANS_TABLE:
-          Ref: TravelPlansTable
+          Fn::ImportValue: TravelAI-TravelPlansTableName
         MEDIA_BUCKET:
-          Ref: MediaBucket
-        OPENAI_API_KEY: '{{resolve:ssm:/travel-ai/openai-api-key:1}}'
+          Fn::ImportValue: TravelAI-MediaBucketName
         FRONTEND_URL: http://localhost:3000
+        USER_POOL_ID:
+          Fn::ImportValue: TravelAI-UserPoolId
+        OPENAI_API_KEY_PARAM: /travel-ai/openai-api-key
 Resources:
   TravelApi:
     Type: AWS::Serverless::Api
@@ -24,133 +26,41 @@ Resources:
         AllowHeaders: '''Content-Type,Authorization'''
         AllowOrigin: '''*'''
       Auth:
-        DefaultAuthorizer: CognitoAuthorizer
-        Authorizers:
-          CognitoAuthorizer:
-            UserPoolArn:
-              Fn::GetAtt:
-              - UserPool
-              - Arn
-  UserPool:
-    Type: AWS::Cognito::UserPool
+        ApiKeyRequired: false
+  AuthCallbackFunction:
+    Type: AWS::Serverless::Function
     Properties:
-      UserPoolName: TravelAiUserPool
-      AutoVerifiedAttributes:
-      - email
-      UsernameAttributes:
-      - email
-      MfaConfiguration: 'OFF'
-      EmailVerificationSubject: "\uC5EC\uD589 AI \uD50C\uB7AB\uD3FC - \uC774\uBA54\
-        \uC77C \uC778\uC99D"
-      EmailVerificationMessage: "\uC778\uC99D \uCF54\uB4DC: {####}"
-      SmsVerificationMessage: "\uC778\uC99D \uCF54\uB4DC: {####}"
-      SmsAuthenticationMessage: "\uC778\uC99D \uCF54\uB4DC: {####}"
-      AdminCreateUserConfig:
-        AllowAdminCreateUserOnly: false
-        InviteMessageTemplate:
-          EmailMessage: "\uC784\uC2DC \uBE44\uBC00\uBC88\uD638: {####}"
-          EmailSubject: "\uC5EC\uD589 AI \uD50C\uB7AB\uD3FC - \uC784\uC2DC \uBE44\uBC00\
-            \uBC88\uD638"
-          SMSMessage: "\uC784\uC2DC \uBE44\uBC00\uBC88\uD638: {####}"
-      VerificationMessageTemplate:
-        DefaultEmailOption: CONFIRM_WITH_CODE
-        EmailMessage: "\uC778\uC99D \uCF54\uB4DC: {####}"
-        EmailSubject: "\uC5EC\uD589 AI \uD50C\uB7AB\uD3FC - \uC774\uBA54\uC77C \uC778\
-          \uC99D"
-        SmsMessage: "\uC778\uC99D \uCF54\uB4DC: {####}"
-      Schema:
-      - Name: name
-        AttributeDataType: String
-        Mutable: true
-        Required: true
-      - Name: email
-        AttributeDataType: String
-        Mutable: false
-        Required: true
-      - Name: picture
-        AttributeDataType: String
-        Mutable: true
-        Required: false
+      CodeUri: AuthCallbackFunction
+      Handler: auth-callback.handler
       Policies:
-        PasswordPolicy:
-          MinimumLength: 8
-          RequireLowercase: true
-          RequireNumbers: true
-          RequireSymbols: false
-          RequireUppercase: true
-      AccountRecoverySetting:
-        RecoveryMechanisms:
-        - Name: verified_email
-          Priority: 1
-        - Name: verified_phone_number
-          Priority: 2
-  UserPoolDomain:
-    Type: AWS::Cognito::UserPoolDomain
+      - AmazonCognitoReadOnly
+      Events:
+        AuthCallback:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: TravelApi
+            Path: /auth/callback
+            Method: get
+    Metadata:
+      SamResourceId: AuthCallbackFunction
+  AuthTokenFunction:
+    Type: AWS::Serverless::Function
     Properties:
-      Domain: travel-ai-platform
-      UserPoolId:
-        Ref: UserPool
-  UserPoolClient:
-    Type: AWS::Cognito::UserPoolClient
-    Properties:
-      UserPoolId:
-        Ref: UserPool
-      ClientName: travel-ai-app-client
-      GenerateSecret: false
-      SupportedIdentityProviders:
-      - COGNITO
-      - Google
-      - Facebook
-      CallbackURLs:
-      - https://your-frontend-domain.com/callback
-      - http://localhost:3000/callback
-      LogoutURLs:
-      - https://your-frontend-domain.com
-      - http://localhost:3000
-      AllowedOAuthFlows:
-      - code
-      - implicit
-      AllowedOAuthScopes:
-      - phone
-      - email
-      - openid
-      - profile
-      AllowedOAuthFlowsUserPoolClient: true
-      ExplicitAuthFlows:
-      - ALLOW_USER_SRP_AUTH
-      - ALLOW_REFRESH_TOKEN_AUTH
-      - ALLOW_USER_PASSWORD_AUTH
-      - ALLOW_CUSTOM_AUTH
-  GoogleIdentityProvider:
-    Type: AWS::Cognito::UserPoolIdentityProvider
-    Properties:
-      UserPoolId:
-        Ref: UserPool
-      ProviderName: Google
-      ProviderType: Google
-      ProviderDetails:
-        client_id: '{{resolve:ssm:/travel-ai/google-client-id:1}}'
-        client_secret: '{{resolve:ssm:/travel-ai/google-client-secret:1}}'
-        authorize_scopes: email profile openid
-      AttributeMapping:
-        email: email
-        name: name
-        picture: picture
-  FacebookIdentityProvider:
-    Type: AWS::Cognito::UserPoolIdentityProvider
-    Properties:
-      UserPoolId:
-        Ref: UserPool
-      ProviderName: Facebook
-      ProviderType: Facebook
-      ProviderDetails:
-        client_id: '{{resolve:ssm:/travel-ai/facebook-app-id:1}}'
-        client_secret: '{{resolve:ssm:/travel-ai/facebook-app-secret:1}}'
-        authorize_scopes: email public_profile
-      AttributeMapping:
-        email: email
-        name: name
-        picture: picture
+      CodeUri: AuthTokenFunction
+      Handler: auth-token.handler
+      Policies:
+      - AmazonCognitoReadOnly
+      Events:
+        AuthToken:
+          Type: Api
+          Properties:
+            RestApiId:
+              Ref: TravelApi
+            Path: /api/auth/token
+            Method: get
+    Metadata:
+      SamResourceId: AuthTokenFunction
   PostConfirmationFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -159,69 +69,9 @@ Resources:
       Policies:
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: TravelPlansTable
-      Environment:
-        Variables:
-          USER_POOL_ID:
-            Ref: UserPool
-      Events:
-        CognitoTrigger:
-          Type: Cognito
-          Properties:
-            UserPool:
-              Ref: UserPool
-            Trigger: PostConfirmation
+            Fn::ImportValue: TravelAI-TravelPlansTableName
     Metadata:
       SamResourceId: PostConfirmationFunction
-  TravelPlansTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: TravelPlans
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-      - AttributeName: id
-        AttributeType: S
-      - AttributeName: userId
-        AttributeType: S
-      KeySchema:
-      - AttributeName: id
-        KeyType: HASH
-      GlobalSecondaryIndexes:
-      - IndexName: UserIdIndex
-        KeySchema:
-        - AttributeName: userId
-          KeyType: HASH
-        Projection:
-          ProjectionType: ALL
-  MediaBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      CorsConfiguration:
-        CorsRules:
-        - AllowedHeaders:
-          - '*'
-          AllowedMethods:
-          - GET
-          - PUT
-          - POST
-          - DELETE
-          - HEAD
-          AllowedOrigins:
-          - '*'
-          MaxAge: 3000
-  MediaBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket:
-        Ref: MediaBucket
-      PolicyDocument:
-        Statement:
-        - Effect: Allow
-          Principal: '*'
-          Action:
-          - s3:GetObject
-          Resource:
-            Fn::Sub: ${MediaBucket.Arn}/*
   CreateTravelPlanFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -230,7 +80,9 @@ Resources:
       Policies:
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: TravelPlansTable
+            Fn::ImportValue: TravelAI-TravelPlansTableName
+      - SSMParameterReadPolicy:
+          ParameterName: /travel-ai/openai-api-key
       Events:
         CreateTravelPlan:
           Type: Api
@@ -249,7 +101,9 @@ Resources:
       Policies:
       - DynamoDBReadPolicy:
           TableName:
-            Ref: TravelPlansTable
+            Fn::ImportValue: TravelAI-TravelPlansTableName
+      - SSMParameterReadPolicy:
+          ParameterName: /travel-ai/openai-api-key
       Events:
         GetTravelPlan:
           Type: Api
@@ -268,7 +122,9 @@ Resources:
       Policies:
       - DynamoDBReadPolicy:
           TableName:
-            Ref: TravelPlansTable
+            Fn::ImportValue: TravelAI-TravelPlansTableName
+      - SSMParameterReadPolicy:
+          ParameterName: /travel-ai/openai-api-key
       Events:
         ListUserPlans:
           Type: Api
@@ -287,7 +143,9 @@ Resources:
       Policies:
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: TravelPlansTable
+            Fn::ImportValue: TravelAI-TravelPlansTableName
+      - SSMParameterReadPolicy:
+          ParameterName: /travel-ai/openai-api-key
       Events:
         ShareTravelPlan:
           Type: Api
@@ -306,16 +164,18 @@ Resources:
       Policies:
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: TravelPlansTable
+            Fn::ImportValue: TravelAI-TravelPlansTableName
       - S3CrudPolicy:
           BucketName:
-            Ref: MediaBucket
+            Fn::ImportValue: TravelAI-MediaBucketName
       - Statement:
         - Effect: Allow
           Action:
           - rekognition:DetectLabels
           - rekognition:RecognizeCelebrities
           Resource: '*'
+      - SSMParameterReadPolicy:
+          ParameterName: /travel-ai/openai-api-key
       Events:
         ImageSearch:
           Type: Api
@@ -334,7 +194,9 @@ Resources:
       Policies:
       - DynamoDBCrudPolicy:
           TableName:
-            Ref: TravelPlansTable
+            Fn::ImportValue: TravelAI-TravelPlansTableName
+      - SSMParameterReadPolicy:
+          ParameterName: /travel-ai/openai-api-key
       Events:
         UpdateTravelPlan:
           Type: Api
@@ -350,19 +212,3 @@ Outputs:
     Description: API Gateway endpoint URL
     Value:
       Fn::Sub: https://${TravelApi}.execute-api.${AWS::Region}.amazonaws.com/prod/
-  UserPoolId:
-    Description: Cognito User Pool ID
-    Value:
-      Ref: UserPool
-  UserPoolClientId:
-    Description: Cognito User Pool Client ID
-    Value:
-      Ref: UserPoolClient
-  MediaBucketName:
-    Description: S3 Bucket for storing media files
-    Value:
-      Ref: MediaBucket
-  UserPoolDomain:
-    Description: Cognito User Pool Domain
-    Value:
-      Fn::Sub: https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com

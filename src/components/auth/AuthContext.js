@@ -26,59 +26,74 @@ export const AuthProvider = ({ children }) => {
     isLoading: true,
   });
 
-  // 초기 인증 상태 확인
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const { success, user, notAuthenticated } = await getCurrentUser();
-        
-        if (success && user) {
-          setAuthState({
-            isAuthenticated: true,
-            user,
-            isLoading: false,
-          });
-        } else if (notAuthenticated) {
-          // 인증되지 않은 상태는 정상적인 상황으로 처리
-          setAuthState({
-            isAuthenticated: false,
-            user: null,
-            isLoading: false,
-          });
-        } else {
-          setAuthState({
-            isAuthenticated: false,
-            user: null,
-            isLoading: false,
-          });
-        }
-      } catch (error) {
-        console.error('인증 상태 확인 오류:', error);
+  // 인증 상태 확인 함수
+  const checkAuth = async () => {
+    try {
+      const result = await getCurrentUser();
+      if (result.success && result.user) {
+        setAuthState({
+          isAuthenticated: true,
+          user: result.user,
+          isLoading: false,
+        });
+        return result;
+      } else {
         setAuthState({
           isAuthenticated: false,
           user: null,
           isLoading: false,
         });
+        return result;
+      }
+    } catch (error) {
+      console.error('인증 상태 확인 중 오류:', error);
+      setAuthState({
+        isAuthenticated: false,
+        user: null,
+        isLoading: false,
+      });
+      return { success: false, error };
+    }
+  };
+
+  // 초기 인증 상태 확인
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  // Auth 이벤트 리스너 설정 (별도의 useEffect로 분리)
+  useEffect(() => {
+    const authListener = ({ payload }) => {
+      console.log('Auth 이벤트 감지:', payload.event);
+      
+      switch (payload.event) {
+        case 'signIn':
+          // 로그인 이벤트 처리
+          checkAuth();
+          break;
+        case 'signOut':
+          // 로그아웃 이벤트 처리
+          setAuthState({
+            isAuthenticated: false,
+            user: null,
+            isLoading: false,
+          });
+          break;
+        case 'tokenRefresh':
+          // 토큰 갱신 이벤트 처리
+          checkAuth();
+          break;
+        default:
+          break;
       }
     };
 
-    checkAuth();
-
-    // Amplify 인증 이벤트 리스너 설정
-    const unsubscribe = Hub.listen('auth', ({ payload }) => {
-      if (payload.event === 'signIn') {
-        checkAuth();
-      } else if (payload.event === 'signOut') {
-        setAuthState({
-          isAuthenticated: false,
-          user: null,
-          isLoading: false,
-        });
-      }
-    });
+    // Hub 리스너 등록 및 해제 함수 저장
+    const unsubscribe = Hub.listen('auth', authListener);
 
     return () => {
-      unsubscribe(); // 최신 Amplify에서는 리스너 함수 자체가 구독 취소 함수
+      // Amplify v6에서는 리스너 제거를 위해 Hub.listen이 반환한 함수를 호출
+      unsubscribe();
     };
   }, []);
 
@@ -132,36 +147,6 @@ export const AuthProvider = ({ children }) => {
     },
     getJwtToken: async () => {
       return await getJwtToken();
-    }
-  };
-
-  // 인증 상태 확인 함수
-  const checkAuth = async () => {
-    try {
-      const result = await getCurrentUser();
-      if (result.success && result.user) {
-        setAuthState({
-          isAuthenticated: true,
-          user: result.user,
-          isLoading: false,
-        });
-        return result;
-      } else {
-        setAuthState({
-          isAuthenticated: false,
-          user: null,
-          isLoading: false,
-        });
-        return result;
-      }
-    } catch (error) {
-      console.error('인증 상태 확인 중 오류:', error);
-      setAuthState({
-        isAuthenticated: false,
-        user: null,
-        isLoading: false,
-      });
-      return { success: false, error };
     }
   };
 
