@@ -12,7 +12,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import { Amplify } from 'aws-amplify';
 import { configureAuth } from './utils/auth';
 
-// 인증 컴포넌트
+// Components
 import SignIn from './components/auth/SignIn';
 import SignUp from './components/auth/SignUp';
 import ResetPassword from './components/auth/ResetPassword';
