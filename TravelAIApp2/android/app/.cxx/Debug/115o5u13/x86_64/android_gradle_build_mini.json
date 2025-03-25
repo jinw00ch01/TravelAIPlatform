@@ -1,0 +1,31 @@
+{
+  "buildFiles": [
+    "C:\\Users\\gram15\\Desktop\\TravelAIPlatform\\TravelAIApp2\\node_modules\\react-native\\ReactAndroid\\cmake-utils\\default-app-setup\\CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "C:\\Users\\gram15\\AppData\\Local\\Android\\Sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+      "-C",
+      "C:\\Users\\gram15\\Desktop\\TravelAIPlatform\\TravelAIApp2\\android\\app\\.cxx\\Debug\\115o5u13\\x86_64",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "C:\\Users\\gram15\\AppData\\Local\\Android\\Sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+    "-C",
+    "C:\\Users\\gram15\\Desktop\\TravelAIPlatform\\TravelAIApp2\\android\\app\\.cxx\\Debug\\115o5u13\\x86_64",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "appmodules::@6890427a1f51a3e7e1df": {
+      "artifactName": "appmodules",
+      "abi": "x86_64",
+      "output": "C:\\Users\\gram15\\Desktop\\TravelAIPlatform\\TravelAIApp2\\android\\app\\build\\intermediates\\cxx\\Debug\\115o5u13\\obj\\x86_64\\libappmodules.so",
+      "runtimeFiles": [
+        "C:\\Users\\gram15\\.gradle\\caches\\8.12\\transforms\\bbbd7faada6db350ac59925f93ab342e\\transformed\\fbjni-0.7.0\\prefab\\modules\\fbjni\\libs\\android.x86_64\\libfbjni.so",
+        "C:\\Users\\gram15\\.gradle\\caches\\8.12\\transforms\\52a52e4c4792af3ca58b2df5dfea7545\\transformed\\react-android-0.78.1-debug\\prefab\\modules\\jsi\\libs\\android.x86_64\\libjsi.so",
+        "C:\\Users\\gram15\\.gradle\\caches\\8.12\\transforms\\52a52e4c4792af3ca58b2df5dfea7545\\transformed\\react-android-0.78.1-debug\\prefab\\modules\\reactnative\\libs\\android.x86_64\\libreactnative.so"
+      ]
+    }
+  }
+}

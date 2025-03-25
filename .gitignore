@@ -34,3 +34,31 @@ yarn-error.log*
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+
+# AWS
+.aws/
+amplify/
+amplify-meta.json
+
+# Local development
+*.log
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build files
+dist/
+build/
+out/
+
+# Cache
+.cache/
+.npm/
+.eslintcache
+
+# System Files
+.DS_Store
+Thumbs.db

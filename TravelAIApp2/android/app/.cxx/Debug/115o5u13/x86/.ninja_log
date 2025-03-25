@@ -1,0 +1,5 @@
+# ninja log v5
+6	55	0	C:/Users/gram15/Desktop/TravelAIPlatform/TravelAIApp2/android/app/.cxx/Debug/115o5u13/x86/CMakeFiles/cmake.verify_globs	7849da67dd8e08f8
+5	5339	7645935390028594	CMakeFiles/appmodules.dir/C_/Users/gram15/Desktop/TravelAIPlatform/TravelAIApp2/android/app/build/generated/autolinking/src/main/jni/autolinking.cpp.o	1f7599dd2943d249
+1	5887	7645935395538855	CMakeFiles/appmodules.dir/OnLoad.cpp.o	b8c683ca12cefc8c
+5887	6074	7645935397601921	C:/Users/gram15/Desktop/TravelAIPlatform/TravelAIApp2/android/app/build/intermediates/cxx/Debug/115o5u13/obj/x86/libappmodules.so	edcba72fe810ff6
