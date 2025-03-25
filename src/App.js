@@ -8,6 +8,8 @@ import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import PlanTravel from './pages/PlanTravel';
 import ViewItinerary from './pages/ViewItinerary';
+import ItineraryManager from './pages/ItineraryManager';
+import Cart from './components/Cart';
 import ProtectedRoute from './components/ProtectedRoute';
 import { Amplify } from 'aws-amplify';
 import { configureAuth } from './utils/auth';
@@ -53,7 +55,9 @@ function App() {
                     </ProtectedRoute>
                   } 
                 />
+                <Route path="/itinerary" element={<ItineraryManager />} />
                 <Route path="/itinerary/:id" element={<ViewItinerary />} />
+                <Route path="/cart" element={<Cart />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </main>
