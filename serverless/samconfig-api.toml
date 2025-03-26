@@ -1,0 +1,9 @@
+version = 0.1
+[default.deploy.parameters]
+stack_name = "travel-ai-platform-api"
+s3_bucket = "travel-ai-platform-media-977099017123"
+s3_prefix = "travel-ai-platform-api"
+region = "ap-northeast-2"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
+image_repositories = [] 

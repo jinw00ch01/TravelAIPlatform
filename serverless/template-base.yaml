@@ -1,0 +1,201 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Travel AI Platform Base Infrastructure
+
+# Resource Definitions
+Resources:
+  # Cognito User Pool
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: TravelAIPlatformUserPool
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      MfaConfiguration: 'OFF'
+      EmailVerificationSubject: 'Travel AI Platform - Email Verification'
+      EmailVerificationMessage: 'Verification code: {####}'
+      SmsVerificationMessage: 'Verification code: {####}'
+      SmsAuthenticationMessage: 'Authentication code: {####}'
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+        InviteMessageTemplate:
+          EmailMessage: 'Your username is {username}. Your temporary password is: {####}'
+          EmailSubject: 'Travel AI Platform - Temporary Password'
+          SMSMessage: 'Your username is {username}. Your temporary password is: {####}'
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+        EmailMessage: 'Verification code: {####}'
+        EmailSubject: 'Travel AI Platform - Email Verification'
+        SmsMessage: 'Verification code: {####}'
+      Schema:
+        - Name: name
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+        - Name: email
+          AttributeDataType: String
+          Mutable: false
+          Required: true
+        - Name: picture
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+          - Name: verified_phone_number
+            Priority: 2
+
+  # Cognito User Pool Domain
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: travel-ai-platform
+      UserPoolId: !Ref UserPool
+
+  # Cognito App Client
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: TravelAIWebApp  
+      GenerateSecret: false
+      SupportedIdentityProviders:
+        - COGNITO
+        - Google
+        - Facebook
+      CallbackURLs:
+        - 'https://your-frontend-domain.com/callback'
+        - 'http://localhost:3000/callback'
+      LogoutURLs:
+        - 'https://your-frontend-domain.com'
+        - 'http://localhost:3000'
+      AllowedOAuthFlows:
+        - code
+        - implicit
+      AllowedOAuthScopes:
+        - phone
+        - email
+        - openid
+        - profile
+      AllowedOAuthFlowsUserPoolClient: true
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_CUSTOM_AUTH
+
+  # Google Identity Provider
+  GoogleIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      UserPoolId: !Ref UserPool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: '{{resolve:ssm:/travel-ai/google-client-id:1}}'
+        client_secret: '{{resolve:ssm:/travel-ai/google-client-secret:1}}'
+        authorize_scopes: "email profile openid"
+      AttributeMapping:
+        email: email
+        name: name
+        picture: picture
+
+  # Facebook Identity Provider
+  FacebookIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      UserPoolId: !Ref UserPool
+      ProviderName: Facebook
+      ProviderType: Facebook
+      ProviderDetails:
+        client_id: '{{resolve:ssm:/travel-ai/facebook-app-id:1}}'
+        client_secret: '{{resolve:ssm:/travel-ai/facebook-app-secret:1}}'
+        authorize_scopes: "email public_profile"
+      AttributeMapping:
+        email: email
+        name: name
+        picture: picture
+
+  # DynamoDB Table
+  TravelPlansTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: TravelPlansNew
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  # S3 Bucket
+  MediaBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'travel-ai-platform-media-${AWS::AccountId}'
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - '*'
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+              - DELETE
+              - HEAD
+            AllowedOrigins:
+              - '*'
+            MaxAge: 3000
+
+# Output Definitions
+Outputs:
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+    Export:
+      Name: TravelAI-UserPoolId
+  
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value: !Ref UserPoolClient
+    Export:
+      Name: TravelAI-UserPoolClientId
+  
+  MediaBucketName:
+    Description: S3 Bucket for storing media files
+    Value: !Ref MediaBucket
+    Export:
+      Name: TravelAI-MediaBucketName
+    
+  UserPoolDomain:
+    Description: Cognito User Pool Domain
+    Value: !Sub 'https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com'
+    Export:
+      Name: TravelAI-UserPoolDomain
+      
+  TravelPlansTableName:
+    Description: DynamoDB Table for storing travel plans
+    Value: !Ref TravelPlansTable
+    Export:
+      Name: TravelAI-TravelPlansTableName 
