@@ -271,14 +271,31 @@ export const getCurrentUser = async () => {
 // JWT 토큰 가져오기
 export const getJwtToken = async () => {
   try {
-    const user = await getCurrentUserAuth();
-    const token = user.signInDetails?.tokens?.accessToken?.toString();
-    return { success: true, token };
+    // 로컬스토리지에서 먼저 시도
+    const localToken = localStorage.getItem('idToken');
+    if (localToken) {
+      console.log('로컬스토리지 토큰 사용');
+      return { success: true, token: localToken };
+    }
+
+    // Amplify 세션에서 추출 시도
+    const session = await fetchAuthSession();
+    const idToken = session.tokens?.idToken?.toString();
+    if (idToken) {
+      return { success: true, token: idToken };
+    }
+
+    return { success: false, error: '유효한 토큰이 없습니다.', token: null };
   } catch (error) {
     console.error('JWT 토큰 가져오기 오류:', error);
-    return { success: false, error: error.message };
+    return {
+      success: false,
+      error: error.message,
+      stack: error.stack
+    };
   }
 };
+
 
 // 비밀번호 재설정 요청
 export const forgotPassword = async (email) => {
