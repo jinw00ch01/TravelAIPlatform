@@ -1,198 +1,217 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { TextField, List, ListItem, ListItemText, CircularProgress, Typography, Box } from '@mui/material';
+import debounce from 'lodash/debounce';
 
-const SearchPopup = ({ 
-  isOpen, 
-  onClose, 
-  searchQuery, 
-  setSearchQuery, 
-  selectedPlace, 
-  setSelectedPlace, 
-  addPlaceToDay, 
-  selectedDay, 
-  insertIndex,
-  mapRef,
-  isLoaded 
-}) => {
-  const searchInputRef = useRef(null);
-  const autocompleteRef = useRef(null);
+const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
+const SCRIPT_ID = 'google-maps-script';
+
+const SearchPopup = ({ onSelect, onClose }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [placesService, setPlacesService] = useState(null);
+  const [geocoder, setGeocoder] = useState(null);
 
   useEffect(() => {
-    // 디버깅: 초기 조건 로깅
-    console.log('SearchPopup Effect 조건:', {
-      isOpen,
-      isLoaded,
-      hasSearchInput: !!searchInputRef.current,
-      hasGoogleMaps: !!window.google,
-      hasPlacesAPI: !!(window.google?.maps?.places),
-      googleMapsObject: window.google?.maps,
-      searchInputElement: searchInputRef.current
-    });
+    let isSubscribed = true;
+    let mapInstance = null;
+    let mapDiv = null;
 
-    if (!isOpen || !isLoaded || !searchInputRef.current) {
-      console.log('SearchPopup 초기화 중단:', {
-        reason: !isOpen ? 'popup closed' : !isLoaded ? 'maps not loaded' : 'no search input'
-      });
-      return;
-    }
-
-    let autocomplete = null;
-    let placeChangedListener = null;
-
-    try {
-      console.log('Places API 초기화 시작');
-
-      // Places 서비스 초기화
-      const options = {
-        componentRestrictions: { country: 'kr' },
-        fields: ['name', 'geometry', 'formatted_address'],
-        types: ['establishment', 'geocode']
-      };
-
-      console.log('Autocomplete 옵션:', options);
-
-      // Autocomplete 인스턴스 생성
-      autocomplete = new window.google.maps.places.Autocomplete(searchInputRef.current, options);
-      console.log('Autocomplete 인스턴스 생성됨:', !!autocomplete);
-      
-      autocompleteRef.current = autocomplete;
-
-      // place_changed 이벤트 리스너 추가
-      placeChangedListener = autocomplete.addListener('place_changed', () => {
-        console.log('place_changed 이벤트 발생');
-        const place = autocomplete.getPlace();
-        
-        console.log('선택된 장소:', place);
-
-        if (!place.geometry) {
-          console.warn("선택한 장소에 대한 정보가 없습니다:", place);
+    const loadGoogleMapsScript = () => {
+      return new Promise((resolve, reject) => {
+        if (window.google && window.google.maps) {
+          resolve(window.google.maps);
           return;
         }
 
-        const newPlace = {
-          name: place.name,
-          lat: place.geometry.location.lat(),
-          lng: place.geometry.location.lng(),
-          address: place.formatted_address
-        };
+        // 기존 스크립트가 있다면 제거하지 않고 재사용
+        let script = document.getElementById(SCRIPT_ID);
+        
+        if (!script) {
+          script = document.createElement('script');
+          script.id = SCRIPT_ID;
+          script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places&language=ko&region=kr&loading=async`;
+          script.async = true;
+          
+          script.onload = () => {
+            if (window.google && window.google.maps) {
+              resolve(window.google.maps);
+            } else {
+              reject(new Error('Google Maps API가 올바르게 로드되지 않았습니다.'));
+            }
+          };
 
-        console.log('처리된 장소 정보:', newPlace);
+          script.onerror = () => {
+            reject(new Error('Google Maps API를 로드할 수 없습니다.'));
+          };
 
-        setSelectedPlace(newPlace);
+          document.head.appendChild(script);
+        } else {
+          // 스크립트가 이미 있는 경우, google 객체가 로드될 때까지 대기
+          const checkGoogleMaps = setInterval(() => {
+            if (window.google && window.google.maps) {
+              clearInterval(checkGoogleMaps);
+              resolve(window.google.maps);
+            }
+          }, 100);
 
-        if (mapRef.current) {
-          console.log('지도 위치 업데이트');
-          mapRef.current.panTo(place.geometry.location);
-          mapRef.current.setZoom(15);
+          // 10초 후에도 로드되지 않으면 타임아웃
+          setTimeout(() => {
+            clearInterval(checkGoogleMaps);
+            reject(new Error('Google Maps API 로드 타임아웃'));
+          }, 10000);
         }
       });
+    };
 
-      // 입력 필드에 포커스
-      searchInputRef.current.focus();
-      console.log('검색 입력 필드에 포커스됨');
+    const initializeServices = async () => {
+      try {
+        const maps = await loadGoogleMapsScript();
+        
+        if (!isSubscribed) return;
 
-    } catch (error) {
-      console.error("Places API 초기화 오류:", {
-        error,
-        errorMessage: error.message,
-        errorStack: error.stack,
-        googleMapsState: {
-          hasGoogleObject: !!window.google,
-          hasMapsObject: !!window.google?.maps,
-          hasPlacesObject: !!window.google?.maps?.places
+        // 이전 맵 인스턴스 정리
+        if (mapInstance) {
+          mapDiv.remove();
+          mapInstance = null;
         }
-      });
-    }
 
-    // Cleanup function
-    return () => {
-      console.log('SearchPopup cleanup 실행');
-      if (placeChangedListener) {
-        console.log('이벤트 리스너 제거');
-        placeChangedListener.remove();
-      }
-      if (autocomplete) {
-        console.log('Autocomplete 인스턴스 정리');
-        window.google.maps.event.clearInstanceListeners(autocomplete);
-      }
-      if (autocompleteRef.current) {
-        console.log('Autocomplete 참조 정리');
-        autocompleteRef.current = null;
+        // 새로운 맵 요소 생성
+        mapDiv = document.createElement('div');
+        mapDiv.style.visibility = 'hidden';
+        mapDiv.style.position = 'absolute';
+        mapDiv.style.left = '-9999px';
+        document.body.appendChild(mapDiv);
+
+        // 맵 인스턴스 생성
+        mapInstance = new maps.Map(mapDiv, {
+          center: { lat: 37.5665, lng: 126.9780 },
+          zoom: 15
+        });
+
+        if (isSubscribed) {
+          setPlacesService(new maps.places.PlacesService(mapInstance));
+          setGeocoder(new maps.Geocoder());
+        }
+      } catch (err) {
+        console.error('서비스 초기화 실패:', err);
+        if (isSubscribed) {
+          setError('Google Maps 서비스를 초기화하는데 실패했습니다. API 키를 확인해주세요.');
+        }
       }
     };
-  }, [isOpen, isLoaded, mapRef, setSelectedPlace]);
 
-  const handleInputChange = (event) => {
-    if (event && event.target) {
-      console.log('검색어 변경:', event.target.value);
-      setSearchQuery(event.target.value);
-    }
-  };
+    initializeServices();
 
-  const handleClose = (event) => {
-    if (event) {
-      event.preventDefault();
+    return () => {
+      isSubscribed = false;
+      if (mapDiv) {
+        mapDiv.remove();
+      }
+      setPlacesService(null);
+      setGeocoder(null);
+    };
+  }, []);
+
+  const handleSearch = debounce(async (query) => {
+    if (!query.trim() || !placesService || !geocoder) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const request = {
+        query: query,
+        language: 'ko',
+        region: 'kr'
+      };
+
+      placesService.textSearch(request, (results, status) => {
+        if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
+          const processedResults = results.map(result => ({
+            name: result.name,
+            address: result.formatted_address,
+            lat: result.geometry.location.lat(),
+            lng: result.geometry.location.lng(),
+            category: result.types.join(', ')
+          }));
+          setResults(processedResults);
+          console.log('최종 결과:', processedResults);
+        } else {
+          setError('검색 결과를 찾을 수 없습니다.');
+          setResults([]);
+        }
+        setLoading(false);
+      });
+    } catch (err) {
+      console.error('검색 오류:', err);
+      setError('검색 중 오류가 발생했습니다.');
+      setResults([]);
+      setLoading(false);
     }
-    console.log('SearchPopup 닫기');
+  }, 300);
+
+  const handleSelect = (place) => {
+    onSelect(place);
     onClose();
   };
-
-  const handleAddPlace = (event) => {
-    if (event) {
-      event.preventDefault();
-    }
-    console.log('선택한 장소 추가:', { selectedPlace, insertIndex });
-    addPlaceToDay(insertIndex);
-    onClose();
-  };
-
-  if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-96 max-w-[90%]" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">장소 검색</h3>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="text-gray-500 hover:text-gray-700"
+    <Box sx={{ p: 2 }}>
+      <TextField
+        fullWidth
+        placeholder="장소를 검색하세요"
+        value={searchTerm}
+        onChange={(e) => {
+          setSearchTerm(e.target.value);
+          handleSearch(e.target.value);
+        }}
+        sx={{ mb: 2 }}
+      />
+
+      {loading && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
+          <CircularProgress />
+        </Box>
+      )}
+
+      {error && (
+        <Typography color="error" sx={{ my: 2 }}>
+          {error}
+        </Typography>
+      )}
+
+      <List>
+        {results.map((place, index) => (
+          <ListItem
+            key={`${place.name}-${index}`}
+            onClick={() => handleSelect(place)}
+            sx={{
+              cursor: 'pointer',
+              '&:hover': {
+                bgcolor: 'action.hover',
+              },
+            }}
           >
-            ✕
-          </button>
-        </div>
-        <input
-          ref={searchInputRef}
-          type="text"
-          placeholder="장소 검색..."
-          className="w-full p-2 border border-gray-300 rounded-md mb-4"
-          value={searchQuery}
-          onChange={handleInputChange}
-          autoComplete="off"
-        />
-        {selectedPlace && (
-          <div className="mt-2">
-            <p className="text-sm text-gray-600">{selectedPlace.name}</p>
-            <p className="text-xs text-gray-500">{selectedPlace.address}</p>
-            <div className="flex justify-end mt-4 space-x-2">
-              <button
-                type="button"
-                onClick={handleClose}
-                className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-100"
-              >
-                취소
-              </button>
-              <button
-                type="button"
-                onClick={handleAddPlace}
-                className="px-4 py-2 bg-primary-dark text-white rounded-md hover:bg-primary"
-              >
-                Day {selectedDay}에 추가
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+            <ListItemText
+              primary={place.name}
+              secondary={
+                <React.Fragment>
+                  <Typography component="span" variant="body2" color="text.primary">
+                    {place.address}
+                  </Typography>
+                  <br />
+                  <Typography component="span" variant="body2" color="text.secondary">
+                    {place.category}
+                  </Typography>
+                </React.Fragment>
+              }
+            />
+          </ListItem>
+        ))}
+      </List>
+    </Box>
   );
 };
 

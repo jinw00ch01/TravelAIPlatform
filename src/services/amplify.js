@@ -9,7 +9,7 @@ Amplify.configure({
       region: process.env.REACT_APP_REGION || 'ap-northeast-2',
       loginWith: {
         oauth: {
-          domain: process.env.REACT_APP_OAUTH_DOMAIN.replace('https://', ''),
+          domain: process.env.REACT_APP_OAUTH_DOMAIN ? process.env.REACT_APP_OAUTH_DOMAIN.replace('https://', '') : 'travel-ai-platform.auth.ap-northeast-2.amazoncognito.com',
           scopes: ['email', 'profile', 'openid'],
           redirectSignIn: [process.env.REACT_APP_REDIRECT_SIGN_IN],
           redirectSignOut: [process.env.REACT_APP_REDIRECT_SIGN_OUT],
