@@ -1,9 +1,8 @@
 /**
- * MyPage Lambda 함수
- * JWT 토큰에서 사용자 정보를 추출하고 Cognito에서 상세 정보를 가져옵니다.
+ * Profile Lambda 함수
+ * 사용자 프로필 정보를 업데이트하기 위한 API 엔드포인트
  */
 
-// AWS SDK 가져오기
 const AWS = require('aws-sdk');
 const jwt = require('jsonwebtoken');
 
@@ -11,52 +10,20 @@ const jwt = require('jsonwebtoken');
 const headers = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-  'Access-Control-Allow-Methods': 'GET,OPTIONS',
+  'Access-Control-Allow-Methods': 'PUT,OPTIONS',
   'Content-Type': 'application/json'
 };
 
 // 환경 변수
 const USER_POOL_ID = process.env.USER_POOL_ID || 'ap-northeast-2_8z1jH3Siu';
 const AWS_REGION = process.env.AWS_REGION || 'ap-northeast-2';
-const DEBUG = process.env.DEBUG === 'true';
 
 // AWS 설정
 AWS.config.update({ region: AWS_REGION });
 const cognito = new AWS.CognitoIdentityServiceProvider();
 
-// 미리 정의된 더미 예약 데이터 - 연동 전까지 고정 데이터로 사용
-const DEFAULT_BOOKINGS = [
-  {
-    id: 1,
-    title: '제주도 호텔',
-    type: '숙박',
-    date: '2024-06-15',
-    status: '예정',
-    price: '150,000원',
-    location: '제주시'
-  },
-  {
-    id: 2,
-    title: '부산 해운대 호텔',
-    type: '숙박',
-    date: '2024-02-20',
-    status: '완료',
-    price: '180,000원',
-    location: '해운대구'
-  },
-  {
-    id: 3,
-    title: '서울 강남 호텔',
-    type: '숙박',
-    date: '2024-05-10',
-    status: '예정',
-    price: '200,000원',
-    location: '강남구'
-  }
-];
-
 exports.handler = async (event) => {
-  console.log('MyPage Lambda 함수 시작');
+  console.log('Profile Lambda 함수 시작');
   console.log('이벤트 객체:', JSON.stringify(event, null, 2));
   
   // OPTIONS 요청 처리 (CORS)
@@ -89,19 +56,19 @@ exports.handler = async (event) => {
     const token = authHeader.substring(7).trim(); // 'Bearer ' 이후 부분
     console.log('추출된 토큰 길이:', token?.length);
     
-    if (!token || token === '' || token === 'undefined') {
-      console.error('빈 토큰 또는 "undefined" 문자열');
+    if (!token || token === '') {
+      console.error('빈 토큰');
       return {
         statusCode: 401,
         headers,
         body: JSON.stringify({ 
           success: false, 
-          message: '유효한 토큰이 없습니다.'
+          message: '빈 토큰입니다.'
         })
       };
     }
     
-    // JWT 토큰 디코딩 시도
+    // JWT 토큰 디코딩
     let decodedToken;
     try {
       decodedToken = jwt.decode(token);
@@ -118,14 +85,14 @@ exports.handler = async (event) => {
           })
         };
       }
-    } catch (decodeError) {
-      console.error('JWT 토큰 디코딩 중 오류:', decodeError);
+    } catch (error) {
+      console.error('JWT 토큰 디코딩 중 오류:', error);
       return {
         statusCode: 401,
         headers,
         body: JSON.stringify({
           success: false,
-          message: 'JWT 토큰 처리 중 오류: ' + decodeError.message
+          message: 'JWT 토큰 처리 중 오류: ' + error.message
         })
       };
     }
@@ -149,70 +116,95 @@ exports.handler = async (event) => {
       };
     }
     
-    // 연락할 Cognito 사용자 이름 (sub 또는 email 사용)
-    const cognitoUsername = userId || userEmail;
-    
-    // Cognito에서 사용자 정보 가져오기
+    // 요청 본문 파싱
+    let requestBody;
     try {
-      const params = {
-        UserPoolId: USER_POOL_ID,
-        Username: cognitoUsername
+      requestBody = JSON.parse(event.body);
+      console.log('요청 본문:', JSON.stringify(requestBody, null, 2));
+    } catch (error) {
+      console.error('요청 본문 파싱 오류:', error);
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          success: false,
+          message: '유효하지 않은 요청 형식입니다.'
+        })
       };
-      
-      console.log('Cognito에 요청할 파라미터:', JSON.stringify(params));
-      
-      const cognitoResponse = await cognito.adminGetUser(params).promise();
-      console.log('Cognito 응답:', JSON.stringify(cognitoResponse, null, 2));
-      
-      // 사용자 기본 정보
-      const userDetails = {
-        username: cognitoUsername
-      };
-      
-      // 사용자 속성 매핑
-      if (cognitoResponse.UserAttributes) {
-        cognitoResponse.UserAttributes.forEach(attr => {
-          userDetails[attr.Name] = attr.Value;
-        });
-      }
-      
-      console.log('추출된 사용자 정보:', JSON.stringify(userDetails, null, 2));
-      
-      // 최종 사용자 정보 포맷팅
-      const user = {
-        sub: userDetails.sub || userId,
-        email: userDetails.email || userEmail,
-        name: userDetails.name || userDetails.given_name || '사용자',
-        phone_number: userDetails.phone_number || '',
-        birthdate: userDetails.birthdate || '',
-        stats: {
-          totalTrips: 5,  // 실제 DB에서 가져와야 함
-          countries: 3,  // 실제 DB에서 가져와야 함
-          reviews: 12   // 실제 DB에서 가져와야 함
-        }
-      };
-      
-      // 성공 응답
+    }
+    
+    // 업데이트할 사용자 속성 생성
+    const userAttributes = [];
+    
+    // 이름 업데이트
+    if (requestBody.username) {
+      userAttributes.push({
+        Name: 'name',
+        Value: requestBody.username
+      });
+    }
+    
+    // 전화번호 업데이트
+    if (requestBody.phone) {
+      userAttributes.push({
+        Name: 'phone_number',
+        Value: requestBody.phone
+      });
+    }
+    
+    // 생년월일 업데이트
+    if (requestBody.birthDate) {
+      userAttributes.push({
+        Name: 'birthdate',
+        Value: requestBody.birthDate
+      });
+    }
+    
+    // 속성이 없으면 업데이트할 필요 없음
+    if (userAttributes.length === 0) {
       return {
         statusCode: 200,
         headers,
         body: JSON.stringify({
           success: true,
-          user: user,
-          bookings: DEFAULT_BOOKINGS
+          message: '업데이트할 속성이 없습니다.'
         })
       };
+    }
+    
+    // Cognito 사용자 업데이트
+    try {
+      // 연락할 Cognito 사용자 이름 (sub 또는 email 사용)
+      const cognitoUsername = userId || userEmail;
       
-    } catch (cognitoError) {
-      console.error('Cognito 사용자 정보 조회 실패:', cognitoError);
+      const params = {
+        UserPoolId: USER_POOL_ID,
+        Username: cognitoUsername,
+        UserAttributes: userAttributes
+      };
       
+      console.log('Cognito 업데이트 요청 파라미터:', JSON.stringify(params, null, 2));
+      
+      await cognito.adminUpdateUserAttributes(params).promise();
+      
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          success: true,
+          message: '사용자 정보가 성공적으로 업데이트되었습니다.',
+          updatedAttributes: userAttributes.map(attr => attr.Name)
+        })
+      };
+    } catch (error) {
+      console.error('Cognito 사용자 업데이트 실패:', error);
       return {
         statusCode: 500,
         headers,
         body: JSON.stringify({
           success: false,
-          message: 'Cognito에서 사용자 정보를 가져오는 중 오류가 발생했습니다.',
-          error: cognitoError.message
+          message: '사용자 정보 업데이트 중 오류가 발생했습니다.',
+          error: error.message
         })
       };
     }

@@ -1,7 +1,7 @@
 {
-  "name": "image-search",
+  "name": "auth",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "post-confirmation.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -10,9 +10,6 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "aws-sdk": "^2.1692.0",
-    "axios": "^1.8.1",
-    "dotenv": "^16.4.7",
-    "uuid": "^11.1.0"
+    "aws-sdk": "^2.1692.0"
   }
-}
+} 

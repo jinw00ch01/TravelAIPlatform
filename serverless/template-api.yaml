@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Travel AI Platform API and Functions
+Description: Travel AI Platform API Functions
 
 # Global Variables
 Globals:
@@ -10,11 +10,10 @@ Globals:
     MemorySize: 256
     Environment:
       Variables:
-        TRAVEL_PLANS_TABLE: !ImportValue TravelAI-TravelPlansTableName
-        MEDIA_BUCKET: !ImportValue TravelAI-MediaBucketName
+        TRAVEL_PLANS_TABLE: TravelPlansBase
+        MEDIA_BUCKET: !ImportValue TravelAI-MediaBucketName-Base
         FRONTEND_URL: 'http://localhost:3000'
-        NGROK_URL: 'https://6d1e-180-83-172-51.ngrok-free.app'
-        USER_POOL_ID: !ImportValue TravelAI-UserPoolId
+        USER_POOL_ID: !ImportValue TravelAI-UserPoolId-Base
         OPENAI_API_KEY_PARAM: '/travel-ai/openai-api-key'
 
 # Resource Definitions
@@ -27,7 +26,7 @@ Resources:
       Cors:
         AllowMethods: "'GET, POST, PUT, DELETE, OPTIONS'"
         AllowHeaders: "'Content-Type,Authorization'"
-        AllowOrigin: "'http://localhost:3000, https://6d1e-180-83-172-51.ngrok-free.app'"
+        AllowOrigin: "'http://localhost:3000'"
       Auth:
         ApiKeyRequired: false
 
@@ -37,8 +36,18 @@ Resources:
     Properties:
       CodeUri: functions/auth/
       Handler: auth-callback.handler
+      Environment:
+        Variables:
+          FRONTEND_URL: 'http://localhost:3000'
+          USER_POOL_ID: !ImportValue TravelAI-UserPoolId-Base
       Policies:
         - AmazonCognitoReadOnly
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:InitiateAuth
+                - cognito-idp:AdminInitiateAuth
+              Resource: '*'
       Events:
         AuthCallback:
           Type: Api
@@ -63,16 +72,6 @@ Resources:
             Path: /api/auth/token
             Method: get
 
-  # Post Confirmation Lambda
-  PostConfirmationFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: functions/auth/
-      Handler: post-confirmation.handler
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !ImportValue TravelAI-TravelPlansTableName
-
   # Create Travel Plan Lambda
   CreateTravelPlanFunction:
     Type: AWS::Serverless::Function
@@ -81,7 +80,7 @@ Resources:
       Handler: create.handler
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !ImportValue TravelAI-TravelPlansTableName
+            TableName: TravelPlansBase
         - SSMParameterReadPolicy:
             ParameterName: /travel-ai/openai-api-key
       Events:
@@ -100,7 +99,7 @@ Resources:
       Handler: get.handler
       Policies:
         - DynamoDBReadPolicy:
-            TableName: !ImportValue TravelAI-TravelPlansTableName
+            TableName: TravelPlansBase
         - SSMParameterReadPolicy:
             ParameterName: /travel-ai/openai-api-key
       Events:
@@ -119,7 +118,7 @@ Resources:
       Handler: list.handler
       Policies:
         - DynamoDBReadPolicy:
-            TableName: !ImportValue TravelAI-TravelPlansTableName
+            TableName: TravelPlansBase
         - SSMParameterReadPolicy:
             ParameterName: /travel-ai/openai-api-key
       Events:
@@ -138,7 +137,7 @@ Resources:
       Handler: share.handler
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !ImportValue TravelAI-TravelPlansTableName
+            TableName: TravelPlansBase
         - SSMParameterReadPolicy:
             ParameterName: /travel-ai/openai-api-key
       Events:
@@ -157,9 +156,9 @@ Resources:
       Handler: search.handler
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !ImportValue TravelAI-TravelPlansTableName
+            TableName: TravelPlansBase
         - S3CrudPolicy:
-            BucketName: !ImportValue TravelAI-MediaBucketName
+            BucketName: !ImportValue TravelAI-MediaBucketName-Base
         - Statement:
             - Effect: Allow
               Action:
@@ -184,7 +183,7 @@ Resources:
       Handler: update.handler
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !ImportValue TravelAI-TravelPlansTableName
+            TableName: TravelPlansBase
         - SSMParameterReadPolicy:
             ParameterName: /travel-ai/openai-api-key
       Events:
@@ -193,6 +192,38 @@ Resources:
           Properties:
             RestApiId: !Ref TravelApi
             Path: /api/travel/plan/{id}
+            Method: put
+
+  # MyPage Lambda 
+  MyPageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/user/
+      Handler: mypage.handler
+      Policies:
+        - AmazonCognitoReadOnly
+      Events:
+        MyPage:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TravelApi
+            Path: /api/user/mypage
+            Method: get
+
+  # User Profile Lambda
+  UserProfileFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/user/
+      Handler: profile.handler
+      Policies:
+        - AmazonCognitoReadOnly
+      Events:
+        UserProfile:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TravelApi
+            Path: /api/user/profile
             Method: put
 
 # Output Definitions

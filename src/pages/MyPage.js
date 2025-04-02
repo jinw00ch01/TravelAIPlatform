@@ -4,7 +4,7 @@ import { useAuth } from '../components/auth/AuthContext';
 import axios from 'axios';
 
 // API 엔드포인트 설정 - 환경변수에서 가져오기
-const API_URL = process.env.REACT_APP_API_URL || 'https://kebc7zhgj5.execute-api.ap-northeast-2.amazonaws.com/prod';
+const API_URL = process.env.REACT_APP_API_URL || 'https://4j285x41oj.execute-api.ap-northeast-2.amazonaws.com/prod';
 const MY_PAGE_API_URL = `${API_URL}/api/user/mypage`;
 const USER_PROFILE_API_URL = `${API_URL}/api/user/profile`;
 
@@ -283,6 +283,9 @@ function MyPage() {
 
   const handleSave = async () => {
     try {
+      setLoading(true);
+      showNotification('프로필 정보 저장 중...', 'info');
+      
       if (!isSkipAuth) {
         // JWT 토큰 가져오기
         const tokenResult = await getJwtToken();
@@ -290,29 +293,64 @@ function MyPage() {
           throw new Error('인증 토큰을 가져올 수 없습니다.');
         }
         
-    // TODO: API 호출로 프로필 정보 저장
-    console.log('저장할 프로필 정보:', profileData);
+        console.log('저장할 프로필 정보:', profileData);
         
-        // 프로필 업데이트 API 호출은 추후 구현
-        // const response = await axios.put(`${API_URL}/api/user/profile`, profileData, {
-        //   headers: {
-        //     Authorization: `Bearer ${tokenResult.token}`
-        //   }
-        // });
+        // 프로필 업데이트 API 호출
+        const response = await axios.put(USER_PROFILE_API_URL, profileData, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${tokenResult.token}`
+          },
+          timeout: 10000 // 10초 타임아웃
+        });
+        
+        console.log('프로필 업데이트 응답:', response.data);
+        
+        if (response.data.success) {
+          // 성공적으로 업데이트된 경우
+          showNotification('프로필 정보가 성공적으로 저장되었습니다.', 'success');
+          
+          // 최신 사용자 정보 가져오기 위해 MyPage API 다시 호출
+          const myPageResponse = await axios.get(MY_PAGE_API_URL, {
+            headers: {
+              Authorization: `Bearer ${tokenResult.token}`
+            },
+            timeout: 10000
+          });
+          
+          if (myPageResponse.data.success) {
+            setUserData(myPageResponse.data.user);
+          }
+        } else {
+          throw new Error(response.data.message || '프로필 정보 저장에 실패했습니다.');
+        }
       } else {
         console.log('개발 모드 - 프로필 정보 저장 시뮬레이션:', profileData);
+        // 개발 모드에서는 즉시 성공으로 처리
+        showNotification('개발 모드: 프로필 정보가 저장되었습니다 (시뮬레이션).', 'success');
+        
+        // 개발 모드에서 사용자 정보 업데이트
+        setUserData(prev => ({
+          ...prev,
+          name: profileData.username,
+          email: profileData.email,
+          phone_number: profileData.phone,
+          birthdate: profileData.birthDate
+        }));
       }
       
-    setIsEditing(false);
+      setIsEditing(false);
       
-    // 상단 프로필 섹션 업데이트
-    if (user) {
-      user.username = profileData.username;
-      user.email = profileData.email;
+      // 상단 프로필 섹션 업데이트
+      if (user) {
+        user.username = profileData.username;
+        user.email = profileData.email;
       }
     } catch (error) {
       console.error('프로필 저장 오류:', error);
-      alert('프로필 정보 저장에 실패했습니다.');
+      showNotification('프로필 저장 실패: ' + (error.response?.data?.message || error.message), 'error');
+    } finally {
+      setLoading(false);
     }
   };
 

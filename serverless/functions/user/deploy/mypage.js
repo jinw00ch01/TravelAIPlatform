@@ -16,7 +16,7 @@ const headers = {
 };
 
 // 환경 변수
-const USER_POOL_ID = process.env.USER_POOL_ID || 'ap-northeast-2_cJFbK5Qal';
+const USER_POOL_ID = process.env.USER_POOL_ID || 'ap-northeast-2_8z1jH3Siu';
 const AWS_REGION = process.env.AWS_REGION || 'ap-northeast-2';
 
 // AWS 설정

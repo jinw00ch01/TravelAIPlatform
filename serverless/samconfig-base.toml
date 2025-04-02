@@ -1,7 +1,6 @@
 version = 0.1
 [default.deploy.parameters]
 stack_name = "travel-ai-platform-base"
-resolve_s3 = false
 s3_bucket = "travel-ai-platform-media-977099017123"
 s3_prefix = "travel-ai-platform-base"
 region = "ap-northeast-2"
