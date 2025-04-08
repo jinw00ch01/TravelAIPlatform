@@ -21,6 +21,8 @@ import SignUp from './components/auth/SignUp';
 import ResetPassword from './components/auth/ResetPassword';
 import AuthCallback from './components/auth/AuthCallback';
 import TravelPlanner from './pages/TravelPlanner';
+import Plan from './pages/Plan';
+import Planner from './pages/Planner';
 
 const queryClient = new QueryClient();
 
@@ -48,6 +50,9 @@ function App() {
                 <Route path="/itinerary/:id" element={<ProtectedRoute><ViewItinerary /></ProtectedRoute>} />
                 <Route path="/cart" element={<ProtectedRoute><Cart /></ProtectedRoute>} />
                 <Route path="/mypage" element={<ProtectedRoute><MyPage /></ProtectedRoute>} />
+                <Route path="/plan-travel" element={<PlanTravel />} />
+                <Route path="/plan/:id" element={<Plan />} />
+                <Route path="/planner" element={<Planner />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </main>

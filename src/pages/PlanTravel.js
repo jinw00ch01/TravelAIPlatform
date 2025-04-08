@@ -52,19 +52,27 @@ export const PlanTravel = () => {
       
       console.log('Travel API response:', result);
       
-      // 성공 시 결과 페이지로 이동
-      // Python 함수의 응답 형식에 맞게 처리
+      // 성공 시 여행 계획 데이터 저장 및 페이지 이동
       if (result && (result.planId || (result.plan && result.message))) {
-        // Python Lambda 함수에서는 다른 응답 형식을 사용할 수 있음
+        // Planner 페이지로 이동하기 위한 정보 준비
         const planId = result.planId || `temp-${Date.now()}`;
         
-        // 응답에 있는 여행 계획 데이터를 세션 스토리지에 저장
-        // 결과 페이지에서 사용하기 위함
+        // 세션 스토리지에 여행 계획 데이터 저장
         if (result.plan) {
+          // 플랜 데이터 저장
           sessionStorage.setItem(`travel-plan-${planId}`, JSON.stringify(result.plan));
+          // 마지막으로 생성된 planId 저장 (최신 플랜 조회용)
+          sessionStorage.setItem('lastPlanId', planId);
         }
         
-        navigate(`/plan/${planId}`);
+        // Planner 페이지로 이동 (상태와 함께)
+        navigate('/planner', { 
+          state: { 
+            planData: result.plan,
+            planId: planId 
+          } 
+        });
+        
         return result;
       } else {
         console.warn('API 응답에 필요한 데이터가 없습니다:', result);

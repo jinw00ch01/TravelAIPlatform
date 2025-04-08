@@ -164,7 +164,53 @@ export const travelApi = {
       console.error('여행 계획 업데이트 실패:', error);
       throw error;
     }
-  }
+  },
+  
+  // 여행 계획 조회 (Python Lambda)
+  loadPlanPython: async (requestData) => {
+    console.log('Python Lambda 여행 계획 로드 요청 시작');
+    console.log('요청 데이터:', requestData);
+    
+    try {
+      // POST 요청으로 Python Lambda 함수 호출
+      const response = await axios({
+        method: 'post',
+        url: 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/prod/api/travel/python-user',
+        data: requestData || {
+          query: "도쿄 1일 여행 계획을 만들어주세요. 예산은 10만원입니다.",
+          preferences: {
+            accommodation: "게스트하우스",
+            transportation: "대중교통",
+            activities: ["관광"]
+          }
+        },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer test-token'
+        },
+        timeout: 30000
+      });
+      
+      console.log('Python Lambda 여행 계획 로드 응답:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Python Lambda 여행 계획 로드 실패:', error);
+      console.error('오류 타입:', error.name);
+      console.error('오류 메시지:', error.message);
+      
+      if (error.response) {
+        console.error('오류 응답 데이터:', error.response.data);
+        console.error('오류 상태 코드:', error.response.status);
+        console.error('오류 응답 헤더:', error.response.headers);
+      } else if (error.request) {
+        console.error('응답을 받지 못한 요청:', error.request);
+      } else {
+        console.error('요청 설정 중 오류:', error.config);
+      }
+      
+      throw error;
+    }
+  },
 };
 
 export default apiClient;
