@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from 'react-query';
 import { AuthProvider } from './components/auth/AuthContext';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
-import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import PlanTravel from './pages/PlanTravel';
 import ViewItinerary from './pages/ViewItinerary';
@@ -36,7 +35,7 @@ function App() {
             <Navbar />
             <main className="flex-grow">
               <Routes>
-                <Route path="/" element={<Home />} />
+                <Route path="/" element={<Navigate to="/plan" replace />} />
                 <Route path="/signin" element={<SignIn />} />
                 <Route path="/signup" element={<SignUp />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
@@ -48,7 +47,7 @@ function App() {
                 <Route path="/itinerary/:id" element={<ProtectedRoute><ViewItinerary /></ProtectedRoute>} />
                 <Route path="/cart" element={<ProtectedRoute><Cart /></ProtectedRoute>} />
                 <Route path="/mypage" element={<ProtectedRoute><MyPage /></ProtectedRoute>} />
-                <Route path="*" element={<Navigate to="/" replace />} />
+                <Route path="*" element={<Navigate to="/plan" replace />} />
               </Routes>
             </main>
             <Footer />
