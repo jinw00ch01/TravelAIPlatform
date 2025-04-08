@@ -11,7 +11,7 @@ function Navbar() {
     try {
       const result = await signOut();
       if (result.success) {
-        navigate('/');
+        navigate('/plan');
       }
     } catch (error) {
       console.error('로그아웃 오류:', error);
@@ -24,10 +24,10 @@ function Navbar() {
         <div className="flex justify-between h-16">
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
-              <Link to="/" className="text-xl font-bold text-primary">바람길</Link>
+              <Link to="/plan" className="text-xl font-bold text-primary">바람길</Link>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-              <Link to="/" className="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
+              <Link to="/plan" className="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
                 홈
               </Link>
               <Link to="/planner" className="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">
@@ -90,7 +90,7 @@ function Navbar() {
         <div className="sm:hidden">
           <div className="pt-2 pb-3 space-y-1">
             <Link
-              to="/"
+              to="/plan"
               className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-base font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-50 hover:border-gray-300"
               onClick={() => setIsMenuOpen(false)}
             >
