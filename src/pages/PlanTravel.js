@@ -3,6 +3,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { useNavigate } from "react-router-dom";
+import { travelApi } from "../services/api";
 
 export const PlanTravel = () => {
   const navigate = useNavigate();
@@ -30,28 +31,75 @@ export const PlanTravel = () => {
 
   const sendToGemini = async (content, type) => {
     try {
-      // TODO: Gemini API 엔드포인트로 실제 요청을 보내는 로직 구현
-      const response = await fetch('YOUR_GEMINI_API_ENDPOINT', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          content,
-          type, // 'text' or 'image'
-        }),
+      setIsProcessing(true);
+      
+      // 간단하고 구체적인 쿼리 사용
+      const query = typeof content === 'string' && content.trim().length > 10 
+        ? content.trim() 
+        : "도쿄 1일 여행 계획을 만들어주세요. 예산은 10만원입니다.";
+      
+      console.log('요청할 쿼리:', query);
+      
+      // travelApi 사용하여 여행 계획 생성 요청
+      const result = await travelApi.createTravelPlan({
+        query: query,
+        preferences: {
+          accommodation: "게스트하우스",
+          transportation: "대중교통",
+          activities: ["관광"]
+        }
       });
-
-      if (!response.ok) {
-        throw new Error('Gemini API request failed');
+      
+      console.log('Travel API response:', result);
+      
+      // 성공 시 결과 페이지로 이동
+      // Python 함수의 응답 형식에 맞게 처리
+      if (result && (result.planId || (result.plan && result.message))) {
+        // Python Lambda 함수에서는 다른 응답 형식을 사용할 수 있음
+        const planId = result.planId || `temp-${Date.now()}`;
+        
+        // 응답에 있는 여행 계획 데이터를 세션 스토리지에 저장
+        // 결과 페이지에서 사용하기 위함
+        if (result.plan) {
+          sessionStorage.setItem(`travel-plan-${planId}`, JSON.stringify(result.plan));
+        }
+        
+        navigate(`/plan/${planId}`);
+        return result;
+      } else {
+        console.warn('API 응답에 필요한 데이터가 없습니다:', result);
+        alert('여행 계획 데이터가 올바르게 생성되지 않았습니다. 다시 시도해주세요.');
       }
-
-      const result = await response.json();
-      console.log('Gemini API response:', result);
-      return result;
     } catch (error) {
       console.error('Error sending to Gemini:', error);
+      
+      // 오류 메시지 상세 정보 추가
+      let errorMessage = '여행 계획 생성 중 오류가 발생했습니다.';
+      let errorDetail = '';
+      
+      if (error.response) {
+        // 서버가 응답을 반환한 경우
+        console.error('서버 응답:', error.response.data);
+        errorDetail = `${error.response.status} - ${error.response.data?.message || error.response.data?.error || '알 수 없는 오류'}`;
+        
+        // 특정 오류 코드에 따른 메시지
+        if (error.response.status === 502) {
+          errorMessage = '서버 내부 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+        } else if (error.response.status === 403) {
+          errorMessage = '접근 권한이 없습니다. 로그인 상태를 확인해주세요.';
+        } else if (error.response.status === 400) {
+          errorMessage = '요청 형식이 올바르지 않습니다. 여행 계획을 다시 작성해주세요.';
+        }
+      } else if (error.request) {
+        // 요청이 전송되었지만 응답을 받지 못한 경우
+        errorMessage = '서버에서 응답이 없습니다. 네트워크 연결을 확인하세요.';
+      }
+      
+      // 사용자에게 오류 알림
+      alert(`${errorMessage}\n\n${errorDetail ? `상세 오류: ${errorDetail}` : ''}`);
       throw error;
+    } finally {
+      setIsProcessing(false);
     }
   };
 

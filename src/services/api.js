@@ -37,11 +37,53 @@ apiClient.interceptors.request.use(
 export const travelApi = {
   // 여행 계획 생성 요청
   createTravelPlan: async (travelData) => {
+    console.log('여행 계획 생성 요청 데이터:', travelData);
+    
+    // 요청 데이터 준비
+    const requestData = {
+      query: travelData.query || "도쿄 1일 여행 계획을 만들어주세요. 예산은 10만원입니다.",
+      preferences: {
+        accommodation: travelData.preferences?.accommodation || "게스트하우스",
+        transportation: travelData.preferences?.transportation || "대중교통",
+        activities: travelData.preferences?.activities || ["관광"]
+      }
+    };
+    
+    console.log('전송할 최종 요청 데이터:', JSON.stringify(requestData));
+    
     try {
-      const response = await apiClient.post('/api/travel/plan', travelData);
+      // 새로운 Python Lambda 함수 엔드포인트 사용
+      const response = await axios({
+        method: 'post',
+        url: 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/prod/api/travel/python-plan',
+        data: requestData,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer test-token'
+        },
+        timeout: 30000
+      });
+      
+      console.log('여행 계획 API 응답:', response.data);
       return response.data;
     } catch (error) {
       console.error('여행 계획 생성 실패:', error);
+      console.error('오류 타입:', error.name);
+      console.error('오류 메시지:', error.message);
+      
+      if (error.response) {
+        // 서버에서 응답이 왔지만 2xx 응답이 아닌 경우
+        console.error('오류 응답 데이터:', error.response.data);
+        console.error('오류 상태 코드:', error.response.status);
+        console.error('오류 응답 헤더:', error.response.headers);
+      } else if (error.request) {
+        // 요청은 전송되었지만 응답을 받지 못한 경우
+        console.error('응답을 받지 못한 요청:', error.request);
+      } else {
+        // 요청 설정 중에 오류가 발생한 경우
+        console.error('요청 설정 중 오류:', error.config);
+      }
+      
       throw error;
     }
   },
