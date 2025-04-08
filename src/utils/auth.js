@@ -2,7 +2,7 @@
  * AWS Cognito 인증 관련 유틸리티 함수
  */
 
-import { signUp as signUpAuth, confirmSignUp as confirmSignUpAuth, signIn as signInAuth, signOut as signOutAuth, getCurrentUser as getCurrentUserAuth, fetchAuthSession, resetPassword, confirmResetPassword, updateUserAttributes as updateUserAttributesAuth } from 'aws-amplify/auth';
+import { signUp as signUpAuth, confirmSignUp as confirmSignUpAuth, signIn as signInAuth, signOut as signOutAuth, getCurrentUser as getCurrentUserAuth, fetchAuthSession, resetPassword, confirmResetPassword, updateUserAttributes as updateUserAttributesAuth, decodeJWT } from 'aws-amplify/auth';
 import { Amplify } from 'aws-amplify';
 import { Hub } from 'aws-amplify/utils';
 import CryptoJS from 'crypto-js';
@@ -223,11 +223,49 @@ export const signIn = async (email, password) => {
 // 소셜 로그인
 export const federatedSignIn = async (provider) => {
   try {
-    await signInAuth({ provider });
-    return { success: true };
+    console.log(`${provider} 소셜 로그인 시도`);
+    
+    // provider 문자열을 정규화 (첫 글자 대문자, 나머지 소문자)
+    const providerName = provider.charAt(0).toUpperCase() + provider.slice(1).toLowerCase();
+    
+    console.log(`사용할 provider: ${providerName}`);
+    
+    // Amplify v6 방식으로 소셜 로그인 구현
+    // signInWithRedirect 메서드를 사용해야 하지만 Amplify v6에서는
+    // 일반 signIn 메서드와 다른 구성 방식을 사용합니다
+    if (providerName === 'Google' || providerName === 'Facebook') {
+      // OAuth URL을 직접 구성하여 리디렉션
+      const userPoolId = process.env.REACT_APP_USER_POOL_ID;
+      const clientId = process.env.REACT_APP_USER_POOL_CLIENT_ID;
+      const domain = process.env.REACT_APP_OAUTH_DOMAIN;
+      const redirectUri = encodeURIComponent(process.env.REACT_APP_REDIRECT_SIGN_IN);
+      const region = process.env.REACT_APP_REGION;
+      
+      // 현재 페이지 경로를 state로 저장
+      const state = encodeURIComponent(JSON.stringify({ 
+        path: window.location.pathname,
+        provider: providerName
+      }));
+      
+      // OAuth URL 구성
+      const oauthUrl = `https://${domain}/oauth2/authorize?identity_provider=${providerName}&redirect_uri=${redirectUri}&response_type=code&client_id=${clientId}&scope=email+openid+profile&state=${state}`;
+      
+      console.log(`리디렉션 URL: ${oauthUrl}`);
+      
+      // 페이지 리디렉션
+      window.location.href = oauthUrl;
+      
+      return { success: true };
+    } else {
+      throw new Error(`지원하지 않는 소셜 로그인 제공자: ${providerName}`);
+    }
   } catch (error) {
     console.error('소셜 로그인 오류:', error);
-    return { success: false, error: error.message };
+    return { 
+      success: false, 
+      message: error.message || '소셜 로그인 중 오류가 발생했습니다.',
+      error 
+    };
   }
 };
 
@@ -245,24 +283,119 @@ export const signOut = async () => {
 // 현재 사용자 가져오기
 export const getCurrentUser = async () => {
   try {
-    const user = await getCurrentUserAuth();
-    const attributes = await fetchAuthSession();
-    return {
-      success: true,
-      user: {
-        id: user.userId,
-        username: user.username,
-        email: attributes.email,
-        name: attributes.name,
-        picture: attributes.picture
+    console.log('현재 사용자 정보 가져오기 시도');
+    
+    // 1. 먼저 세션에서 토큰 정보 확인
+    try {
+      const session = await fetchAuthSession();
+      console.log('세션 정보 가져오기 성공:', session?.tokens ? '토큰 있음' : '토큰 없음');
+      
+      // 토큰이 있다면 사용자가 인증된 상태
+      if (session?.tokens?.idToken) {
+        console.log('ID 토큰 확인됨');
+        
+        // 토큰에서 사용자 정보 추출
+        const payload = session.tokens.idToken.payload;
+        
+        // 사용자 정보 구성
+        const user = {
+          id: payload.sub,
+          username: payload.email,
+          email: payload.email,
+          name: payload.name || payload.email.split('@')[0],
+          picture: payload.picture
+        };
+        
+        console.log('토큰에서 추출한 사용자 정보:', user.email);
+        
+        return {
+          success: true,
+          user
+        };
       }
-    };
-  } catch (error) {
-    // UserUnAuthenticatedException은 정상적인 상황으로 처리
-    if (error.name === 'UserUnAuthenticatedException') {
-      console.log('사용자가 인증되지 않았습니다.');
-      return { success: false, notAuthenticated: true };
+    } catch (sessionError) {
+      console.log('세션 정보 가져오기 실패:', sessionError.message);
+      // 세션 오류가 있어도 계속 진행하여 getCurrentUserAuth 시도
     }
+    
+    // 2. 호스팅 UI 로그인 확인
+    try {
+      if (localStorage.getItem('amplify-signin-with-hostedUI') === 'true') {
+        console.log('호스팅 UI를 통한 로그인 감지됨, 저장된 토큰에서 사용자 정보 추출 시도');
+        
+        // 클라이언트 ID 가져오기
+        const clientId = process.env.REACT_APP_USER_POOL_CLIENT_ID;
+        if (!clientId) {
+          throw new Error('User Pool Client ID가 설정되지 않았습니다.');
+        }
+        
+        // 로컬 스토리지에서 마지막 인증 사용자 가져오기
+        const userPoolName = `CognitoIdentityServiceProvider.${clientId}`;
+        const lastAuthUser = localStorage.getItem(`${userPoolName}.LastAuthUser`);
+        
+        if (lastAuthUser) {
+          console.log('마지막 인증 사용자:', lastAuthUser);
+          
+          // 토큰 가져오기
+          const idToken = localStorage.getItem(`${userPoolName}.${lastAuthUser}.idToken`);
+          
+          if (idToken) {
+            console.log('ID 토큰 발견');
+            
+            // 토큰 디코딩
+            const decodedToken = decodeJWT(idToken);
+            const payload = decodedToken.payload;
+            
+            // 사용자 정보 구성
+            const user = {
+              id: payload.sub,
+              username: payload.email || lastAuthUser,
+              email: payload.email || lastAuthUser,
+              name: payload.name || (payload.email ? payload.email.split('@')[0] : lastAuthUser),
+              picture: payload.picture
+            };
+            
+            console.log('로컬 스토리지 토큰에서 추출한 사용자 정보:', user.email);
+            
+            return {
+              success: true,
+              user
+            };
+          }
+        }
+      }
+    } catch (localStorageError) {
+      console.error('로컬 스토리지에서 사용자 정보 추출 실패:', localStorageError);
+      // 실패해도 계속 진행
+    }
+    
+    // 3. getCurrentUserAuth 시도 (기존 방식)
+    try {
+      const user = await getCurrentUserAuth();
+      console.log('getCurrentUserAuth 성공:', user.username);
+      
+      // getCurrentUserAuth에서 속성 정보는 제공하지 않기 때문에
+      // 세션에서 추가 정보를 가져오거나 기본값 제공
+      return {
+        success: true,
+        user: {
+          id: user.userId,
+          username: user.username,
+          email: user.username, // Cognito에서는 email을 username으로 사용
+          name: user.username.split('@')[0], // 이메일에서 추출한 기본 이름
+          picture: null
+        }
+      };
+    } catch (authError) {
+      console.log('getCurrentUserAuth 실패:', authError.message);
+      // 실패하면 인증되지 않은 상태로 처리
+    }
+    
+    // 여기까지 왔다면 사용자가 인증되지 않은 상태
+    console.log('사용자가 인증되지 않았습니다.');
+    return { success: false, notAuthenticated: true };
+  } catch (error) {
+    // 모든 오류는 인증되지 않은 상태로 처리
     console.error('현재 사용자 가져오기 오류:', error);
     return { success: false, error: error.message };
   }
@@ -271,14 +404,31 @@ export const getCurrentUser = async () => {
 // JWT 토큰 가져오기
 export const getJwtToken = async () => {
   try {
-    const user = await getCurrentUserAuth();
-    const token = user.signInDetails?.tokens?.accessToken?.toString();
-    return { success: true, token };
+    // 로컬스토리지에서 먼저 시도
+    const localToken = localStorage.getItem('idToken');
+    if (localToken) {
+      console.log('로컬스토리지 토큰 사용');
+      return { success: true, token: localToken };
+    }
+
+    // Amplify 세션에서 추출 시도
+    const session = await fetchAuthSession();
+    const idToken = session.tokens?.idToken?.toString();
+    if (idToken) {
+      return { success: true, token: idToken };
+    }
+
+    return { success: false, error: '유효한 토큰이 없습니다.', token: null };
   } catch (error) {
     console.error('JWT 토큰 가져오기 오류:', error);
-    return { success: false, error: error.message };
+    return {
+      success: false,
+      error: error.message,
+      stack: error.stack
+    };
   }
 };
+
 
 // 비밀번호 재설정 요청
 export const forgotPassword = async (email) => {

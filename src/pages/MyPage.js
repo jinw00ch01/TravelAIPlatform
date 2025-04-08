@@ -1,24 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../components/auth/AuthContext';
+import axios from 'axios';
 
-function MyPage() {
-  const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('profile');
-  const [isEditing, setIsEditing] = useState(false);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [profileData, setProfileData] = useState({
-    username: user?.username || '',
-    email: user?.email || '',
-    phone: '',
-    birthDate: ''
-  });
-  const [bookings, setBookings] = useState([]);
+// API 엔드포인트 설정 - 환경변수에서 가져오기
+const API_URL = process.env.REACT_APP_API_URL || 'https://4j285x41oj.execute-api.ap-northeast-2.amazonaws.com/prod';
+const MY_PAGE_API_URL = `${API_URL}/api/user/mypage`;
+const USER_PROFILE_API_URL = `${API_URL}/api/user/profile`;
 
-  // 임시 데이터 (나중에 실제 API 호출로 대체)
-  useEffect(() => {
-    // 임시 예약 데이터
-    const tempBookings = [
+// 개발 환경에서 사용할 더미 데이터
+const DUMMY_USER_DATA = {
+  name: 'user-dev',
+  email: 'user-dev@email.com',
+  phone_number: '+8200000000000',
+  birthdate: '2000-01-01',
+  stats: {
+    totalTrips: 10,
+    countries: 5,
+    reviews: 20
+  }
+};
+
+const DUMMY_BOOKINGS = [
       {
         id: 1,
         title: '제주도 호텔',
@@ -65,8 +68,170 @@ function MyPage() {
         location: '해운대'
       }
     ];
-    setBookings(tempBookings);
-  }, []);
+
+function MyPage() {
+  const { user, getJwtToken } = useAuth();
+  const [activeTab, setActiveTab] = useState('profile');
+  const [isEditing, setIsEditing] = useState(false);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [profileData, setProfileData] = useState({
+    username: user?.username || '',
+    email: user?.email || '',
+    phone: '',
+    birthDate: ''
+  });
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [userData, setUserData] = useState(null);
+  const [notification, setNotification] = useState(null);
+  const [apiResponseReceived, setApiResponseReceived] = useState(false);
+
+  // 개발 환경에서 skipAuth 확인 - 정확히 문자열 비교
+  const isSkipAuth = process.env.REACT_APP_SKIP_AUTH === 'true';
+  
+  console.log('환경 변수 확인:');
+  console.log('NODE_ENV:', process.env.NODE_ENV);
+  console.log('REACT_APP_SKIP_AUTH:', process.env.REACT_APP_SKIP_AUTH);
+  console.log('isSkipAuth 계산값:', isSkipAuth);
+
+  // 알림 표시 함수
+  const showNotification = (message, type = 'info') => {
+    setNotification({ message, type });
+    // 5초 후 알림 자동 제거
+    setTimeout(() => {
+      setNotification(null);
+    }, 5000);
+  };
+
+  // 사용자 데이터 가져오기
+  useEffect(() => {
+    const fetchUserData = async () => {
+      setLoading(true);
+      setError(null);
+      setApiResponseReceived(false);
+      
+      try {
+        console.log('MyPage 데이터 로드 시작');
+        console.log('개발 모드 자동 로그인 여부:', isSkipAuth);
+        console.log('API URL:', MY_PAGE_API_URL);
+        
+        // skipAuth가 true인 경우 더미 데이터 사용
+        if (isSkipAuth) {
+          console.log('개발 모드 더미 데이터 사용');
+          setUserData(DUMMY_USER_DATA);
+          setBookings(DUMMY_BOOKINGS);
+          
+          // 프로필 데이터 업데이트
+          setProfileData({
+            username: DUMMY_USER_DATA.name || '',
+            email: DUMMY_USER_DATA.email || '',
+            phone: DUMMY_USER_DATA.phone_number || '',
+            birthDate: DUMMY_USER_DATA.birthdate || ''
+          });
+          
+          showNotification('개발 모드: 더미 데이터가 로드되었습니다.', 'info');
+          setApiResponseReceived(true);
+        } 
+        // skipAuth가 false인 경우 실제 API 호출
+        else {
+          console.log('MyPage API 호출 시도...');
+          showNotification('Lambda 함수 호출 중...', 'info');
+          
+          // JWT 토큰 가져오기 시도
+          let headers = {
+            'Content-Type': 'application/json'
+          };
+          
+          try {
+            const tokenResult = await getJwtToken();
+            console.log('토큰 요청 결과:', tokenResult);
+            
+            if (tokenResult.success && tokenResult.token) {
+              console.log('JWT 토큰 획득 성공');
+              headers.Authorization = `Bearer ${tokenResult.token}`;
+            } else {
+              console.log('JWT 토큰 획득 실패, 토큰 없이 계속 진행합니다.', tokenResult.error || '알 수 없는 오류');
+            }
+          } catch (tokenError) {
+            console.error('토큰 획득 중 예외 발생:', tokenError);
+            console.log('토큰 없이 계속 진행합니다.');
+          }
+          
+          console.log('API 호출에 사용할 헤더:', headers);
+          
+          // API 호출 - 타임아웃 증가 및 에러 처리 강화
+          try {
+            const response = await axios.get(MY_PAGE_API_URL, {
+              headers,
+              timeout: 10000 // 10초 타임아웃
+            });
+            
+            console.log('MyPage API 응답:', response.data);
+            setApiResponseReceived(true);
+            
+            // API 응답 데이터 설정
+            if (response.data.success) {
+              setUserData(response.data.user);
+              
+              // 프로필 데이터 업데이트
+              setProfileData({
+                username: response.data.user.name || user?.username || '',
+                email: response.data.user.email || user?.email || '',
+                phone: response.data.user.phone_number || '',
+                birthDate: response.data.user.birthdate || ''
+              });
+              
+              // 예약 내역 업데이트 (있는 경우)
+              if (response.data.bookings) {
+                setBookings(response.data.bookings);
+              }
+              
+              showNotification(`Lambda 응답 수신: ${response.data.user.name}님의 정보가 로드되었습니다.`, 'success');
+            } else {
+              throw new Error(response.data.message || '데이터를 가져오는데 실패했습니다.');
+            }
+          } catch (apiError) {
+            console.error('API 호출 오류:', apiError);
+            throw apiError;
+          }
+        }
+      } catch (error) {
+        console.error('사용자 데이터 가져오기 오류:', error);
+        setError('사용자 정보를 가져오는데 실패했습니다. ' + error.message);
+        showNotification('API 호출 오류: ' + (error.response?.data?.message || error.message), 'error');
+        setApiResponseReceived(true);
+        
+        // 에러 발생 시에도 데이터 표시
+        setUserData({
+          name: 'user-dev',
+          email: 'user-dev@email.com',
+          phone_number: '+8200000000000',
+          birthdate: '2000-01-01',
+          stats: {
+            totalTrips: 5,
+            countries: 3,
+            reviews: 10
+          }
+        });
+        
+        // 프로필 데이터 업데이트 - 고정된 정보 사용
+        setProfileData({
+          username: 'user-dev',
+          email: 'user-dev@email.com',
+          phone: '+8200000000000',
+          birthDate: '2000-01-01'
+        });
+        
+        // 오류 발생 시에도 예약 데이터 표시
+        setBookings(DUMMY_BOOKINGS);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchUserData();
+  }, [user, getJwtToken, isSkipAuth]);
 
   const getStatus = (startDate, endDate) => {
     const today = new Date();
@@ -116,30 +281,161 @@ function MyPage() {
     }));
   };
 
-  const handleSave = () => {
-    // TODO: API 호출로 프로필 정보 저장
-    console.log('저장할 프로필 정보:', profileData);
-    setIsEditing(false);
-    // 상단 프로필 섹션 업데이트
-    if (user) {
-      user.username = profileData.username;
-      user.email = profileData.email;
+  const handleSave = async () => {
+    try {
+      setLoading(true);
+      showNotification('프로필 정보 저장 중...', 'info');
+      
+      if (!isSkipAuth) {
+        // JWT 토큰 가져오기
+        const tokenResult = await getJwtToken();
+        if (!tokenResult.success) {
+          throw new Error('인증 토큰을 가져올 수 없습니다.');
+        }
+        
+        console.log('저장할 프로필 정보:', profileData);
+        
+        // 프로필 업데이트 API 호출
+        const response = await axios.put(USER_PROFILE_API_URL, profileData, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${tokenResult.token}`
+          },
+          timeout: 10000 // 10초 타임아웃
+        });
+        
+        console.log('프로필 업데이트 응답:', response.data);
+        
+        if (response.data.success) {
+          // 성공적으로 업데이트된 경우
+          showNotification('프로필 정보가 성공적으로 저장되었습니다.', 'success');
+          
+          // 최신 사용자 정보 가져오기 위해 MyPage API 다시 호출
+          const myPageResponse = await axios.get(MY_PAGE_API_URL, {
+            headers: {
+              Authorization: `Bearer ${tokenResult.token}`
+            },
+            timeout: 10000
+          });
+          
+          if (myPageResponse.data.success) {
+            setUserData(myPageResponse.data.user);
+          }
+        } else {
+          throw new Error(response.data.message || '프로필 정보 저장에 실패했습니다.');
+        }
+      } else {
+        console.log('개발 모드 - 프로필 정보 저장 시뮬레이션:', profileData);
+        // 개발 모드에서는 즉시 성공으로 처리
+        showNotification('개발 모드: 프로필 정보가 저장되었습니다 (시뮬레이션).', 'success');
+        
+        // 개발 모드에서 사용자 정보 업데이트
+        setUserData(prev => ({
+          ...prev,
+          name: profileData.username,
+          email: profileData.email,
+          phone_number: profileData.phone,
+          birthdate: profileData.birthDate
+        }));
+      }
+      
+      setIsEditing(false);
+      
+      // 상단 프로필 섹션 업데이트
+      if (user) {
+        user.username = profileData.username;
+        user.email = profileData.email;
+      }
+    } catch (error) {
+      console.error('프로필 저장 오류:', error);
+      showNotification('프로필 저장 실패: ' + (error.response?.data?.message || error.message), 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleCancel = () => {
     setProfileData({
-      username: user?.username || '',
-      email: user?.email || '',
-      phone: '',
-      birthDate: ''
+      username: userData?.name || user?.username || '',
+      email: userData?.email || user?.email || '',
+      phone: userData?.phone_number || '',
+      birthDate: userData?.birthdate || ''
     });
     setIsEditing(false);
   };
 
+  // 로딩 중 UI - API 응답을 기다리도록 수정
+  if (loading || !apiResponseReceived) {
+    return (
+      <div className="min-h-screen flex flex-col justify-center items-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        <p className="mt-4 text-lg text-gray-700">
+          {loading ? '로딩 중...' : 'Lambda 함수 응답 대기 중...'}
+        </p>
+        {!loading && !apiResponseReceived && (
+          <p className="mt-2 text-sm text-gray-500">
+            Lambda 함수에서 응답이 오는 동안 잠시 기다려주세요.
+          </p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* 알림 메시지 */}
+        {notification && (
+          <div className={`mb-6 p-4 rounded-md ${
+            notification.type === 'error' ? 'bg-red-50 border-l-4 border-red-500' :
+            notification.type === 'success' ? 'bg-green-50 border-l-4 border-green-500' :
+            'bg-blue-50 border-l-4 border-blue-500'
+          }`}>
+            <div className="flex">
+              <div className="flex-shrink-0">
+                {notification.type === 'error' ? (
+                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                ) : notification.type === 'success' ? (
+                  <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </div>
+              <div className="ml-3">
+                <p className={`text-sm ${
+                  notification.type === 'error' ? 'text-red-700' :
+                  notification.type === 'success' ? 'text-green-700' :
+                  'text-blue-700'
+                }`}>
+                  {notification.message}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 개발 모드 표시 */}
+        {isSkipAuth && (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-8">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-yellow-700">개발 모드 활성화 - 더미 데이터 사용 중</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 프로필 섹션 */}
         <div className="bg-white shadow rounded-lg mb-8">
           <div className="px-4 py-5 sm:px-6">
@@ -147,17 +443,51 @@ function MyPage() {
               <div className="flex-shrink-0">
                 <div className="h-16 w-16 rounded-full bg-primary flex items-center justify-center">
                   <span className="text-2xl text-white font-bold">
-                    {user?.username?.[0]?.toUpperCase() || 'U'}
+                    {userData?.name?.[0]?.toUpperCase() || user?.username?.[0]?.toUpperCase() || 'U'}
                   </span>
                 </div>
               </div>
               <div className="ml-4">
-                <h2 className="text-2xl font-bold text-gray-900">{user?.username || '사용자'}</h2>
-                <p className="text-gray-500">{user?.email || '이메일 없음'}</p>
+                <h2 className="text-2xl font-bold text-gray-900">{userData?.name || user?.username || 'user-dev'}</h2>
+                <p className="text-gray-500">{userData?.email || user?.email || 'user-dev@email.com'}</p>
               </div>
             </div>
           </div>
         </div>
+
+        {/* 에러 메시지 */}
+        {error && (
+          <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-8">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 여행 통계 */}
+        {userData?.stats && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div className="bg-white shadow rounded-lg p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">총 여행 횟수</h3>
+              <p className="text-3xl font-bold text-primary">{userData.stats.totalTrips || 0}회</p>
+            </div>
+            <div className="bg-white shadow rounded-lg p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">방문한 국가</h3>
+              <p className="text-3xl font-bold text-primary">{userData.stats.countries || 0}개국</p>
+            </div>
+            <div className="bg-white shadow rounded-lg p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">리뷰 작성 수</h3>
+              <p className="text-3xl font-bold text-primary">{userData.stats.reviews || 0}개</p>
+            </div>
+          </div>
+        )}
 
         {/* 탭 네비게이션 */}
         <div className="bg-white shadow rounded-lg mb-8">
