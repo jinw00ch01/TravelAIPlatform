@@ -52,6 +52,21 @@ export const travelApi = {
     console.log('전송할 최종 요청 데이터:', JSON.stringify(requestData));
     
     try {
+      // JWT 토큰 가져오기
+      let authHeader = 'Bearer test-token';
+      try {
+        const { tokens } = await fetchAuthSession();
+        if (tokens && tokens.idToken) {
+          const token = tokens.idToken.toString();
+          authHeader = `Bearer ${token}`;
+          console.log('실제 JWT 토큰을 사용합니다.');
+        } else {
+          console.log('JWT 토큰을 얻지 못했습니다. 테스트 토큰을 사용합니다.');
+        }
+      } catch (tokenError) {
+        console.log('JWT 토큰 획득 실패, 테스트 토큰 사용:', tokenError);
+      }
+      
       // 새로운 Python Lambda 함수 엔드포인트 사용
       const response = await axios({
         method: 'post',
@@ -59,7 +74,7 @@ export const travelApi = {
         data: requestData,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer test-token'
+          'Authorization': authHeader
         },
         timeout: 30000
       });
@@ -172,6 +187,21 @@ export const travelApi = {
     console.log('요청 데이터:', requestData);
     
     try {
+      // JWT 토큰 가져오기
+      let authHeader = 'Bearer test-token';
+      try {
+        const { tokens } = await fetchAuthSession();
+        if (tokens && tokens.idToken) {
+          const token = tokens.idToken.toString();
+          authHeader = `Bearer ${token}`;
+          console.log('실제 JWT 토큰을 사용합니다.');
+        } else {
+          console.log('JWT 토큰을 얻지 못했습니다. 테스트 토큰을 사용합니다.');
+        }
+      } catch (tokenError) {
+        console.log('JWT 토큰 획득 실패, 테스트 토큰 사용:', tokenError);
+      }
+      
       // POST 요청으로 Python Lambda 함수 호출
       const response = await axios({
         method: 'post',
@@ -186,7 +216,7 @@ export const travelApi = {
         },
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer test-token'
+          'Authorization': authHeader
         },
         timeout: 30000
       });
