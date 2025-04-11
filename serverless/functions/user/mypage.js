@@ -1,11 +1,16 @@
 /**
  * MyPage Lambda 함수
- * JWT 토큰에서 사용자 정보를 추출하고 Cognito에서 상세 정보를 가져옵니다.
+ * JWT 토큰에서 사용자 ID를 추출하고 DynamoDB에서 상세 정보를 가져옵니다.
  */
 
-// AWS SDK 가져오기
-const AWS = require('aws-sdk');
-const jwt = require('jsonwebtoken');
+// AWS SDK v3 가져오기
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+import jwt from 'jsonwebtoken'; // jsonwebtoken을 import 방식으로 사용
+
+// DynamoDB 클라이언트 초기화
+const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'ap-northeast-2' });
+const docClient = DynamoDBDocumentClient.from(client);
 
 // CORS 헤더
 const headers = {
@@ -16,13 +21,7 @@ const headers = {
 };
 
 // 환경 변수
-const USER_POOL_ID = process.env.USER_POOL_ID || 'ap-northeast-2_8z1jH3Siu';
-const AWS_REGION = process.env.AWS_REGION || 'ap-northeast-2';
-const DEBUG = process.env.DEBUG === 'true';
-
-// AWS 설정
-AWS.config.update({ region: AWS_REGION });
-const cognito = new AWS.CognitoIdentityServiceProvider();
+const USERS_TABLE_NAME = process.env.USERS_TABLE_NAME || 'Users_Table'; // DynamoDB 테이블 이름 환경 변수 사용
 
 // 미리 정의된 더미 예약 데이터 - 연동 전까지 고정 데이터로 사용
 const DEFAULT_BOOKINGS = [
@@ -55,10 +54,10 @@ const DEFAULT_BOOKINGS = [
   }
 ];
 
-exports.handler = async (event) => {
-  console.log('MyPage Lambda 함수 시작');
+export const handler = async (event) => {
+  console.log('MyPage Lambda 함수 시작 (DynamoDB 버전)');
   console.log('이벤트 객체:', JSON.stringify(event, null, 2));
-  
+
   // OPTIONS 요청 처리 (CORS)
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -67,46 +66,46 @@ exports.handler = async (event) => {
       body: JSON.stringify({ message: 'CORS preflight request successful' })
     };
   }
-  
+
   try {
     // 인증 헤더 확인
     const authHeader = event.headers?.Authorization || event.headers?.authorization;
     console.log('인증 헤더:', authHeader);
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       console.error('인증 토큰 없음 또는 형식 오류');
       return {
         statusCode: 401,
         headers,
-        body: JSON.stringify({ 
-          success: false, 
-          message: '유효한 인증 토큰이 필요합니다. Bearer 토큰 형식이어야 합니다.' 
+        body: JSON.stringify({
+          success: false,
+          message: '유효한 인증 토큰이 필요합니다. Bearer 토큰 형식이어야 합니다.'
         })
       };
     }
-    
+
     // Bearer 토큰 추출
     const token = authHeader.substring(7).trim(); // 'Bearer ' 이후 부분
     console.log('추출된 토큰 길이:', token?.length);
-    
+
     if (!token || token === '' || token === 'undefined') {
       console.error('빈 토큰 또는 "undefined" 문자열');
       return {
         statusCode: 401,
         headers,
-        body: JSON.stringify({ 
-          success: false, 
+        body: JSON.stringify({
+          success: false,
           message: '유효한 토큰이 없습니다.'
         })
       };
     }
-    
+
     // JWT 토큰 디코딩 시도
     let decodedToken;
     try {
       decodedToken = jwt.decode(token);
       console.log('디코딩된 토큰:', JSON.stringify(decodedToken, null, 2));
-      
+
       if (!decodedToken) {
         console.error('JWT 디코딩 실패 - 토큰 형식 오류');
         return {
@@ -129,69 +128,69 @@ exports.handler = async (event) => {
         })
       };
     }
-    
-    // 사용자 식별자 확인 (sub, username, email 등)
-    const userId = decodedToken.sub || decodedToken['cognito:username'];
-    const userEmail = decodedToken.email;
-    
-    console.log('사용자 ID:', userId);
-    console.log('사용자 이메일:', userEmail);
-    
-    if (!userId && !userEmail) {
-      console.error('토큰에서 사용자 식별 정보 찾을 수 없음');
+
+    // 사용자 식별자 확인 (sub 사용 - DynamoDB 파티션 키)
+    const userId = decodedToken.sub;
+    console.log('사용자 ID (sub):', userId);
+
+    if (!userId) {
+      console.error('토큰에서 사용자 sub 클레임 찾을 수 없음');
       return {
         statusCode: 400,
         headers,
         body: JSON.stringify({
           success: false,
-          message: '토큰에서 사용자 식별 정보를 찾을 수 없습니다.'
+          message: '토큰에서 사용자 식별 정보(sub)를 찾을 수 없습니다.'
         })
       };
     }
-    
-    // 연락할 Cognito 사용자 이름 (sub 또는 email 사용)
-    const cognitoUsername = userId || userEmail;
-    
-    // Cognito에서 사용자 정보 가져오기
+
+    // DynamoDB에서 사용자 정보 가져오기
     try {
       const params = {
-        UserPoolId: USER_POOL_ID,
-        Username: cognitoUsername
-      };
-      
-      console.log('Cognito에 요청할 파라미터:', JSON.stringify(params));
-      
-      const cognitoResponse = await cognito.adminGetUser(params).promise();
-      console.log('Cognito 응답:', JSON.stringify(cognitoResponse, null, 2));
-      
-      // 사용자 기본 정보
-      const userDetails = {
-        username: cognitoUsername
-      };
-      
-      // 사용자 속성 매핑
-      if (cognitoResponse.UserAttributes) {
-        cognitoResponse.UserAttributes.forEach(attr => {
-          userDetails[attr.Name] = attr.Value;
-        });
-      }
-      
-      console.log('추출된 사용자 정보:', JSON.stringify(userDetails, null, 2));
-      
-      // 최종 사용자 정보 포맷팅
-      const user = {
-        sub: userDetails.sub || userId,
-        email: userDetails.email || userEmail,
-        name: userDetails.name || userDetails.given_name || '사용자',
-        phone_number: userDetails.phone_number || '',
-        birthdate: userDetails.birthdate || '',
-        stats: {
-          totalTrips: 5,  // 실제 DB에서 가져와야 함
-          countries: 3,  // 실제 DB에서 가져와야 함
-          reviews: 12   // 실제 DB에서 가져와야 함
+        TableName: USERS_TABLE_NAME,
+        Key: {
+          userId: userId // 파티션 키
         }
       };
-      
+
+      console.log('DynamoDB GetItem 요청 파라미터:', JSON.stringify(params));
+
+      const command = new GetCommand(params);
+      const { Item } = await docClient.send(command);
+
+      console.log('DynamoDB GetItem 응답:', JSON.stringify(Item, null, 2));
+
+      if (!Item) {
+        console.error(`DynamoDB에서 사용자 ${userId} 정보를 찾을 수 없음`);
+        return {
+          statusCode: 404,
+          headers,
+          body: JSON.stringify({
+            success: false,
+            message: '사용자 정보를 찾을 수 없습니다.'
+          })
+        };
+      }
+
+      // 사용자 정보 포맷팅 (DynamoDB 항목 기반)
+      const user = {
+        userId: Item.userId, // sub 대신 userId로 통일
+        email: Item.email || '',
+        name: Item.name || '',
+        phoneNumber: Item.phoneNumber || Item.phone_number || '', // DynamoDB에 phoneNumber 또는 phone_number로 저장된 경우 처리
+        birthdate: Item.birthdate || '',
+        picture: Item.picture || null,
+        createdAt: Item.createdAt,
+        updatedAt: Item.updatedAt,
+        // 통계 정보는 별도 로직 필요 (일단 더미값)
+        stats: {
+          totalTrips: 5,
+          countries: 3,
+          reviews: 12
+        }
+      };
+
       // 성공 응답
       return {
         statusCode: 200,
@@ -199,26 +198,26 @@ exports.handler = async (event) => {
         body: JSON.stringify({
           success: true,
           user: user,
-          bookings: DEFAULT_BOOKINGS
+          bookings: DEFAULT_BOOKINGS // 예약 정보는 별도 로직 필요 (일단 더미값)
         })
       };
-      
-    } catch (cognitoError) {
-      console.error('Cognito 사용자 정보 조회 실패:', cognitoError);
-      
+
+    } catch (dynamoDbError) {
+      console.error('DynamoDB 사용자 정보 조회 실패:', dynamoDbError);
+
       return {
         statusCode: 500,
         headers,
         body: JSON.stringify({
           success: false,
-          message: 'Cognito에서 사용자 정보를 가져오는 중 오류가 발생했습니다.',
-          error: cognitoError.message
+          message: 'DynamoDB에서 사용자 정보를 가져오는 중 오류가 발생했습니다.',
+          error: dynamoDbError.message
         })
       };
     }
   } catch (error) {
     console.error('서버 내부 오류:', error);
-    
+
     return {
       statusCode: 500,
       headers,

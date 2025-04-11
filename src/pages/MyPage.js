@@ -1,18 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '../components/auth/AuthContext';
 import axios from 'axios';
 
 // API 엔드포인트 설정 - 환경변수에서 가져오기
-const API_URL = process.env.REACT_APP_API_URL || 'https://4j285x41oj.execute-api.ap-northeast-2.amazonaws.com/prod';
-const MY_PAGE_API_URL = `${API_URL}/api/user/mypage`;
-const USER_PROFILE_API_URL = `${API_URL}/api/user/profile`;
+const API_URL = process.env.REACT_APP_API_URL || 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/';
+const MY_PAGE_API_URL = `${API_URL}api/user/mypage`;
+const USER_PROFILE_API_URL = `${API_URL}api/user/profile`;
 
 // 개발 환경에서 사용할 더미 데이터
 const DUMMY_USER_DATA = {
   name: 'user-dev',
   email: 'user-dev@email.com',
-  phone_number: '+8200000000000',
+  phoneNumber: '+8200000000000',
   birthdate: '2000-01-01',
   stats: {
     totalTrips: 10,
@@ -75,10 +74,10 @@ function MyPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [profileData, setProfileData] = useState({
-    username: user?.username || '',
+    name: user?.name || '',
     email: user?.email || '',
-    phone: '',
-    birthDate: ''
+    phoneNumber: '',
+    birthdate: ''
   });
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -124,10 +123,10 @@ function MyPage() {
           
           // 프로필 데이터 업데이트
           setProfileData({
-            username: DUMMY_USER_DATA.name || '',
+            name: DUMMY_USER_DATA.name || '',
             email: DUMMY_USER_DATA.email || '',
-            phone: DUMMY_USER_DATA.phone_number || '',
-            birthDate: DUMMY_USER_DATA.birthdate || ''
+            phoneNumber: DUMMY_USER_DATA.phoneNumber || '',
+            birthdate: DUMMY_USER_DATA.birthdate || ''
           });
           
           showNotification('개발 모드: 더미 데이터가 로드되었습니다.', 'info');
@@ -174,12 +173,12 @@ function MyPage() {
             if (response.data.success) {
               setUserData(response.data.user);
               
-              // 프로필 데이터 업데이트
+              // 프로필 데이터 업데이트 (DynamoDB 데이터 사용)
               setProfileData({
-                username: response.data.user.name || user?.username || '',
-                email: response.data.user.email || user?.email || '',
-                phone: response.data.user.phone_number || '',
-                birthDate: response.data.user.birthdate || ''
+                name: response.data.user.name || '',
+                email: response.data.user.email || '',
+                phoneNumber: response.data.user.phoneNumber || '',
+                birthdate: response.data.user.birthdate || ''
               });
               
               // 예약 내역 업데이트 (있는 경우)
@@ -202,25 +201,16 @@ function MyPage() {
         showNotification('API 호출 오류: ' + (error.response?.data?.message || error.message), 'error');
         setApiResponseReceived(true);
         
-        // 에러 발생 시에도 데이터 표시
-        setUserData({
-          name: 'user-dev',
-          email: 'user-dev@email.com',
-          phone_number: '+8200000000000',
-          birthdate: '2000-01-01',
-          stats: {
-            totalTrips: 5,
-            countries: 3,
-            reviews: 10
-          }
-        });
-        
-        // 프로필 데이터 업데이트 - 고정된 정보 사용
+        // 에러 발생 시에도 더미 데이터 표시 (기존 로직 유지)
+        const fallbackUserData = DUMMY_USER_DATA;
+        setUserData(fallbackUserData);
+
+        // 프로필 데이터 업데이트 - 더미 데이터 사용
         setProfileData({
-          username: 'user-dev',
-          email: 'user-dev@email.com',
-          phone: '+8200000000000',
-          birthDate: '2000-01-01'
+          name: fallbackUserData.name || '',
+          email: fallbackUserData.email || '',
+          phoneNumber: fallbackUserData.phoneNumber || '',
+          birthdate: fallbackUserData.birthdate || ''
         });
         
         // 오류 발생 시에도 예약 데이터 표시
@@ -332,10 +322,10 @@ function MyPage() {
         // 개발 모드에서 사용자 정보 업데이트
         setUserData(prev => ({
           ...prev,
-          name: profileData.username,
+          name: profileData.name,
           email: profileData.email,
-          phone_number: profileData.phone,
-          birthdate: profileData.birthDate
+          phoneNumber: profileData.phoneNumber,
+          birthdate: profileData.birthdate
         }));
       }
       
@@ -343,7 +333,7 @@ function MyPage() {
       
       // 상단 프로필 섹션 업데이트
       if (user) {
-        user.username = profileData.username;
+        user.name = profileData.name;
         user.email = profileData.email;
       }
     } catch (error) {
@@ -356,10 +346,10 @@ function MyPage() {
 
   const handleCancel = () => {
     setProfileData({
-      username: userData?.name || user?.username || '',
+      name: userData?.name || user?.name || '',
       email: userData?.email || user?.email || '',
-      phone: userData?.phone_number || '',
-      birthDate: userData?.birthdate || ''
+      phoneNumber: userData?.phoneNumber || '',
+      birthdate: userData?.birthdate || ''
     });
     setIsEditing(false);
   };
@@ -443,12 +433,12 @@ function MyPage() {
               <div className="flex-shrink-0">
                 <div className="h-16 w-16 rounded-full bg-primary flex items-center justify-center">
                   <span className="text-2xl text-white font-bold">
-                    {userData?.name?.[0]?.toUpperCase() || user?.username?.[0]?.toUpperCase() || 'U'}
+                    {userData?.name?.[0]?.toUpperCase() || user?.name?.[0]?.toUpperCase() || 'U'}
                   </span>
                 </div>
               </div>
               <div className="ml-4">
-                <h2 className="text-2xl font-bold text-gray-900">{userData?.name || user?.username || 'user-dev'}</h2>
+                <h2 className="text-2xl font-bold text-gray-900">{userData?.name || user?.name || 'user-dev'}</h2>
                 <p className="text-gray-500">{userData?.email || user?.email || 'user-dev@email.com'}</p>
               </div>
             </div>
@@ -537,8 +527,8 @@ function MyPage() {
                       <label className="block text-sm font-medium text-gray-700">이름</label>
                       <input
                         type="text"
-                        name="username"
-                        value={profileData.username}
+                        name="name"
+                        value={profileData.name}
                         onChange={handleInputChange}
                         disabled={!isEditing}
                         className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm ${
@@ -563,8 +553,8 @@ function MyPage() {
                       <label className="block text-sm font-medium text-gray-700">전화번호</label>
                       <input
                         type="tel"
-                        name="phone"
-                        value={profileData.phone}
+                        name="phoneNumber"
+                        value={profileData.phoneNumber}
                         onChange={handleInputChange}
                         disabled={!isEditing}
                         className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm ${
@@ -576,8 +566,8 @@ function MyPage() {
                       <label className="block text-sm font-medium text-gray-700">생년월일</label>
                       <input
                         type="date"
-                        name="birthDate"
-                        value={profileData.birthDate}
+                        name="birthdate"
+                        value={profileData.birthdate}
                         onChange={handleInputChange}
                         disabled={!isEditing}
                         className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring-primary sm:text-sm ${
