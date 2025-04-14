@@ -20,10 +20,15 @@ const AccommodationPlan = () => {
     
     try {
       setLoading(true);
+      setError(null);
       const response = await amadeusApi.searchCities(value);
-      setCities(response.data);
+      if (response && response.data) {
+        setCities(response.data);
+      } else {
+        setError('검색 결과가 없습니다.');
+      }
     } catch (err) {
-      setError('도시 검색 중 오류가 발생했습니다.');
+      setError(err.message || '도시 검색 중 오류가 발생했습니다.');
       console.error(err);
     } finally {
       setLoading(false);
@@ -44,9 +49,13 @@ const AccommodationPlan = () => {
         checkInDate.toISOString().split('T')[0],
         checkOutDate.toISOString().split('T')[0]
       );
-      setHotels(response.data);
+      if (response && response.data) {
+        setHotels(response.data);
+      } else {
+        setError('검색 결과가 없습니다.');
+      }
     } catch (err) {
-      setError('호텔 검색 중 오류가 발생했습니다.');
+      setError(err.message || '호텔 검색 중 오류가 발생했습니다.');
       console.error(err);
     } finally {
       setLoading(false);
@@ -117,15 +126,28 @@ const AccommodationPlan = () => {
         <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {hotels.map((hotel) => (
             <div
-              key={hotel.hotelId}
+              key={hotel.id}
               className="bg-white rounded-lg shadow-md overflow-hidden"
             >
               <div className="p-4">
-                <h3 className="text-lg font-semibold mb-2">{hotel.name}</h3>
-                <p className="text-gray-600 mb-2">{hotel.address.cityName}</p>
-                <p className="text-sm text-gray-500">
-                  {hotel.rating} 성급
+                <h3 className="text-lg font-semibold mb-2">{hotel.hotel.name}</h3>
+                <p className="text-gray-600 mb-2">{hotel.hotel.address.lines.join(', ')}</p>
+                <p className="text-sm text-gray-500 mb-2">
+                  {hotel.hotel.rating}성급
                 </p>
+                {hotel.offers && hotel.offers[0] && (
+                  <div className="mt-2">
+                    <p className="text-lg font-bold text-primary">
+                      {new Intl.NumberFormat('ko-KR', {
+                        style: 'currency',
+                        currency: hotel.offers[0].price.currency
+                      }).format(hotel.offers[0].price.total)}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {hotel.offers[0].room.typeEstimated.category}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           ))}

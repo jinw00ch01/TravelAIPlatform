@@ -22,14 +22,19 @@ const FlightPlan = () => {
     
     try {
       setLoading(true);
+      setError(null);
       const response = await amadeusApi.searchCities(value);
-      if (type === 'origin') {
-        setOriginCities(response.data);
+      if (response && response.data) {
+        if (type === 'origin') {
+          setOriginCities(response.data);
+        } else {
+          setDestinationCities(response.data);
+        }
       } else {
-        setDestinationCities(response.data);
+        setError('검색 결과가 없습니다.');
       }
     } catch (err) {
-      setError('도시 검색 중 오류가 발생했습니다.');
+      setError(err.message || '도시 검색 중 오류가 발생했습니다.');
       console.error(err);
     } finally {
       setLoading(false);
@@ -50,9 +55,13 @@ const FlightPlan = () => {
         selectedDestination.iataCode,
         departureDate.toISOString().split('T')[0]
       );
-      setFlights(response.data);
+      if (response && response.data) {
+        setFlights(response.data);
+      } else {
+        setError('검색 결과가 없습니다.');
+      }
     } catch (err) {
-      setError('항공편 검색 중 오류가 발생했습니다.');
+      setError(err.message || '항공편 검색 중 오류가 발생했습니다.');
       console.error(err);
     } finally {
       setLoading(false);
@@ -148,7 +157,7 @@ const FlightPlan = () => {
                   <div>
                     <h3 className="text-lg font-semibold">
                       {flight.itineraries[0].segments[0].departure.iataCode} →{' '}
-                      {flight.itineraries[0].segments[0].arrival.iataCode}
+                      {flight.itineraries[0].segments[flight.itineraries[0].segments.length - 1].arrival.iataCode}
                     </h3>
                     <p className="text-gray-600">
                       {new Date(flight.itineraries[0].segments[0].departure.at).toLocaleString('ko-KR')}
@@ -166,6 +175,7 @@ const FlightPlan = () => {
                 <div className="text-sm text-gray-600">
                   <p>항공사: {flight.validatingAirlineCodes[0]}</p>
                   <p>좌석 등급: {flight.travelerPricings[0].fareDetailsBySegment[0].cabin}</p>
+                  <p>경유: {flight.itineraries[0].segments.length - 1}회</p>
                 </div>
               </div>
             </div>
