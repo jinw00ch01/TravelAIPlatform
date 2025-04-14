@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../components/auth/AuthContext';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 
 // API 엔드포인트 설정 - 환경변수에서 가져오기
 const API_URL = process.env.REACT_APP_API_URL || 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/';
@@ -68,8 +69,12 @@ const DUMMY_BOOKINGS = [
       }
     ];
 
-function MyPage() {
-  const { user, getJwtToken } = useAuth();
+const MyPage = () => {
+  const { user, logout, getJwtToken } = useAuth();
+  const navigate = useNavigate();
+  const [userInfo, setUserInfo] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('profile');
   const [isEditing, setIsEditing] = useState(false);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -80,9 +85,6 @@ function MyPage() {
     birthdate: ''
   });
   const [bookings, setBookings] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [userData, setUserData] = useState(null);
   const [notification, setNotification] = useState(null);
   const [apiResponseReceived, setApiResponseReceived] = useState(false);
 
@@ -103,6 +105,20 @@ function MyPage() {
     }, 5000);
   };
 
+  // getBookingStatusStyle 함수 추가
+  const getBookingStatusStyle = (status) => {
+    switch (status) {
+      case '예정':
+        return 'bg-blue-100 text-blue-800';
+      case '진행 중':
+        return 'bg-yellow-100 text-yellow-800';
+      case '완료':
+        return 'bg-green-100 text-green-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
   // 사용자 데이터 가져오기
   useEffect(() => {
     const fetchUserData = async () => {
@@ -118,7 +134,7 @@ function MyPage() {
         // skipAuth가 true인 경우 더미 데이터 사용
         if (isSkipAuth) {
           console.log('개발 모드 더미 데이터 사용');
-          setUserData(DUMMY_USER_DATA);
+          setUserInfo(DUMMY_USER_DATA);
           setBookings(DUMMY_BOOKINGS);
           
           // 프로필 데이터 업데이트
@@ -171,7 +187,7 @@ function MyPage() {
             
             // API 응답 데이터 설정
             if (response.data.success) {
-              setUserData(response.data.user);
+              setUserInfo(response.data.user);
               
               // 프로필 데이터 업데이트 (DynamoDB 데이터 사용)
               setProfileData({
@@ -203,7 +219,7 @@ function MyPage() {
         
         // 에러 발생 시에도 더미 데이터 표시 (기존 로직 유지)
         const fallbackUserData = DUMMY_USER_DATA;
-        setUserData(fallbackUserData);
+        setUserInfo(fallbackUserData);
 
         // 프로필 데이터 업데이트 - 더미 데이터 사용
         setProfileData({
@@ -222,46 +238,6 @@ function MyPage() {
     
     fetchUserData();
   }, [user, getJwtToken, isSkipAuth]);
-
-  const getStatus = (startDate, endDate) => {
-    const today = new Date();
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    
-    if (today < start) {
-      return '예정';
-    } else if (today > end) {
-      return '완료';
-    } else {
-      return '진행 중';
-    }
-  };
-
-  const getStatusStyle = (status) => {
-    switch (status) {
-      case '예정':
-        return 'bg-blue-100 text-blue-800';
-      case '진행 중':
-        return 'bg-yellow-100 text-yellow-800';
-      case '완료':
-        return 'bg-green-100 text-green-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const getBookingStatusStyle = (status) => {
-    switch (status) {
-      case '예정':
-        return 'bg-blue-100 text-blue-800';
-      case '진행 중':
-        return 'bg-yellow-100 text-yellow-800';
-      case '완료':
-        return 'bg-green-100 text-green-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -309,7 +285,7 @@ function MyPage() {
           });
           
           if (myPageResponse.data.success) {
-            setUserData(myPageResponse.data.user);
+            setUserInfo(myPageResponse.data.user);
           }
         } else {
           throw new Error(response.data.message || '프로필 정보 저장에 실패했습니다.');
@@ -320,7 +296,7 @@ function MyPage() {
         showNotification('개발 모드: 프로필 정보가 저장되었습니다 (시뮬레이션).', 'success');
         
         // 개발 모드에서 사용자 정보 업데이트
-        setUserData(prev => ({
+        setUserInfo(prev => ({
           ...prev,
           name: profileData.name,
           email: profileData.email,
@@ -346,10 +322,10 @@ function MyPage() {
 
   const handleCancel = () => {
     setProfileData({
-      name: userData?.name || user?.name || '',
-      email: userData?.email || user?.email || '',
-      phoneNumber: userData?.phoneNumber || '',
-      birthdate: userData?.birthdate || ''
+      name: userInfo?.name || user?.name || '',
+      email: userInfo?.email || user?.email || '',
+      phoneNumber: userInfo?.phoneNumber || '',
+      birthdate: userInfo?.birthdate || ''
     });
     setIsEditing(false);
   };
@@ -433,13 +409,13 @@ function MyPage() {
               <div className="flex-shrink-0">
                 <div className="h-16 w-16 rounded-full bg-primary flex items-center justify-center">
                   <span className="text-2xl text-white font-bold">
-                    {userData?.name?.[0]?.toUpperCase() || user?.name?.[0]?.toUpperCase() || 'U'}
+                    {userInfo?.name?.[0]?.toUpperCase() || user?.name?.[0]?.toUpperCase() || 'U'}
                   </span>
                 </div>
               </div>
               <div className="ml-4">
-                <h2 className="text-2xl font-bold text-gray-900">{userData?.name || user?.name || 'user-dev'}</h2>
-                <p className="text-gray-500">{userData?.email || user?.email || 'user-dev@email.com'}</p>
+                <h2 className="text-2xl font-bold text-gray-900">{userInfo?.name || user?.name || 'user-dev'}</h2>
+                <p className="text-gray-500">{userInfo?.email || user?.email || 'user-dev@email.com'}</p>
               </div>
             </div>
           </div>
@@ -462,19 +438,19 @@ function MyPage() {
         )}
 
         {/* 여행 통계 */}
-        {userData?.stats && (
+        {userInfo?.stats && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
             <div className="bg-white shadow rounded-lg p-6">
               <h3 className="text-lg font-medium text-gray-900 mb-2">총 여행 횟수</h3>
-              <p className="text-3xl font-bold text-primary">{userData.stats.totalTrips || 0}회</p>
+              <p className="text-3xl font-bold text-primary">{userInfo.stats.totalTrips || 0}회</p>
             </div>
             <div className="bg-white shadow rounded-lg p-6">
               <h3 className="text-lg font-medium text-gray-900 mb-2">방문한 국가</h3>
-              <p className="text-3xl font-bold text-primary">{userData.stats.countries || 0}개국</p>
+              <p className="text-3xl font-bold text-primary">{userInfo.stats.countries || 0}개국</p>
             </div>
             <div className="bg-white shadow rounded-lg p-6">
               <h3 className="text-lg font-medium text-gray-900 mb-2">리뷰 작성 수</h3>
-              <p className="text-3xl font-bold text-primary">{userData.stats.reviews || 0}개</p>
+              <p className="text-3xl font-bold text-primary">{userInfo.stats.reviews || 0}개</p>
             </div>
           </div>
         )}

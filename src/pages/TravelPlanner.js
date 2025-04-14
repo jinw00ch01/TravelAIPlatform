@@ -10,6 +10,8 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import SearchPopup from '../components/SearchPopup';
 import MapboxComponent from '../components/MapboxComponent';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import AccommodationPlan from '../components/AccommodationPlan';
+import FlightPlan from '../components/FlightPlan';
 
 const StrictModeDroppable = ({ children, ...props }) => {
   const [enabled, setEnabled] = useState(false);
@@ -42,6 +44,7 @@ const TravelPlanner = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [showAllMarkers, setShowAllMarkers] = useState(false);
   const [dayOrder, setDayOrder] = useState(Object.keys(travelPlans));
+  const [sidebarTab, setSidebarTab] = useState('schedule');
 
   useEffect(() => {
     if (!user) {
@@ -238,7 +241,7 @@ const TravelPlanner = () => {
       {/* 사이드바 */}
       <Box
         sx={{
-          width: isSidebarOpen ? '256px' : '0',
+          width: isSidebarOpen ? '300px' : '0',
           flexShrink: 0,
           whiteSpace: 'nowrap',
           boxSizing: 'border-box',
@@ -246,115 +249,136 @@ const TravelPlanner = () => {
           transition: 'width 0.3s ease',
           bgcolor: 'background.paper',
           boxShadow: 2,
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
         <Box sx={{ 
-          width: '256px',
+          width: '300px',
           visibility: isSidebarOpen ? 'visible' : 'hidden',
-          p: 2
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%'
         }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-            <Typography variant="h6" noWrap>여행 계획</Typography>
+          {/* 사이드바 헤더 */}
+          <Box sx={{ 
+            p: 2, 
+            borderBottom: 1, 
+            borderColor: 'divider',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
+            <Typography variant="h6" noWrap>여행 플래너</Typography>
             <IconButton onClick={toggleSidebar}>
               <span className="text-2xl">☰</span>
             </IconButton>
           </Box>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={addDay}
-            fullWidth
-            sx={{ mb: 2 }}
+
+          {/* 사이드바 탭 */}
+          <Tabs
+            value={sidebarTab}
+            onChange={(e, newValue) => setSidebarTab(newValue)}
+            variant="fullWidth"
+            className="border-b border-gray-200"
           >
-            날짜 추가
-          </Button>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {/* 날짜 선택 탭 */}
-            <DragDropContext onDragEnd={handleDayDragEnd}>
-              <StrictModeDroppable droppableId="days" direction="vertical">
-                {(provided) => (
-                  <Box
-                    {...provided.droppableProps}
-                    ref={provided.innerRef}
-                    sx={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 1,
-                      maxHeight: '60vh',
-                      overflowY: 'auto',
-                      '&::-webkit-scrollbar': {
-                        width: '8px',
-                      },
-                      '&::-webkit-scrollbar-track': {
-                        background: '#f1f1f1',
-                        borderRadius: '4px',
-                      },
-                      '&::-webkit-scrollbar-thumb': {
-                        background: '#888',
-                        borderRadius: '4px',
-                        '&:hover': {
-                          background: '#555',
-                        },
-                      },
-                    }}
+            <Tab label="여행 계획" value="schedule" />
+            <Tab label="숙소 계획" value="accommodation" />
+            <Tab label="비행 계획" value="flight" />
+          </Tabs>
+
+          {/* 사이드바 컨텐츠 */}
+          <div className="flex-1 overflow-y-auto">
+            {sidebarTab === 'schedule' && (
+              <>
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={addDay}
+                  fullWidth
+                  sx={{ mb: 2 }}
+                >
+                  날짜 추가
+                </Button>
+                <DragDropContext onDragEnd={handleDayDragEnd}>
+                  <StrictModeDroppable droppableId="days" direction="vertical">
+                    {(provided) => (
+                      <Box
+                        {...provided.droppableProps}
+                        ref={provided.innerRef}
+                        sx={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 1
+                        }}
+                      >
+                        {/* 기존 일정 목록 유지 */}
+                        {dayOrder.map((day, index) => (
+                          <Draggable key={day} draggableId={`day-${day}`} index={index}>
+                            {(provided, snapshot) => (
+                              <Paper
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                {...provided.dragHandleProps}
+                                sx={{
+                                  p: 1.5,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s',
+                                  bgcolor: selectedDay === parseInt(day) ? 'primary.light' : 'background.paper',
+                                  border: selectedDay === parseInt(day) ? 2 : 1,
+                                  borderColor: selectedDay === parseInt(day) ? 'primary.main' : 'divider',
+                                  '&:hover': {
+                                    bgcolor: selectedDay === parseInt(day) ? 'primary.light' : 'action.hover',
+                                  },
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                }}
+                                onClick={() => setSelectedDay(parseInt(day))}
+                              >
+                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                  <DragIndicatorIcon sx={{ mr: 1, color: 'action.active' }} />
+                                  <Typography variant="subtitle1">{getDayTitle(parseInt(day))}</Typography>
+                                </Box>
+                                <IconButton
+                                  size="small"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeDay(parseInt(day));
+                                  }}
+                                >
+                                  <DeleteIcon />
+                                </IconButton>
+                              </Paper>
+                            )}
+                          </Draggable>
+                        ))}
+                        {provided.placeholder}
+                      </Box>
+                    )}
+                  </StrictModeDroppable>
+                </DragDropContext>
+                <Box sx={{ mt: 2 }}>
+                  <Button
+                    variant={showAllMarkers ? "contained" : "outlined"}
+                    color="primary"
+                    fullWidth
+                    onClick={() => setShowAllMarkers(!showAllMarkers)}
                   >
-                    {dayOrder.map((day, index) => (
-                      <Draggable key={day} draggableId={`day-${day}`} index={index}>
-                        {(provided, snapshot) => (
-                          <Paper
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
-                            {...provided.dragHandleProps}
-                            sx={{
-                              p: 1.5,
-                              cursor: 'pointer',
-                              transition: 'all 0.2s',
-                              bgcolor: selectedDay === parseInt(day) ? 'primary.light' : 'background.paper',
-                              border: selectedDay === parseInt(day) ? 2 : 1,
-                              borderColor: selectedDay === parseInt(day) ? 'primary.main' : 'divider',
-                              '&:hover': {
-                                bgcolor: selectedDay === parseInt(day) ? 'primary.light' : 'action.hover',
-                              },
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                            }}
-                      onClick={() => setSelectedDay(parseInt(day))}
-                    >
-                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                              <DragIndicatorIcon sx={{ mr: 1, color: 'action.active' }} />
-                              <Typography variant="subtitle1">{getDayTitle(parseInt(day))}</Typography>
-                            </Box>
-                            <IconButton
-                              size="small"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeDay(parseInt(day));
-                            }}
-                            >
-                              <DeleteIcon />
-                            </IconButton>
-                          </Paper>
-                        )}
-                      </Draggable>
-                    ))}
-                    {provided.placeholder}
-                  </Box>
-                )}
-              </StrictModeDroppable>
-            </DragDropContext>
-          </Box>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 2 }}>
-            {/* 전체 마커 보기 버튼 */}
-            <Button
-              variant={showAllMarkers ? "contained" : "outlined"}
-              color="primary"
-              fullWidth
-              onClick={() => setShowAllMarkers(!showAllMarkers)}
-            >
-              {showAllMarkers ? "현재 날짜 마커만 보기" : "전체 날짜 마커 보기"}
-            </Button>
-          </Box>
+                    {showAllMarkers ? "현재 날짜 마커만 보기" : "전체 날짜 마커 보기"}
+                  </Button>
+                </Box>
+              </>
+            )}
+
+            {sidebarTab === 'accommodation' && (
+              <AccommodationPlan />
+            )}
+
+            {sidebarTab === 'flight' && (
+              <FlightPlan />
+            )}
+          </div>
         </Box>
       </Box>
 
@@ -366,20 +390,26 @@ const TravelPlanner = () => {
         transition: 'margin-left 0.3s ease',
       }}>
         {/* 상단 바 */}
-        <div className="bg-white shadow-md p-4 flex justify-between items-center">
-          <div className="flex items-center space-x-4">
-            <Button
-              variant="outlined"
-              onClick={toggleSidebar}
-              startIcon={<span className="text-xl">☰</span>}
-            >
-              메뉴
-            </Button>
-            <Typography variant="h6">여행 계획</Typography>
-          </div>
-                      </div>
+        <Box sx={{ 
+          bgcolor: 'background.paper',
+          p: 2,
+          display: 'flex',
+          alignItems: 'center',
+          borderBottom: 1,
+          borderColor: 'divider'
+        }}>
+          <Button
+            variant="outlined"
+            onClick={toggleSidebar}
+            startIcon={<span className="text-xl">☰</span>}
+            sx={{ mr: 2 }}
+          >
+            메뉴
+          </Button>
+          <Typography variant="h6">여행 플래너</Typography>
+        </Box>
 
-        {/* 메인 컨텐츠 영역 */}
+        {/* 기존 메인 컨텐츠 유지 */}
         <Box sx={{ flex: 1, p: 2, overflow: 'hidden' }}>
           {selectedDay ? (
             <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>

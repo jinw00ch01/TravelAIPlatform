@@ -18,7 +18,6 @@ import {
   IconButton
 } from '@mui/material';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
-import DirectionsTransitIcon from '@mui/icons-material/DirectionsTransit';
 import DirectionsWalkIcon from '@mui/icons-material/DirectionsWalk';
 import TrainIcon from '@mui/icons-material/Train';
 import DirectionsBusIcon from '@mui/icons-material/DirectionsBus';
@@ -43,14 +42,14 @@ const dayColors = [
   '#00838f', // 청록
 ];
 
-const MapboxComponent = ({ selectedPlace, travelPlans, selectedDay, showAllMarkers = false }) => {
+const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers }) => {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const markers = useRef([]);
-  const [transportMode, setTransportMode] = useState('driving');
-  const routeLayer = useRef(null);
+  const routeSource = useRef(null);
   const [routeInfo, setRouteInfo] = useState(null);
-  const [openRouteDialog, setOpenRouteDialog] = useState(false);
+  const [transportMode, setTransportMode] = useState('walking');
+  const [isRouteInfoOpen, setIsRouteInfoOpen] = useState(false);
 
   useEffect(() => {
     if (!map.current) {
@@ -100,6 +99,23 @@ const MapboxComponent = ({ selectedPlace, travelPlans, selectedDay, showAllMarke
     };
   }, []);
 
+  // 일차 변경 시 경로 초기화
+  useEffect(() => {
+    if (map.current && map.current.getSource('route')) {
+      // 경로 데이터 초기화
+      map.current.getSource('route').setData({
+        type: 'Feature',
+        properties: {},
+        geometry: {
+          type: 'LineString',
+          coordinates: []
+        }
+      });
+      // 경로 정보 상태 초기화
+      setRouteInfo(null);
+    }
+  }, [selectedDay]);
+
   // 이동 수단 변경 시 경로 업데이트
   useEffect(() => {
     if (!map.current || !travelPlans[selectedDay]?.schedules.length > 1) return;
@@ -109,166 +125,110 @@ const MapboxComponent = ({ selectedPlace, travelPlans, selectedDay, showAllMarke
       schedule.lat
     ]);
 
-    if (transportMode === 'transit') {
-      // Here Maps Transit API 호출
-      const origin = coordinates[0];
-      const destination = coordinates[coordinates.length - 1];
-      const waypoints = coordinates.slice(1, -1); // 중간 경유지들
+    let profile = transportMode === 'driving' ? 'mapbox/driving' : 'mapbox/walking';
+    const url = `https://api.mapbox.com/directions/v5/${profile}/${coordinates.map(coord => coord.join(',')).join(';')}?` + 
+      new URLSearchParams({
+        geometries: 'geojson',
+        steps: 'true',
+        language: 'ko',
+        overview: 'full',
+        annotations: 'distance,duration,speed',
+        access_token: mapboxgl.accessToken
+      });
 
-      const HERE_API_KEY = process.env.REACT_APP_HERE_API_KEY;
-      const baseUrl = 'https://transit.router.hereapi.com/v8/routes';
-      
-      // 출발지와 도착지 설정
-      let url = `${baseUrl}?apiKey=${HERE_API_KEY}&origin=${origin[1]},${origin[0]}&destination=${destination[1]},${destination[0]}`;
-      
-      // 경유지 추가
-      if (waypoints.length > 0) {
-        const viaString = waypoints.map(point => `${point[1]},${point[0]}`).join('&via=');
-        url += `&via=${viaString}`;
-      }
+    fetch(url)
+      .then(response => response.json())
+      .then(data => {
+        if (data.routes && data.routes[0]) {
+          const route = data.routes[0];
+          console.log('Mapbox API Response:', route);
+          
+          // 경로 라인 색상 설정
+          const routeColor = transportMode === 'driving' ? '#1976d2' : '#c62828';
+          
+          map.current.getSource('route').setData({
+            type: 'Feature',
+            properties: {},
+            geometry: route.geometry
+          });
 
-      // 추가 파라미터
-      url += '&return=polyline,actions,instructions&alternatives=1';
+          // 경로 라인 스타일 업데이트
+          map.current.setPaintProperty('route', 'line-color', routeColor);
 
-      fetch(url)
-        .then(response => response.json())
-        .then(data => {
-          if (data.routes && data.routes[0]) {
-            const route = data.routes[0];
-            
-            // 경로 라인 업데이트
-            const coordinates = decode(route.sections[0].polyline);
-            map.current.getSource('route').setData({
-              type: 'Feature',
-              properties: {},
-              geometry: {
-                type: 'LineString',
-                coordinates: coordinates.map(coord => [coord[1], coord[0]])
-              }
-            });
+          // 경로 정보 업데이트
+          const routeInfo = {
+            duration: Math.round(route.duration / 60),
+            distance: Math.round(route.distance / 1000 * 10) / 10,
+            steps: route.legs.flatMap((leg, legIndex) => {
+              console.log(`Processing leg ${legIndex}:`, leg);
+              
+              return leg.steps.map((step, stepIndex) => {
+                console.log(`Processing step ${stepIndex}:`, step);
 
-            // 경로 라인 스타일 업데이트
-            map.current.setPaintProperty('route', 'line-color', '#2e7d32');
+                // 방향 텍스트 생성
+                let instruction = '';
+                if (stepIndex === 0) {
+                  // 출발지
+                  instruction = `${travelPlans[selectedDay].schedules[legIndex].name}에서 출발`;
+                } else if (stepIndex === leg.steps.length - 1) {
+                  // 도착지
+                  instruction = `${travelPlans[selectedDay].schedules[legIndex + 1].name}에 도착`;
+                } else {
+                  // 중간 경로
+                  let direction = '';
+                  switch (step.maneuver.modifier) {
+                    case 'right': direction = '우회전'; break;
+                    case 'left': direction = '좌회전'; break;
+                    case 'straight': direction = '직진'; break;
+                    case 'slight right': direction = '우측 방향'; break;
+                    case 'slight left': direction = '좌측 방향'; break;
+                    case 'sharp right': direction = '급우회전'; break;
+                    case 'sharp left': direction = '급좌회전'; break;
+                    case 'uturn': direction = 'U턴'; break;
+                    default: direction = step.maneuver.type; break;
+                  }
 
-            // 경로 정보 업데이트
-            const routeInfo = {
-              duration: Math.round(route.sections[0].summary.duration / 60),
-              distance: Math.round(route.sections[0].summary.length / 1000),
-              steps: route.sections[0].actions.map(action => ({
-                type: action.action,
-                instruction: action.instruction,
-                distance: Math.round(action.length / 1000 * 10) / 10,
-                duration: Math.round(action.duration / 60),
-                mode: action.type === 'TRANSIT' ? 'transit' : 'walking',
-                transitInfo: action.type === 'TRANSIT' ? {
-                  line: action.line,
-                  headsign: action.headsign,
-                  stops: action.stops
-                } : null
-              }))
-            };
+                  instruction = direction;
+                  if (step.name) {
+                    instruction += ` - ${step.name}`;
+                  }
+                  if (step.maneuver.instruction) {
+                    instruction = step.maneuver.instruction
+                      .replace('Turn right', '우회전')
+                      .replace('Turn left', '좌회전')
+                      .replace('Continue straight', '직진')
+                      .replace('Arrive at', '도착:')
+                      .replace('Head', '시작:')
+                      .replace('north', '북쪽')
+                      .replace('south', '남쪽')
+                      .replace('east', '동쪽')
+                      .replace('west', '서쪽')
+                      .replace('destination', '목적지');
+                  }
+                }
 
-            setRouteInfo(routeInfo);
-          }
-        })
-        .catch(error => {
-          console.error('Error fetching transit route:', error);
-          alert('대중교통 경로를 가져오는 중 오류가 발생했습니다. 다시 시도해주세요.');
-        });
-    } else {
-      // 기존 Mapbox API 호출 (운전, 도보)
-      let profile = transportMode === 'driving' ? 'mapbox/driving' : 'mapbox/walking';
-      let additionalParams = transportMode === 'driving' ? 
-        '&annotations=duration,distance,speed&overview=full' : 
-        '&annotations=duration,distance&overview=full';
-
-      const waypoints = coordinates.map(coord => `${coord[0]},${coord[1]}`).join(';');
-      const url = `https://api.mapbox.com/directions/v5/${profile}/${waypoints}?geometries=geojson&language=ko&access_token=${mapboxgl.accessToken}${additionalParams}`;
-
-      fetch(url)
-        .then(response => response.json())
-        .then(data => {
-          if (data.routes && data.routes[0]) {
-            const route = data.routes[0];
-            
-            // 경로 라인 색상 설정
-            const routeColor = transportMode === 'driving' ? '#1976d2' : 
-                             transportMode === 'transit' ? '#2e7d32' : '#c62828';
-            
-            map.current.getSource('route').setData({
-              type: 'Feature',
-              properties: {},
-              geometry: route.geometry
-            });
-
-            // 경로 라인 스타일 업데이트
-            map.current.setPaintProperty('route', 'line-color', routeColor);
-
-            // 경로 정보 업데이트
-            const routeInfo = {
-              duration: Math.round(route.duration / 60),
-              distance: Math.round(route.distance / 1000),
-              steps: route.legs.flatMap(leg => 
-                leg.steps.map(step => ({
+                return {
                   type: step.maneuver.type,
-                  instruction: step.maneuver.instruction,
-                  distance: Math.round(step.distance / 1000 * 10) / 10, // 소수점 1자리까지 표시
+                  instruction: instruction,
+                  distance: Math.round(step.distance / 1000 * 10) / 10,
                   duration: Math.round(step.duration / 60),
-                  mode: transportMode
-                }))
-              )
-            };
+                  mode: transportMode,
+                  modifier: step.maneuver.modifier,
+                  name: step.name || ''
+                };
+              });
+            })
+          };
 
-            setRouteInfo(routeInfo);
-          }
-        })
-        .catch(error => {
-          console.error('Error fetching route:', error);
-          // 에러 발생 시 사용자에게 알림
-          alert('경로를 가져오는 중 오류가 발생했습니다. 다시 시도해주세요.');
-        });
-    }
+          console.log('Processed Route Info:', routeInfo);
+          setRouteInfo(routeInfo);
+        }
+      })
+      .catch(error => {
+        console.error('Error fetching route:', error);
+        alert('경로를 가져오는 중 오류가 발생했습니다. 다시 시도해주세요.');
+      });
   }, [transportMode, travelPlans, selectedDay]);
-
-  // Here Maps 폴리라인 디코딩 함수
-  function decode(encoded) {
-    const points = [];
-    let index = 0;
-    const len = encoded.length;
-    let lat = 0;
-    let lng = 0;
-
-    while (index < len) {
-      let b;
-      let shift = 0;
-      let result = 0;
-
-      do {
-        b = encoded.charCodeAt(index++) - 63;
-        result |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-
-      const dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
-      lat += dlat;
-
-      shift = 0;
-      result = 0;
-
-      do {
-        b = encoded.charCodeAt(index++) - 63;
-        result |= (b & 0x1f) << shift;
-        shift += 5;
-      } while (b >= 0x20);
-
-      const dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
-      lng += dlng;
-
-      points.push([lat * 1e-5, lng * 1e-5]);
-    }
-
-    return points;
-  }
 
   // 마커 표시
   useEffect(() => {
@@ -276,20 +236,37 @@ const MapboxComponent = ({ selectedPlace, travelPlans, selectedDay, showAllMarke
     markers.current.forEach(marker => marker.remove());
     markers.current = [];
 
-    if (!map.current) return;
+    if (!map.current || !travelPlans) return;
 
-    const plansToShow = showAllMarkers ? travelPlans : { [selectedDay]: travelPlans[selectedDay] };
+    // 표시할 일정 결정
+    let plansToShow = {};
+    if (showAllMarkers) {
+      // 전체 일정 표시
+      plansToShow = travelPlans;
+    } else if (travelPlans[selectedDay]) {
+      // 선택된 일차만 표시
+      plansToShow = { [selectedDay]: travelPlans[selectedDay] };
+    } else {
+      return; // 유효하지 않은 일차면 마커 표시하지 않음
+    }
 
+    // 마커 생성 및 표시
     Object.entries(plansToShow).forEach(([day, plan]) => {
+      if (!plan || !plan.schedules) return;
+
       const dayNumber = parseInt(day);
       const color = dayColors[dayNumber % dayColors.length];
       
       plan.schedules.forEach((schedule, index) => {
+        if (!schedule.lng || !schedule.lat) return; // 좌표가 없는 경우 건너뛰기
+
         const markerElement = document.createElement('div');
         markerElement.className = 'custom-marker';
         markerElement.innerHTML = `
           <div class="marker-content">
-            <div class="marker-number" style="background-color: ${color}">${dayNumber}-${index + 1}</div>
+            <div class="marker-number" style="background-color: ${color}">
+              ${showAllMarkers ? `${dayNumber}-${index + 1}` : `${index + 1}`}
+            </div>
             <div class="marker-dot" style="background-color: ${color}"></div>
           </div>
         `;
@@ -300,7 +277,9 @@ const MapboxComponent = ({ selectedPlace, travelPlans, selectedDay, showAllMarke
             new mapboxgl.Popup({ offset: 25 })
               .setHTML(`
                 <div style="padding: 10px;">
-                  <h3 style="margin: 0 0 5px 0; color: ${color};">${dayNumber}일차 ${index + 1}번째 장소</h3>
+                  <h3 style="margin: 0 0 5px 0; color: ${color};">
+                    ${showAllMarkers ? `${dayNumber}일차 ${index + 1}번째 장소` : `${index + 1}번째 장소`}
+                  </h3>
                   <p style="margin: 0; font-size: 14px;">${schedule.name}</p>
                   <p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">${schedule.address}</p>
                 </div>
@@ -316,29 +295,12 @@ const MapboxComponent = ({ selectedPlace, travelPlans, selectedDay, showAllMarke
     if (markers.current.length > 0) {
       const bounds = new mapboxgl.LngLatBounds();
       markers.current.forEach(marker => bounds.extend(marker.getLngLat()));
-      map.current.fitBounds(bounds, { padding: 50 });
+      map.current.fitBounds(bounds, { 
+        padding: { top: 50, bottom: 50, left: 50, right: 50 },
+        duration: 1000 // 부드러운 이동을 위한 애니메이션 시간
+      });
     }
   }, [travelPlans, selectedDay, showAllMarkers]);
-
-  const getTransportIcon = (step) => {
-    if (step.mode === 'transit') {
-      // 대중교통 종류에 따른 아이콘 선택
-      const transitType = step.transitInfo?.line?.type?.toLowerCase() || '';
-      if (transitType.includes('subway') || transitType.includes('train')) {
-        return <TrainIcon />;
-      }
-      return <DirectionsBusIcon />;
-    }
-    return step.mode === 'driving' ? <DirectionsCarIcon /> : <DirectionsWalkIcon />;
-  };
-
-  const handleOpenRouteDialog = () => {
-    setOpenRouteDialog(true);
-  };
-
-  const handleCloseRouteDialog = () => {
-    setOpenRouteDialog(false);
-  };
 
   return (
     <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
@@ -364,13 +326,6 @@ const MapboxComponent = ({ selectedPlace, travelPlans, selectedDay, showAllMarke
           <DirectionsCarIcon />
         </Button>
         <Button
-          onClick={() => setTransportMode('transit')}
-          variant={transportMode === 'transit' ? 'contained' : 'outlined'}
-          title="대중교통"
-        >
-          <DirectionsTransitIcon />
-        </Button>
-        <Button
           onClick={() => setTransportMode('walking')}
           variant={transportMode === 'walking' ? 'contained' : 'outlined'}
           title="도보"
@@ -384,7 +339,7 @@ const MapboxComponent = ({ selectedPlace, travelPlans, selectedDay, showAllMarke
         <Button
           variant="contained"
           startIcon={<AccessTimeIcon />}
-          onClick={handleOpenRouteDialog}
+          onClick={() => setIsRouteInfoOpen(true)}
           sx={{
             position: 'absolute',
             bottom: 20,
@@ -403,8 +358,8 @@ const MapboxComponent = ({ selectedPlace, travelPlans, selectedDay, showAllMarke
 
       {/* 경로 정보 다이얼로그 */}
       <Dialog
-        open={openRouteDialog}
-        onClose={handleCloseRouteDialog}
+        open={isRouteInfoOpen}
+        onClose={() => setIsRouteInfoOpen(false)}
         maxWidth="sm"
         fullWidth
       >
@@ -412,14 +367,12 @@ const MapboxComponent = ({ selectedPlace, travelPlans, selectedDay, showAllMarke
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <AccessTimeIcon sx={{ mr: 1 }} />
             <Typography variant="h6">
-              {transportMode === 'driving' ? '자동차' :
-               transportMode === 'transit' ? '도보' :
-               '도보'} 경로 정보
+              {transportMode === 'driving' ? '자동차' : '도보'} 경로 정보
             </Typography>
           </Box>
           <IconButton
             aria-label="close"
-            onClick={handleCloseRouteDialog}
+            onClick={() => setIsRouteInfoOpen(false)}
             sx={{ color: (theme) => theme.palette.grey[500] }}
           >
             <CloseIcon />
@@ -427,30 +380,42 @@ const MapboxComponent = ({ selectedPlace, travelPlans, selectedDay, showAllMarke
         </DialogTitle>
         <DialogContent dividers>
           <Box sx={{ mb: 2 }}>
-            <Typography variant="h6" color="primary">
-              예상 소요 시간: {routeInfo?.duration}분
+            <Typography variant="h6" color="primary" gutterBottom>
+              총 예상 소요 시간: {routeInfo?.duration}분
             </Typography>
-            <Typography variant="body1" color="text.secondary">
-              총 거리: {routeInfo?.distance}km
+            <Typography variant="h6" color="primary">
+              총 이동 거리: {routeInfo?.distance}km
             </Typography>
           </Box>
           <Divider sx={{ my: 2 }} />
           <List>
             {routeInfo?.steps.map((step, index) => (
-              <ListItem key={index}>
+              <ListItem key={index} sx={{ 
+                py: 2,
+                borderBottom: index < (routeInfo.steps.length - 1) ? '1px solid rgba(0, 0, 0, 0.12)' : 'none'
+              }}>
                 <ListItemIcon>
-                  {getTransportIcon(step)}
+                  {step.mode === 'driving' ? <DirectionsCarIcon color="primary" /> : <DirectionsWalkIcon color="error" />}
                 </ListItemIcon>
                 <ListItemText
-                  primary={step.instruction}
-                  secondary={`${step.distance}km (약 ${step.duration}분)`}
+                  primary={
+                    <Typography variant="subtitle1" sx={{ fontWeight: 'medium' }}>
+                      {step.instruction}
+                    </Typography>
+                  }
+                  secondary={
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      {step.distance > 0 ? `${step.distance}km` : ''} 
+                      {step.duration > 0 ? ` • 약 ${step.duration}분` : ''}
+                    </Typography>
+                  }
                 />
               </ListItem>
             ))}
           </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseRouteDialog}>닫기</Button>
+          <Button onClick={() => setIsRouteInfoOpen(false)} variant="contained">닫기</Button>
         </DialogActions>
       </Dialog>
 
