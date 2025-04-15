@@ -43,7 +43,7 @@ const TravelPlanner = () => {
   const [editSchedule, setEditSchedule] = useState(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [showAllMarkers, setShowAllMarkers] = useState(false);
-  const [dayOrder, setDayOrder] = useState(Object.keys(travelPlans));
+  const [dayOrder, setDayOrder] = useState(['1']);
   const [sidebarTab, setSidebarTab] = useState('schedule');
   const [showMap, setShowMap] = useState(true);
 
@@ -72,32 +72,57 @@ const TravelPlanner = () => {
     return `${dayNumber}일차`;
   };
 
-  const reorderDays = (plans) => {
-    const orderedPlans = {};
-    const days = Object.entries(plans)
-      .sort(([a], [b]) => parseInt(a) - parseInt(b));
-
-    days.forEach(([_, plan], index) => {
-      orderedPlans[index + 1] = {
-        ...plan,
-        title: getDayTitle(index + 1)
-      };
-    });
-
-    return orderedPlans;
-  };
-
   const addDay = () => {
-    const newDayNumber = Math.max(...Object.keys(travelPlans).map(Number)) + 1;
-    const newPlans = {
-      ...travelPlans,
-          [newDayNumber]: {
-        title: getDayTitle(newDayNumber),
+    const newDayNumber = (dayOrder.length + 1).toString();
+    
+    setTravelPlans(prev => ({
+      ...prev,
+      [newDayNumber]: {
+        title: `${newDayNumber}일차`,
         schedules: []
       }
-    };
-    setTravelPlans(newPlans);
-    setDayOrder(prevOrder => [...prevOrder, newDayNumber.toString()]);
+    }));
+    
+    setDayOrder(prev => [...prev, newDayNumber]);
+  };
+
+  const handleDayDragEnd = (result) => {
+    if (!result.destination) return;
+
+    const sourceIndex = result.source.index;
+    const destIndex = result.destination.index;
+    
+    const oldDayOrder = Array.from(dayOrder);
+    const [movedDay] = oldDayOrder.splice(sourceIndex, 1);
+    oldDayOrder.splice(destIndex, 0, movedDay);
+
+    // 새로운 순서대로 일차 번호 재할당
+    const newTravelPlans = {};
+    const newDayOrder = [];
+    
+    oldDayOrder.forEach((_, index) => {
+      const newDayNumber = (index + 1).toString();
+      const oldDay = oldDayOrder[index];
+      
+      // 새로운 일차 정보 생성
+      newTravelPlans[newDayNumber] = {
+        ...travelPlans[oldDay],
+        title: `${newDayNumber}일차`
+      };
+      
+      newDayOrder.push(newDayNumber);
+    });
+
+    // 선택된 일차도 새로운 번호로 업데이트
+    if (selectedDay) {
+      const oldSelectedDayIndex = oldDayOrder.indexOf(selectedDay.toString());
+      if (oldSelectedDayIndex !== -1) {
+        setSelectedDay(oldSelectedDayIndex + 1);
+      }
+    }
+
+    setTravelPlans(newTravelPlans);
+    setDayOrder(newDayOrder);
   };
 
   const removeDay = (dayToRemove) => {
@@ -105,39 +130,35 @@ const TravelPlanner = () => {
       alert('최소 하나의 날짜는 유지해야 합니다.');
       return;
     }
-    
-    // 남은 날짜들을 순서대로 정렬
-    const remainingDays = Object.keys(travelPlans)
-      .filter(day => day !== dayToRemove.toString())
-      .map(Number)
-      .sort((a, b) => a - b);
 
-    // 새로운 여행 계획 객체 생성
-    const newPlans = {};
-    remainingDays.forEach((oldDay, index) => {
-      const newDayNumber = index + 1;
-      newPlans[newDayNumber] = {
+    const dayToRemoveStr = dayToRemove.toString();
+    const oldDayOrder = dayOrder.filter(day => day !== dayToRemoveStr);
+    
+    // 일차 삭제 후 번호 재할당
+    const newTravelPlans = {};
+    const newDayOrder = [];
+    
+    oldDayOrder.forEach((_, index) => {
+      const newDayNumber = (index + 1).toString();
+      const oldDay = oldDayOrder[index];
+      
+      newTravelPlans[newDayNumber] = {
         ...travelPlans[oldDay],
         title: `${newDayNumber}일차`
-        };
-      });
-
-    // 새로운 dayOrder 생성
-    const newDayOrder = Object.keys(newPlans);
-
-    // 상태 업데이트
-    setTravelPlans(newPlans);
-    setDayOrder(newDayOrder);
+      };
+      
+      newDayOrder.push(newDayNumber);
+    });
 
     // 선택된 날짜 조정
     if (selectedDay === dayToRemove) {
-      // 삭제된 날짜가 마지막 날짜였다면 마지막 날짜를 선택
-      const newSelectedDay = Math.min(dayToRemove, Object.keys(newPlans).length);
-      setSelectedDay(newSelectedDay);
+      setSelectedDay(1); // 첫 번째 일차 선택
     } else if (selectedDay > dayToRemove) {
-      // 삭제된 날짜보다 큰 날짜를 선택중이었다면 하루 앞당김
-      setSelectedDay(selectedDay - 1);
+      setSelectedDay(selectedDay - 1); // 하루 앞당김
     }
+
+    setTravelPlans(newTravelPlans);
+    setDayOrder(newDayOrder);
   };
 
   const handleAddPlace = (place) => {
@@ -215,24 +236,6 @@ const TravelPlanner = () => {
     }));
   };
 
-  // 날짜 순서 변경 핸들러
-  const handleDayDragEnd = (result) => {
-    if (!result.destination) return;
-
-    const newDayOrder = Array.from(dayOrder);
-    const [reorderedDay] = newDayOrder.splice(result.source.index, 1);
-    newDayOrder.splice(result.destination.index, 0, reorderedDay);
-
-    // 새로운 순서로 여행 계획 재구성
-    const newTravelPlans = {};
-    newDayOrder.forEach((day) => {
-      newTravelPlans[day] = travelPlans[day];
-    });
-
-    setDayOrder(newDayOrder);
-    setTravelPlans(newTravelPlans);
-  };
-
   if (!user) return null;
 
   const currentPlan = travelPlans[selectedDay] || { title: '', schedules: [] };
@@ -302,7 +305,7 @@ const TravelPlanner = () => {
                   날짜 추가
                 </Button>
                 <DragDropContext onDragEnd={handleDayDragEnd}>
-                  <StrictModeDroppable droppableId="days" direction="vertical">
+                  <StrictModeDroppable droppableId="days">
                     {(provided) => (
                       <Box
                         {...provided.droppableProps}
@@ -310,42 +313,91 @@ const TravelPlanner = () => {
                         sx={{
                           display: 'flex',
                           flexDirection: 'column',
-                          gap: 1
+                          gap: 1,
+                          p: 2
                         }}
                       >
-                        {/* 기존 일정 목록 유지 */}
                         {dayOrder.map((day, index) => (
-                          <Draggable key={day} draggableId={`day-${day}`} index={index}>
+                          <Draggable key={`day-${day}`} draggableId={`day-${day}`} index={index}>
                             {(provided, snapshot) => (
                               <Paper
                                 ref={provided.innerRef}
                                 {...provided.draggableProps}
                                 {...provided.dragHandleProps}
+                                elevation={snapshot.isDragging ? 6 : 1}
                                 sx={{
                                   p: 1.5,
                                   cursor: 'pointer',
-                                  transition: 'all 0.2s',
+                                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                  transform: snapshot.isDragging ? 'scale(1.02)' : 'scale(1)',
                                   bgcolor: selectedDay === parseInt(day) ? 'primary.light' : 'background.paper',
                                   border: selectedDay === parseInt(day) ? 2 : 1,
                                   borderColor: selectedDay === parseInt(day) ? 'primary.main' : 'divider',
                                   '&:hover': {
-                                    bgcolor: selectedDay === parseInt(day) ? 'primary.light' : 'action.hover',
+                                    bgcolor: selectedDay === parseInt(day) 
+                                      ? 'primary.light' 
+                                      : 'action.hover',
+                                    transform: snapshot.isDragging ? 'scale(1.02)' : 'scale(1.01)',
+                                    boxShadow: (theme) => 
+                                      snapshot.isDragging 
+                                        ? theme.shadows[6]
+                                        : theme.shadows[2]
                                   },
                                   display: 'flex',
                                   justifyContent: 'space-between',
                                   alignItems: 'center',
+                                  position: 'relative',
+                                  '&::after': snapshot.isDragging ? {
+                                    content: '""',
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    borderRadius: 1,
+                                    animation: 'pulse 1.5s infinite',
+                                    border: (theme) => `2px solid ${theme.palette.primary.main}`,
+                                    opacity: 0.5
+                                  } : {}
                                 }}
                                 onClick={() => setSelectedDay(parseInt(day))}
                               >
-                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                  <DragIndicatorIcon sx={{ mr: 1, color: 'action.active' }} />
-                                  <Typography variant="subtitle1">{getDayTitle(parseInt(day))}</Typography>
+                                <Box 
+                                  sx={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center',
+                                    gap: 1
+                                  }}
+                                >
+                                  <DragIndicatorIcon 
+                                    sx={{ 
+                                      color: 'action.active',
+                                      transition: 'transform 0.2s ease',
+                                      transform: snapshot.isDragging ? 'rotate(-5deg)' : 'none'
+                                    }} 
+                                  />
+                                  <Typography 
+                                    variant="subtitle1"
+                                    sx={{
+                                      fontWeight: selectedDay === parseInt(day) ? 600 : 400,
+                                      transition: 'all 0.2s ease'
+                                    }}
+                                  >
+                                    {`${day}일차`}
+                                  </Typography>
                                 </Box>
                                 <IconButton
                                   size="small"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     removeDay(parseInt(day));
+                                  }}
+                                  sx={{
+                                    transition: 'all 0.2s ease',
+                                    '&:hover': {
+                                      color: 'error.main',
+                                      transform: 'scale(1.1)'
+                                    }
                                   }}
                                 >
                                   <DeleteIcon />
@@ -700,6 +752,23 @@ const TravelPlanner = () => {
           <Button onClick={handleUpdateSchedule} variant="contained">저장</Button>
         </DialogActions>
       </Dialog>
+
+      <style jsx global>{`
+        @keyframes pulse {
+          0% {
+            transform: scale(1);
+            opacity: 0.5;
+          }
+          50% {
+            transform: scale(1.02);
+            opacity: 0.3;
+          }
+          100% {
+            transform: scale(1);
+            opacity: 0.5;
+          }
+        }
+      `}</style>
     </Box>
   );
 };
