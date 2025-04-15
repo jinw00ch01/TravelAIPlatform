@@ -45,6 +45,7 @@ const TravelPlanner = () => {
   const [showAllMarkers, setShowAllMarkers] = useState(false);
   const [dayOrder, setDayOrder] = useState(Object.keys(travelPlans));
   const [sidebarTab, setSidebarTab] = useState('schedule');
+  const [showMap, setShowMap] = useState(true);
 
   useEffect(() => {
     if (!user) {
@@ -187,12 +188,12 @@ const TravelPlanner = () => {
     setEditSchedule(null);
   };
 
-  const handleDeleteSchedule = (scheduleId) => {
+  const handleDeleteSchedule = (scheduleIndex) => {
     setTravelPlans(prev => ({
       ...prev,
       [selectedDay]: {
         ...prev[selectedDay],
-        schedules: prev[selectedDay].schedules.filter(schedule => schedule.id !== scheduleId)
+        schedules: prev[selectedDay].schedules.filter((_, index) => index !== scheduleIndex)
       }
     }));
   };
@@ -372,12 +373,32 @@ const TravelPlanner = () => {
             )}
 
             {sidebarTab === 'accommodation' && (
-              <AccommodationPlan />
+              <AccommodationPlan isSearchTab={true} />
             )}
 
             {sidebarTab === 'flight' && (
-              <FlightPlan />
+              <FlightPlan isSearchTab={true} />
             )}
+
+            {/* 지도 토글 버튼은 일정 계획과 숙소 계획 탭에서만 표시 */}
+            <Box sx={{ mt: 2, display: 'flex', gap: 2, px: 2 }}>
+              {sidebarTab !== 'flight' && (
+                <Button
+                  variant="outlined"
+                  onClick={() => setShowMap(!showMap)}
+                >
+                  {showMap ? "지도 숨기기" : "지도 보기"}
+                </Button>
+              )}
+              <Box sx={{ flex: 1 }} />
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => navigate('/cart')}
+              >
+                저장하기
+              </Button>
+            </Box>
           </div>
         </Box>
       </Box>
@@ -411,152 +432,213 @@ const TravelPlanner = () => {
 
         {/* 기존 메인 컨텐츠 유지 */}
         <Box sx={{ flex: 1, p: 2, overflow: 'hidden' }}>
-          {selectedDay ? (
+          {sidebarTab === 'schedule' ? (
+            selectedDay ? (
+              <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h5">
+                    {currentPlan.title}
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    startIcon={<SearchIcon />}
+                    onClick={() => setIsSearchOpen(true)}
+                  >
+                    장소 검색
+                  </Button>
+                </Box>
+                <Box sx={{ 
+                  flex: 1,
+                  display: 'grid',
+                  gridTemplateColumns: showMap ? { xs: '1fr', md: '1fr 1fr' } : '1fr',
+                  gap: 2,
+                  overflow: 'hidden'
+                }}>
+                  {/* 일정 목록 */}
+                  <Box sx={{ 
+                    bgcolor: 'background.paper',
+                    borderRadius: 1,
+                    boxShadow: 1,
+                    p: 2,
+                    overflow: 'auto',
+                    height: showMap ? 'auto' : '100%'
+                  }}>
+                    <Typography variant="h6" sx={{ mb: 2 }}>일정 목록</Typography>
+                    <DragDropContext onDragEnd={handleDragEnd}>
+                      <StrictModeDroppable droppableId="schedules">
+                        {(provided, snapshot) => (
+                          <List
+                            ref={provided.innerRef}
+                            {...provided.droppableProps}
+                            sx={{
+                              minHeight: '100px',
+                              bgcolor: snapshot.isDraggingOver ? 'action.hover' : 'transparent',
+                              transition: 'background-color 0.2s ease',
+                              '& > *:not(:last-child)': {
+                                mb: 1
+                              }
+                            }}
+                          >
+                            {currentPlan.schedules.map((schedule, index) => (
+                              <Draggable
+                                key={`schedule-${index}`}
+                                draggableId={`schedule-${index}`}
+                                index={index}
+                              >
+                                {(provided, snapshot) => (
+                                  <ListItem
+                                    ref={provided.innerRef}
+                                    {...provided.draggableProps}
+                                    sx={{
+                                      p: 2,
+                                      bgcolor: snapshot.isDragging ? 'action.hover' : 'background.paper',
+                                      borderRadius: 1,
+                                      border: 1,
+                                      borderColor: 'divider',
+                                      '&:hover': {
+                                        bgcolor: 'action.hover',
+                                      },
+                                    }}
+                                    secondaryAction={
+                                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                        <IconButton
+                                          edge="end"
+                                          aria-label="edit"
+                                          onClick={() => handleEditSchedule(schedule)}
+                                          sx={{ mr: 1 }}
+                                        >
+                                          <EditIcon />
+                                        </IconButton>
+                                        <IconButton
+                                          edge="end"
+                                          aria-label="delete"
+                                          onClick={() => handleDeleteSchedule(index)}
+                                        >
+                                          <DeleteIcon />
+                                        </IconButton>
+                                      </Box>
+                                    }
+                                  >
+                                    <div {...provided.dragHandleProps} style={{ marginRight: 8 }}>
+                                      <DragIndicatorIcon color="action" />
+                                    </div>
+                                    <ListItemText
+                                      primary={
+                                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                          <Typography variant="subtitle1">
+                                            {schedule.time}
+                                          </Typography>
+                                          <Typography variant="subtitle1" sx={{ ml: 2 }}>
+                                            {schedule.name}
+                                          </Typography>
+                                        </Box>
+                                      }
+                                      secondary={
+                                        <React.Fragment>
+                                          <Typography component="span" variant="body2" color="text.primary">
+                                            {schedule.address}
+                                          </Typography>
+                                          <br />
+                                          <Typography component="span" variant="body2" color="text.secondary">
+                                            {schedule.category}
+                                            {schedule.duration && ` • ${schedule.duration}`}
+                                          </Typography>
+                                    </React.Fragment>
+                                      }
+                                    />
+                                  </ListItem>
+                                )}
+                              </Draggable>
+                            ))}
+                            {provided.placeholder}
+                          </List>
+                        )}
+                      </StrictModeDroppable>
+                    </DragDropContext>
+                  </Box>
+
+                  {/* 지도 */}
+                  {showMap && (
+                    <Box sx={{ 
+                      bgcolor: 'background.paper',
+                      borderRadius: 1,
+                      boxShadow: 1,
+                      overflow: 'hidden',
+                      height: '100%'
+                    }}>
+                      <MapboxComponent
+                        selectedPlace={null}
+                        travelPlans={travelPlans}
+                        selectedDay={selectedDay}
+                        showAllMarkers={showAllMarkers}
+                      />
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+            ) : (
+              <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Typography variant="h6" color="text.secondary">
+                  날짜를 선택해주세요
+                </Typography>
+              </Box>
+            )
+          ) : sidebarTab === 'accommodation' ? (
             <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="h5">
-                  {currentPlan.title}
+                  숙소 검색
                 </Typography>
                 <Button
                   variant="contained"
                   startIcon={<SearchIcon />}
                   onClick={() => setIsSearchOpen(true)}
                 >
-                  장소 검색
+                  숙소 검색
                 </Button>
               </Box>
               <Box sx={{ 
                 flex: 1,
                 display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+                gridTemplateColumns: showMap ? { xs: '1fr', md: '1fr 1fr' } : '1fr',
                 gap: 2,
                 overflow: 'hidden'
               }}>
-                {/* 일정 목록 */}
+                {/* 호텔 목록 */}
                 <Box sx={{ 
                   bgcolor: 'background.paper',
                   borderRadius: 1,
                   boxShadow: 1,
                   p: 2,
-                  overflow: 'auto'
+                  overflow: 'auto',
+                  height: showMap ? 'auto' : '100%'
                 }}>
-                  <Typography variant="h6" sx={{ mb: 2 }}>일정 목록</Typography>
-                  <DragDropContext onDragEnd={handleDragEnd}>
-                    <StrictModeDroppable droppableId="schedules">
-                      {(provided, snapshot) => (
-                        <List
-                          ref={provided.innerRef}
-                          {...provided.droppableProps}
-                          sx={{
-                            minHeight: '100px',
-                            bgcolor: snapshot.isDraggingOver ? 'action.hover' : 'transparent',
-                            transition: 'background-color 0.2s ease',
-                            '& > *:not(:last-child)': {
-                              mb: 1
-                            }
-                          }}
-                        >
-                          {currentPlan.schedules.map((schedule, index) => (
-                            <Draggable
-                              key={`schedule-${index}`}
-                              draggableId={`schedule-${index}`}
-                              index={index}
-                            >
-                              {(provided, snapshot) => (
-                                <ListItem
-                                  ref={provided.innerRef}
-                                  {...provided.draggableProps}
-                                  sx={{
-                                    p: 2,
-                                    bgcolor: snapshot.isDragging ? 'action.hover' : 'background.paper',
-                                    borderRadius: 1,
-                                    border: 1,
-                                    borderColor: 'divider',
-                                    '&:hover': {
-                                      bgcolor: 'action.hover',
-                                    },
-                                  }}
-                                  secondaryAction={
-                                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                      <IconButton
-                                        edge="end"
-                                        aria-label="edit"
-                                        onClick={() => handleEditSchedule(schedule)}
-                                        sx={{ mr: 1 }}
-                                      >
-                                        <EditIcon />
-                                      </IconButton>
-                                      <IconButton
-                                        edge="end"
-                                        aria-label="delete"
-                                        onClick={() => handleDeleteSchedule(schedule.id)}
-                                      >
-                                        <DeleteIcon />
-                                      </IconButton>
-                                    </Box>
-                                  }
-                                >
-                                  <div {...provided.dragHandleProps} style={{ marginRight: 8 }}>
-                                    <DragIndicatorIcon color="action" />
-                                  </div>
-                                  <ListItemText
-                                    primary={
-                                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                        <Typography variant="subtitle1">
-                                          {schedule.time}
-                                        </Typography>
-                                        <Typography variant="subtitle1" sx={{ ml: 2 }}>
-                                          {schedule.name}
-                                        </Typography>
-                                      </Box>
-                                    }
-                                    secondary={
-                                      <React.Fragment>
-                                        <Typography component="span" variant="body2" color="text.primary">
-                                          {schedule.address}
-                                        </Typography>
-                                        <br />
-                                        <Typography component="span" variant="body2" color="text.secondary">
-                                          {schedule.category}
-                                          {schedule.duration && ` • ${schedule.duration}`}
-                                        </Typography>
-                              </React.Fragment>
-                                    }
-                                  />
-                                </ListItem>
-                              )}
-                            </Draggable>
-                          ))}
-                          {provided.placeholder}
-                        </List>
-                      )}
-                    </StrictModeDroppable>
-                  </DragDropContext>
+                  <Typography variant="h6" sx={{ mb: 2 }}>호텔 목록</Typography>
+                  <AccommodationPlan showMap={showMap} isSearchTab={false} />
                 </Box>
 
                 {/* 지도 */}
-                <Box sx={{ 
-                  bgcolor: 'background.paper',
-                  borderRadius: 1,
-                  boxShadow: 1,
-                  overflow: 'hidden',
-                  height: '100%'
-                }}>
-                  <MapboxComponent
-                    selectedPlace={null}
-                    travelPlans={travelPlans}
-                    selectedDay={selectedDay}
-                    showAllMarkers={showAllMarkers}
-                  />
-                </Box>
+                {showMap && (
+                  <Box sx={{ 
+                    bgcolor: 'background.paper',
+                    borderRadius: 1,
+                    boxShadow: 1,
+                    overflow: 'hidden',
+                    height: '100%'
+                  }}>
+                    <MapboxComponent
+                      selectedPlace={null}
+                      travelPlans={travelPlans}
+                      selectedDay={selectedDay}
+                      showAllMarkers={showAllMarkers}
+                    />
+                  </Box>
+                )}
               </Box>
             </Box>
           ) : (
-            <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Typography variant="h6" color="text.secondary">
-                날짜를 선택해주세요
-              </Typography>
-            </Box>
+            // 비행 계획 탭
+            <FlightPlan showMap={showMap} />
           )}
         </Box>
       </Box>

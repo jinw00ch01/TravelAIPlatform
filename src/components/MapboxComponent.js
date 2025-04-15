@@ -63,31 +63,34 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers }) => {
 
       // 지도 로드 완료 후 경로 레이어 추가
       map.current.on('load', () => {
-        map.current.addSource('route', {
-          type: 'geojson',
-          data: {
-            type: 'Feature',
-            properties: {},
-            geometry: {
-              type: 'LineString',
-              coordinates: []
+        // 소스가 이미 존재하는지 확인
+        if (!map.current.getSource('route')) {
+          map.current.addSource('route', {
+            type: 'geojson',
+            data: {
+              type: 'Feature',
+              properties: {},
+              geometry: {
+                type: 'LineString',
+                coordinates: []
+              }
             }
-          }
-        });
+          });
 
-        map.current.addLayer({
-          id: 'route',
-          type: 'line',
-          source: 'route',
-          layout: {
-            'line-join': 'round',
-            'line-cap': 'round'
-          },
-          paint: {
-            'line-color': '#1976d2',
-            'line-width': 4
-          }
-        });
+          map.current.addLayer({
+            id: 'route',
+            type: 'line',
+            source: 'route',
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round'
+            },
+            paint: {
+              'line-color': '#1976d2',
+              'line-width': 4
+            }
+          });
+        }
       });
     }
 
@@ -98,6 +101,21 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers }) => {
       }
     };
   }, []);
+
+  // 경로 초기화 및 업데이트 로직 개선
+  useEffect(() => {
+    if (map.current && map.current.getSource('route')) {
+      map.current.getSource('route').setData({
+        type: 'Feature',
+        properties: {},
+        geometry: {
+          type: 'LineString',
+          coordinates: []
+        }
+      });
+      setRouteInfo(null);
+    }
+  }, [selectedDay, travelPlans, transportMode]);
 
   // 일차 변경 시 경로 초기화
   useEffect(() => {
@@ -120,114 +138,133 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers }) => {
   useEffect(() => {
     if (!map.current || !travelPlans[selectedDay]?.schedules.length > 1) return;
 
-    const coordinates = travelPlans[selectedDay].schedules.map(schedule => [
-      schedule.lng,
-      schedule.lat
-    ]);
+    // 지도와 소스가 준비되었는지 확인
+    const waitForMap = () => {
+      if (map.current && map.current.isStyleLoaded() && map.current.getSource('route')) {
+        const coordinates = travelPlans[selectedDay].schedules.map(schedule => [
+          schedule.lng,
+          schedule.lat
+        ]);
 
-    let profile = transportMode === 'driving' ? 'mapbox/driving' : 'mapbox/walking';
-    const url = `https://api.mapbox.com/directions/v5/${profile}/${coordinates.map(coord => coord.join(',')).join(';')}?` + 
-      new URLSearchParams({
-        geometries: 'geojson',
-        steps: 'true',
-        language: 'ko',
-        overview: 'full',
-        annotations: 'distance,duration,speed',
-        access_token: mapboxgl.accessToken
-      });
-
-    fetch(url)
-      .then(response => response.json())
-      .then(data => {
-        if (data.routes && data.routes[0]) {
-          const route = data.routes[0];
-          console.log('Mapbox API Response:', route);
+        let profile = transportMode === 'driving' ? 'mapbox/driving' : 'mapbox/walking';
+        
+        // 각 구간별로 경로를 계산
+        const routePromises = [];
+        for (let i = 0; i < coordinates.length - 1; i++) {
+          const start = coordinates[i];
+          const end = coordinates[i + 1];
           
-          // 경로 라인 색상 설정
-          const routeColor = transportMode === 'driving' ? '#1976d2' : '#c62828';
-          
-          map.current.getSource('route').setData({
-            type: 'Feature',
-            properties: {},
-            geometry: route.geometry
-          });
+          const url = `https://api.mapbox.com/directions/v5/${profile}/${start.join(',')};${end.join(',')}?` + 
+            new URLSearchParams({
+              geometries: 'geojson',
+              steps: 'true',
+              language: 'ko',
+              overview: 'full',
+              annotations: 'distance,duration,speed',
+              access_token: mapboxgl.accessToken
+            });
 
-          // 경로 라인 스타일 업데이트
-          map.current.setPaintProperty('route', 'line-color', routeColor);
-
-          // 경로 정보 업데이트
-          const routeInfo = {
-            duration: Math.round(route.duration / 60),
-            distance: Math.round(route.distance / 1000 * 10) / 10,
-            steps: route.legs.flatMap((leg, legIndex) => {
-              console.log(`Processing leg ${legIndex}:`, leg);
-              
-              return leg.steps.map((step, stepIndex) => {
-                console.log(`Processing step ${stepIndex}:`, step);
-
-                // 방향 텍스트 생성
-                let instruction = '';
-                if (stepIndex === 0) {
-                  // 출발지
-                  instruction = `${travelPlans[selectedDay].schedules[legIndex].name}에서 출발`;
-                } else if (stepIndex === leg.steps.length - 1) {
-                  // 도착지
-                  instruction = `${travelPlans[selectedDay].schedules[legIndex + 1].name}에 도착`;
-                } else {
-                  // 중간 경로
-                  let direction = '';
-                  switch (step.maneuver.modifier) {
-                    case 'right': direction = '우회전'; break;
-                    case 'left': direction = '좌회전'; break;
-                    case 'straight': direction = '직진'; break;
-                    case 'slight right': direction = '우측 방향'; break;
-                    case 'slight left': direction = '좌측 방향'; break;
-                    case 'sharp right': direction = '급우회전'; break;
-                    case 'sharp left': direction = '급좌회전'; break;
-                    case 'uturn': direction = 'U턴'; break;
-                    default: direction = step.maneuver.type; break;
-                  }
-
-                  instruction = direction;
-                  if (step.name) {
-                    instruction += ` - ${step.name}`;
-                  }
-                  if (step.maneuver.instruction) {
-                    instruction = step.maneuver.instruction
-                      .replace('Turn right', '우회전')
-                      .replace('Turn left', '좌회전')
-                      .replace('Continue straight', '직진')
-                      .replace('Arrive at', '도착:')
-                      .replace('Head', '시작:')
-                      .replace('north', '북쪽')
-                      .replace('south', '남쪽')
-                      .replace('east', '동쪽')
-                      .replace('west', '서쪽')
-                      .replace('destination', '목적지');
-                  }
-                }
-
-                return {
-                  type: step.maneuver.type,
-                  instruction: instruction,
-                  distance: Math.round(step.distance / 1000 * 10) / 10,
-                  duration: Math.round(step.duration / 60),
-                  mode: transportMode,
-                  modifier: step.maneuver.modifier,
-                  name: step.name || ''
-                };
-              });
-            })
-          };
-
-          console.log('Processed Route Info:', routeInfo);
-          setRouteInfo(routeInfo);
+          routePromises.push(
+            fetch(url)
+              .then(response => response.json())
+              .then(data => ({
+                data,
+                startIndex: i,
+                endIndex: i + 1
+              }))
+          );
         }
-      })
-      .catch(error => {
-        console.error('Error fetching route:', error);
-        alert('경로를 가져오는 중 오류가 발생했습니다. 다시 시도해주세요.');
-      });
+
+        Promise.all(routePromises)
+          .then(results => {
+            const validRoutes = results.filter(result => result.data.routes && result.data.routes[0]);
+            const routeColor = transportMode === 'driving' ? '#1976d2' : '#c62828';
+            
+            // 모든 유효한 경로를 하나의 GeoJSON으로 결합
+            const combinedGeometry = {
+              type: 'Feature',
+              properties: {},
+              geometry: {
+                type: 'MultiLineString',
+                coordinates: validRoutes.map(result => result.data.routes[0].geometry.coordinates)
+              }
+            };
+
+            const source = map.current.getSource('route');
+            if (source) {
+              source.setData(combinedGeometry);
+              map.current.setPaintProperty('route', 'line-color', routeColor);
+            }
+
+            // 경로 정보 업데이트
+            const routeInfo = {
+              duration: validRoutes.reduce((total, result) => total + Math.round(result.data.routes[0].duration / 60), 0),
+              distance: validRoutes.reduce((total, result) => total + Math.round(result.data.routes[0].distance / 1000 * 10) / 10, 0),
+              steps: validRoutes.flatMap((result, routeIndex) => {
+                const leg = result.data.routes[0].legs[0];
+                return leg.steps.map((step, stepIndex) => {
+                  let instruction = '';
+                  if (stepIndex === 0) {
+                    instruction = `${travelPlans[selectedDay].schedules[result.startIndex].name}에서 출발`;
+                  } else if (stepIndex === leg.steps.length - 1) {
+                    instruction = `${travelPlans[selectedDay].schedules[result.endIndex].name}에 도착`;
+                  } else {
+                    let direction = '';
+                    switch (step.maneuver.modifier) {
+                      case 'right': direction = '우회전'; break;
+                      case 'left': direction = '좌회전'; break;
+                      case 'straight': direction = '직진'; break;
+                      case 'slight right': direction = '우측 방향'; break;
+                      case 'slight left': direction = '좌측 방향'; break;
+                      case 'sharp right': direction = '급우회전'; break;
+                      case 'sharp left': direction = '급좌회전'; break;
+                      case 'uturn': direction = 'U턴'; break;
+                      default: direction = step.maneuver.type; break;
+                    }
+
+                    instruction = direction;
+                    if (step.name) {
+                      instruction += ` - ${step.name}`;
+                    }
+                    if (step.maneuver.instruction) {
+                      instruction = step.maneuver.instruction
+                        .replace('Turn right', '우회전')
+                        .replace('Turn left', '좌회전')
+                        .replace('Continue straight', '직진')
+                        .replace('Arrive at', '도착:')
+                        .replace('Head', '시작:')
+                        .replace('north', '북쪽')
+                        .replace('south', '남쪽')
+                        .replace('east', '동쪽')
+                        .replace('west', '서쪽')
+                        .replace('destination', '목적지');
+                    }
+                  }
+
+                  return {
+                    type: step.maneuver.type,
+                    instruction: instruction,
+                    distance: Math.round(step.distance / 1000 * 10) / 10,
+                    duration: Math.round(step.duration / 60),
+                    mode: transportMode,
+                    modifier: step.maneuver.modifier,
+                    name: step.name || ''
+                  };
+                });
+              })
+            };
+
+            setRouteInfo(routeInfo);
+          })
+          .catch(error => {
+            console.error('Error fetching routes:', error);
+          });
+      } else {
+        setTimeout(waitForMap, 100);
+      }
+    };
+
+    waitForMap();
   }, [transportMode, travelPlans, selectedDay]);
 
   // 마커 표시
