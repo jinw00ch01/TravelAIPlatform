@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/auth/AuthContext';
-import { Box, Button, Typography, Paper, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, List, ListItem, ListItemText, TextField, Tabs, Tab, CircularProgress } from '@mui/material';
+import { Box, Button, Typography, Paper, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, List, ListItem, ListItemText, TextField, Tabs, Tab } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import SearchIcon from '@mui/icons-material/Search';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -48,14 +48,20 @@ const TravelPlanner = () => {
   const [sidebarTab, setSidebarTab] = useState('schedule');
   const [isLoadingPlan, setIsLoadingPlan] = useState(false);
 
+  // 컴포넌트 마운트 시 최신 여행 계획 로드
   useEffect(() => {
+    console.log('[TravelPlanner] useEffect 실행됨. 현재 user 상태:', user);
+
     const loadInitialPlan = async () => {
+      // --- loadInitialPlan 함수 내용 시작 ---
       setIsLoadingPlan(true);
       try {
-        console.log('최신 여행 계획을 로드합니다...');
-        const data = await travelApi.loadPlan({ newest: true });
+        console.log('[TravelPlanner] 최신 여행 계획 로드 시작...');
+        const data = await travelApi.loadPlan({ newest: true }); // 최신 계획 로드
+        console.log('[TravelPlanner] travelApi.loadPlan 응답 데이터:', data); // 응답 데이터 직접 로깅
+
         if (data && data.planData) {
-          console.log('최신 여행 계획 로드 성공:', data);
+          console.log('[TravelPlanner] 유효한 planData 수신:', data.planData);
           const loadedPlans = data.planData;
           setTravelPlans(loadedPlans);
           setDayOrder(Object.keys(loadedPlans));
@@ -63,29 +69,29 @@ const TravelPlanner = () => {
             setSelectedDay(Object.keys(loadedPlans)[0]);
           }
         } else {
-          console.log('로드할 최신 여행 계획이 없습니다.');
+          console.log('[TravelPlanner] planData가 없거나 유효하지 않음:', data);
+          // 기본 상태 유지 또는 초기화 (기존 로직)
           setTravelPlans({ 1: { title: '1일차', schedules: [] } });
           setDayOrder(['1']);
           setSelectedDay(1);
         }
       } catch (error) {
-        console.error('최신 여행 계획 로드 실패:', error);
+        console.error('[TravelPlanner] 최신 여행 계획 로드 실패:', error);
         alert('최신 여행 계획을 불러오는데 실패했습니다.');
       } finally {
         setIsLoadingPlan(false);
+        console.log('[TravelPlanner] 최신 여행 계획 로드 완료 (성공/실패 무관).');
       }
+      // --- loadInitialPlan 함수 내용 끝 ---
     };
 
-    if (user) {
+    if (user) { // 로그인된 경우에만 로드
+      console.log('[TravelPlanner] user 확인됨. loadInitialPlan 호출 시도.');
       loadInitialPlan();
+    } else {
+      console.log('[TravelPlanner] user 없음. loadInitialPlan 호출 안 함.');
     }
-  }, [user]);
-
-  useEffect(() => {
-    if (!user) {
-      navigate('/login');
-    }
-  }, [user, navigate]);
+  }, [user]); // user가 변경될 때 (로그인/로그아웃 시) 다시 로드
 
   // 지도 리사이즈 핸들러 추가
   useEffect(() => {
@@ -266,15 +272,6 @@ const TravelPlanner = () => {
     setDayOrder(newDayOrder);
     setTravelPlans(newTravelPlans);
   };
-
-  if (isLoadingPlan) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <CircularProgress />
-        <Typography sx={{ ml: 2 }}>여행 계획을 불러오는 중...</Typography>
-      </Box>
-    );
-  }
 
   if (!user) return null;
 
