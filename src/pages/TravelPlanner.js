@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/auth/AuthContext';
-import { Box, Button, Typography, Paper, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, List, ListItem, ListItemText, TextField, Tabs, Tab } from '@mui/material';
+import { Box, Button, Typography, Paper, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, List, ListItem, ListItemText, TextField, Tabs, Tab, CircularProgress } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import SearchIcon from '@mui/icons-material/Search';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -12,6 +12,7 @@ import MapboxComponent from '../components/MapboxComponent';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import AccommodationPlan from '../components/AccommodationPlan';
 import FlightPlan from '../components/FlightPlan';
+import { travelApi } from '../services/api';
 
 const StrictModeDroppable = ({ children, ...props }) => {
   const [enabled, setEnabled] = useState(false);
@@ -45,6 +46,40 @@ const TravelPlanner = () => {
   const [showAllMarkers, setShowAllMarkers] = useState(false);
   const [dayOrder, setDayOrder] = useState(Object.keys(travelPlans));
   const [sidebarTab, setSidebarTab] = useState('schedule');
+  const [isLoadingPlan, setIsLoadingPlan] = useState(false);
+
+  useEffect(() => {
+    const loadInitialPlan = async () => {
+      setIsLoadingPlan(true);
+      try {
+        console.log('최신 여행 계획을 로드합니다...');
+        const data = await travelApi.loadPlan({ newest: true });
+        if (data && data.planData) {
+          console.log('최신 여행 계획 로드 성공:', data);
+          const loadedPlans = data.planData;
+          setTravelPlans(loadedPlans);
+          setDayOrder(Object.keys(loadedPlans));
+          if (Object.keys(loadedPlans).length > 0) {
+            setSelectedDay(Object.keys(loadedPlans)[0]);
+          }
+        } else {
+          console.log('로드할 최신 여행 계획이 없습니다.');
+          setTravelPlans({ 1: { title: '1일차', schedules: [] } });
+          setDayOrder(['1']);
+          setSelectedDay(1);
+        }
+      } catch (error) {
+        console.error('최신 여행 계획 로드 실패:', error);
+        alert('최신 여행 계획을 불러오는데 실패했습니다.');
+      } finally {
+        setIsLoadingPlan(false);
+      }
+    };
+
+    if (user) {
+      loadInitialPlan();
+    }
+  }, [user]);
 
   useEffect(() => {
     if (!user) {
@@ -231,6 +266,15 @@ const TravelPlanner = () => {
     setDayOrder(newDayOrder);
     setTravelPlans(newTravelPlans);
   };
+
+  if (isLoadingPlan) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <CircularProgress />
+        <Typography sx={{ ml: 2 }}>여행 계획을 불러오는 중...</Typography>
+      </Box>
+    );
+  }
 
   if (!user) return null;
 

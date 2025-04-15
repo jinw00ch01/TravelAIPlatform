@@ -1,8 +1,8 @@
 import axios from 'axios';
 import { fetchAuthSession } from 'aws-amplify/auth';
 
-// API_URL 환경 변수에서 가져오기
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+// API_URL 환경 변수에서 가져오기 (문제가 해결될 때까지 임시로 직접 지정)
+const API_URL = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/';
 
 const apiClient = axios.create({
   baseURL: API_URL,
@@ -57,6 +57,18 @@ export const travelApi = {
       return response.data;
     } catch (error) {
       console.error('여행 계획 생성 실패:', error);
+      throw error;
+    }
+  },
+  
+  // 최신 여행 계획 또는 조건에 맞는 계획 불러오기
+  loadPlan: async (params = { newest: true }) => {
+    try {
+      console.log('여행 계획 불러오기 시도 - URL:', API_URL, 'Params:', params);
+      const response = await apiClient.post('api/travel/load', params);
+      return response.data;
+    } catch (error) {
+      console.error('여행 계획 불러오기 실패:', error);
       throw error;
     }
   },
