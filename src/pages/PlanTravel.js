@@ -9,6 +9,7 @@ import { cn } from "../lib/utils";
 import { CalendarIcon, Minus, Plus, Plane, Hotel, MapPin, Loader2 } from "lucide-react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import { travelApi } from "../services/api";
 
 export const PlanTravel = () => {
   const navigate = useNavigate();
@@ -103,13 +104,25 @@ export const PlanTravel = () => {
   };
 
   const handleSearch = async () => {
-    if (!searchText.trim()) return;
+    if (!searchText.trim()) {
+      alert('여행 계획을 입력해주세요.');
+      return;
+    }
 
     setIsProcessing(true);
     try {
-      await sendToGemini(searchText, 'text');
+      const result = await travelApi.createTravelPlan({
+        prompt: searchText
+      });
+      
+      console.log('여행 계획 생성 성공:', result);
+      
+      // 여행 계획 생성 성공 시 플래너 페이지로 이동
+      navigate('/planner', { state: { planData: result.plan } });
+      
     } catch (error) {
-      console.error('Error sending search text to Gemini:', error);
+      console.error('여행 계획 생성 오류:', error);
+      alert('여행 계획 생성에 실패했습니다. 다시 시도해주세요.');
     } finally {
       setIsProcessing(false);
     }

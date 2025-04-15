@@ -20,15 +20,28 @@ apiClient.interceptors.request.use(
       const token = tokens.idToken.toString();
       config.headers.Authorization = `Bearer ${token}`;
     } catch (error) {
-      // 로그인 안 된 상태에서 로컬 개발 환경인 경우 테스트용 토큰 추가
-      if (process.env.NODE_ENV === 'development' && API_URL.includes('localhost')) {
+      // 로그인 안 된 상태에서 개발 환경인 경우 테스트용 토큰 추가
+      if (process.env.NODE_ENV === 'development') {
         config.headers.Authorization = 'Bearer test-token';
       }
       // 그 외에는 그냥 통과
     }
+    console.log('API 요청:', config.url, config.headers, config.data);
     return config;
   },
   (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// 응답 인터셉터 - 응답 로깅
+apiClient.interceptors.response.use(
+  (response) => {
+    console.log('API 응답:', response.status, response.data);
+    return response;
+  },
+  (error) => {
+    console.error('API 오류:', error.response?.status, error.response?.data || error.message);
     return Promise.reject(error);
   }
 );
@@ -38,7 +51,9 @@ export const travelApi = {
   // 여행 계획 생성 요청
   createTravelPlan: async (travelData) => {
     try {
-      const response = await apiClient.post('/api/travel/plan', travelData);
+      const response = await apiClient.post('/api/travel/python-plan', {
+        query: travelData.prompt
+      });
       return response.data;
     } catch (error) {
       console.error('여행 계획 생성 실패:', error);
