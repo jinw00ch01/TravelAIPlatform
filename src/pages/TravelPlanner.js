@@ -50,35 +50,139 @@ const TravelPlanner = () => {
 
   // 여행 계획 로드 함수 - 외부에서 재사용할 수 있도록 분리
   const loadTravelPlan = async (params = { newest: true }) => {
+    console.log('[TravelPlanner] loadTravelPlan 함수 시작', params);
     setIsLoadingPlan(true);
     try {
       console.log('[TravelPlanner] 여행 계획 로드 시작...');
       const data = await travelApi.loadPlan(params);
-      console.log('[TravelPlanner] travelApi.loadPlan 응답 데이터:', data);
+      console.log('[TravelPlanner] travelApi.loadPlan 응답 데이터:', JSON.stringify(data, null, 2)); // 응답 데이터 상세 로깅
 
-      // 응답 구조 확인 (planData 또는 plan 필드 확인)
-      const planData = data?.planData || data?.plan;
+      let itineraryData = null;
+
+      // 1. data.plan[0].plan_data 에서 itinerary 추출 시도 (Standard JS Access)
+      if (data?.plan && Array.isArray(data.plan) && data.plan.length > 0) {
+        const firstPlanItem = data.plan[0];
+        // Check if plan_data and the nested structure exist using standard JS access
+        if (firstPlanItem?.plan_data?.candidates && Array.isArray(firstPlanItem.plan_data.candidates) && firstPlanItem.plan_data.candidates.length > 0) {
+          console.log('[TravelPlanner] data.plan[0].plan_data 형식 감지 (Standard JS), 파싱 시도...');
+          try {
+            const candidate = firstPlanItem.plan_data.candidates[0]; // Direct array access
+            if (candidate?.content?.parts && Array.isArray(candidate.content.parts) && candidate.content.parts.length > 0) {
+              const textContent = candidate.content.parts[0]?.text; // Direct property access
+              if (textContent) {
+                const jsonMatch = textContent.match(/```json\n([\s\S]*?)\n```/); // Regex to find the JSON block
+                if (jsonMatch && jsonMatch[1]) {
+                  console.log('[TravelPlanner] JSON 데이터 추출 성공 (data.plan[0].plan_data)');
+                  const parsedData = JSON.parse(jsonMatch[1]);
+                  if (parsedData.itinerary) {
+                    console.log('[TravelPlanner] itinerary 데이터 확인 (data.plan[0].plan_data)');
+                    itineraryData = parsedData.itinerary;
+                  } else {
+                    console.log('[TravelPlanner] 파싱된 JSON에 itinerary 없음');
+                  }
+                } else {
+                  console.log('[TravelPlanner] textContent에서 JSON 블록 못 찾음:', textContent); // Log content if match fails
+                }
+              } else {
+                console.log('[TravelPlanner] content.parts[0]에 text 없음');
+              }
+            } else {
+              console.log('[TravelPlanner] candidates[0]에 content.parts 없음');
+            }
+          } catch (parseError) {
+            console.error('data.plan[0].plan_data 파싱 실패:', parseError);
+          }
+        } else {
+            console.log('[TravelPlanner] data.plan[0]에 plan_data.candidates 구조 없음');
+        }
+      }
       
-      if (planData && Array.isArray(planData) && planData.length > 0) {
-        console.log('[TravelPlanner] 유효한 계획 데이터 수신:', planData);
+      // 2. (Fallback) 이전 방식: data.candidates 에서 itinerary 추출 시도 (DynamoDB-like format)
+      if (!itineraryData && data?.candidates?.L && data.candidates.L.length > 0) {
+        console.log('[TravelPlanner] data.candidates 형식 감지 (DynamoDB), 파싱 시도...');
+        try {
+          const candidateData = data.candidates.L[0].M;
+          if (candidateData.content?.M?.parts?.L && candidateData.content.M.parts.L.length > 0) {
+            const textContent = candidateData.content.M.parts.L[0].M.text.S;
+            const jsonMatch = textContent.match(/```json\n([\s\S]*?)\n```/);
+            if (jsonMatch && jsonMatch[1]) {
+              console.log('[TravelPlanner] JSON 데이터 추출 성공 (data.candidates)');
+              const parsedData = JSON.parse(jsonMatch[1]);
+              if (parsedData.itinerary) {
+                console.log('[TravelPlanner] itinerary 데이터 확인 (data.candidates)');
+                itineraryData = parsedData.itinerary;
+              }
+            }
+          }
+        } catch (parseError) {
+          console.error('data.candidates 파싱 실패:', parseError);
+        }
+      }
+      
+      // 3. (Fallback) 가장 기본적인 planData 또는 plan 배열 확인
+      if (!itineraryData) {
+        const basicPlanData = data?.planData || data?.plan;
+        // Check if it's the plan array itself, not the outer structure
+        if (Array.isArray(basicPlanData) && basicPlanData.length > 0 && basicPlanData[0].day) { 
+          itineraryData = basicPlanData;
+           console.log('[TravelPlanner] 기본 planData/plan 필드 (itinerary 형식) 사용');
+        } else {
+            console.log('[TravelPlanner] 기본 planData/plan 필드가 itinerary 형식이 아님');
+        }
+      }
+
+      if (itineraryData && Array.isArray(itineraryData)) {
+        console.log('[TravelPlanner] 유효한 itinerary 데이터 수신:', itineraryData);
         
-        // 여기서 배열 형태의 plan 데이터를 우리 앱에서 사용하는 형식으로 변환
+        // 데이터 형식 변환: itinerary 배열 → 일차별 객체 맵핑
         const formattedPlans = {};
-        planData.forEach((plan, index) => {
-          const dayNumber = (index + 1).toString();
+        console.log('[TravelPlanner] itinerary 데이터 변환 시작...');
+        
+        itineraryData.forEach((dayPlan, index) => {
+          const dayNumber = (dayPlan.day || index + 1).toString();
+          console.log(`[TravelPlanner] ${dayNumber}일차 데이터 처리 중...`, dayPlan);
+
+          let schedules = [];
+          if (dayPlan.activities && Array.isArray(dayPlan.activities)) {
+            console.log(`[TravelPlanner] ${dayNumber}일차 activities 발견`);
+            schedules = dayPlan.activities.map((activity, idx) => ({
+              id: `${dayNumber}-${idx}`,
+              name: activity.title,
+              time: activity.time || '00:00',
+              address: activity.location || '',
+              category: activity.description || '',
+              duration: activity.duration || '1시간',
+              notes: '',
+              lat: activity.latitude || (dayPlan.last_location?.latitude),
+              lng: activity.longitude || (dayPlan.last_location?.longitude)
+            }));
+          } else if (dayPlan.schedules && Array.isArray(dayPlan.schedules)) {
+            // 기존 형식 호환성
+            console.log(`[TravelPlanner] ${dayNumber}일차 schedules 발견 (호환성)`);
+            schedules = dayPlan.schedules;
+          }
+          
           formattedPlans[dayNumber] = {
-            title: `${dayNumber}일차`,
-            schedules: plan.schedules || []
+            title: dayPlan.title || `${dayNumber}일차`,
+            description: dayPlan.description || '',
+            schedules: schedules
           };
         });
-        
-        setTravelPlans(formattedPlans);
-        setDayOrder(Object.keys(formattedPlans));
+                
         if (Object.keys(formattedPlans).length > 0) {
+          console.log('[TravelPlanner] 상태 업데이트 예정:', formattedPlans);
+          setTravelPlans(formattedPlans);
+          setDayOrder(Object.keys(formattedPlans));
           setSelectedDay(Object.keys(formattedPlans)[0]);
+        } else {
+          console.log('[TravelPlanner] 변환된 계획 데이터가 없음');
+          // 기본 상태 유지
+          setTravelPlans({ 1: { title: '1일차', schedules: [] } });
+          setDayOrder(['1']);
+          setSelectedDay(1);
         }
       } else {
-        console.log('[TravelPlanner] 계획 데이터가 없거나 유효하지 않음:', data);
+        console.log('[TravelPlanner] 최종적으로 유효한 itinerary 데이터를 찾지 못함:', data);
         // 기본 상태 유지 또는 초기화 (기존 로직)
         setTravelPlans({ 1: { title: '1일차', schedules: [] } });
         setDayOrder(['1']);
@@ -101,19 +205,19 @@ const TravelPlanner = () => {
       }
     } finally {
       setIsLoadingPlan(false);
-      console.log('[TravelPlanner] 여행 계획 로드 완료 (성공/실패 무관).');
+      console.log('[TravelPlanner] loadTravelPlan 함수 종료');
     }
   };
 
   // 컴포넌트 마운트 시 최신 여행 계획 로드
   useEffect(() => {
-    console.log('[TravelPlanner] useEffect 실행됨. 현재 user 상태:', user);
+    console.log('[TravelPlanner] 마운트 useEffect 실행됨. 현재 user 상태:', user);
 
     if (user) { // 로그인된 경우에만 로드
-      console.log('[TravelPlanner] user 확인됨. loadTravelPlan 호출 시도.');
+      console.log('[TravelPlanner] user 확인됨. loadTravelPlan 호출 시도 (마운트).');
       loadTravelPlan();
     } else {
-      console.log('[TravelPlanner] user 없음. loadTravelPlan 호출 안 함.');
+      console.log('[TravelPlanner] user 없음. loadTravelPlan 호출 안 함 (마운트).');
     }
   }, [user]); // user가 변경될 때 (로그인/로그아웃 시) 다시 로드
 
@@ -122,19 +226,23 @@ const TravelPlanner = () => {
     const handleKeyDown = (event) => {
       // F5 키 코드는 116
       if (event.keyCode === 116) {
-        console.log('[TravelPlanner] F5 키 감지, 여행 계획 새로고침...');
+        console.log('[TravelPlanner] F5 키 입력 감지');
         event.preventDefault(); // 기본 새로고침 동작 방지
         if (user) {
+          console.log('[TravelPlanner] F5 감지: loadTravelPlan 호출 시도');
           loadTravelPlan();
+        } else {
+          console.log('[TravelPlanner] F5 감지: user 없음, 로드 안 함');
         }
       }
     };
 
-    // 이벤트 리스너 등록
+    console.log('[TravelPlanner] F5 이벤트 리스너 등록');
     window.addEventListener('keydown', handleKeyDown);
 
     // 컴포넌트 언마운트 시 이벤트 리스너 제거
     return () => {
+      console.log('[TravelPlanner] F5 이벤트 리스너 제거');
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [user]); // user 상태가 변경될 때 이벤트 리스너 재설정
