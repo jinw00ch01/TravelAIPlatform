@@ -4,8 +4,6 @@ import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
 
-// Users 테이블 이름을 환경 변수나 직접 지정해야 합니다.
-// AWS Lambda 콘솔에서 환경 변수로 설정하는 것을 권장합니다.
 const USERS_TABLE_NAME = process.env.USERS_TABLE_NAME; // 실제 테이블 이름으로 변경 필요
 
 export const handler = async (event) => {
@@ -18,10 +16,9 @@ export const handler = async (event) => {
   }
 
   // Cognito 이벤트에서 사용자 속성 추출
-  // custom: 접두사가 붙을 수 있으므로 확인 필요 (콘솔에서 설정 확인)
   const { sub, name, email, picture } = event.request.userAttributes;
   const birthdate = event.request.userAttributes['custom:birthdate'] || event.request.userAttributes['birthdate']; // Cognito 설정에 따라 키 이름 확인 필요
-  const phoneNumber = event.request.userAttributes['custom:phone_number'] || event.request.userAttributes['phone_number'] || event.request.userAttributes['phoneNumber']; // Cognito는 phone_number 사용
+  const phoneNumber = event.request.userAttributes['phone_number'] || null; // Cognito에서 phone_number로 사용하는 값만 가져옴
 
   // DynamoDB에 저장할 항목
   const item = {

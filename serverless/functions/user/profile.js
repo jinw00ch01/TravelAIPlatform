@@ -127,7 +127,7 @@ export const handler = async (event) => {
     }
     
     if (phoneNumber) {
-      updateExpression += ', phone_number = :phoneNumber';
+      updateExpression += ', phoneNumber = :phoneNumber';
       expressionAttributeValues[':phoneNumber'] = phoneNumber;
     }
     
@@ -198,7 +198,7 @@ export const handler = async (event) => {
           userId: result.Attributes.userId,
           name: result.Attributes.name,
           email: result.Attributes.email,
-          phoneNumber: result.Attributes.phone_number || result.Attributes.phoneNumber,
+          phoneNumber: result.Attributes.phoneNumber,
           birthdate: result.Attributes.birthdate,
           picture: result.Attributes.picture,
           updatedAt: result.Attributes.updatedAt

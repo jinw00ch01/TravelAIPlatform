@@ -178,7 +178,7 @@ export const handler = async (event) => {
         userId: Item.userId, // sub 대신 userId로 통일
         email: Item.email || '',
         name: Item.name || '',
-        phoneNumber: Item.phoneNumber || Item.phone_number || '', // DynamoDB에 phoneNumber 또는 phone_number로 저장된 경우 처리
+        phoneNumber: Item.phoneNumber || '',
         birthdate: Item.birthdate || '',
         picture: Item.picture || null,
         createdAt: Item.createdAt,
