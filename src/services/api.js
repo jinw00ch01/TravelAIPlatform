@@ -2,13 +2,16 @@ import axios from 'axios';
 import { fetchAuthSession } from 'aws-amplify/auth';
 
 // API_URL 환경 변수에서 가져오기 (문제가 해결될 때까지 임시로 직접 지정)
-const API_URL = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/';
+const API_URL = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage';
+
+// CORS 프록시 서버 URL 삭제
 
 const apiClient = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: false // CORS 요청 시 credentials 전송 안함
 });
 
 // 요청 인터셉터 - 인증 토큰 추가
@@ -51,9 +54,14 @@ export const travelApi = {
   // 여행 계획 생성 요청
   createTravelPlan: async (travelData) => {
     try {
-      const response = await apiClient.post('/api/travel/python-plan', {
+      const response = await axios.post(`${API_URL}/api/travel/python-plan`, {
         query: travelData.prompt
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+        }
       });
+      
       return response.data;
     } catch (error) {
       console.error('여행 계획 생성 실패:', error);
@@ -64,8 +72,14 @@ export const travelApi = {
   // 최신 여행 계획 또는 조건에 맞는 계획 불러오기
   loadPlan: async (params = { newest: true }) => {
     try {
-      console.log('여행 계획 불러오기 시도 - URL:', API_URL, 'Params:', params);
-      const response = await apiClient.post('api/travel/load', params);
+      console.log('여행 계획 불러오기 시도 - URL:', `${API_URL}/api/travel/load`, 'Params:', params);
+      
+      const response = await axios.post(`${API_URL}/api/travel/load`, params, {
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
       return response.data;
     } catch (error) {
       console.error('여행 계획 불러오기 실패:', error);
