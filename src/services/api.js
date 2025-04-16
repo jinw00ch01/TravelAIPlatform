@@ -1,14 +1,42 @@
 import axios from 'axios';
 import { fetchAuthSession } from 'aws-amplify/auth';
 
-// API_URL 환경 변수에서 가져오기
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+// API_URL 환경 변수에서 가져오기 (문제가 해결될 때까지 임시로 직접 지정)
+const API_URL = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage';
+
+// axios 재시도 로직 구현
+axios.interceptors.response.use(null, async (error) => {
+  // 원본 요청 설정 가져오기
+  const config = error.config;
+  
+  // 재시도 회수 설정이 있고 최대 재시도 회수에 도달하지 않았다면
+  if (config.retry && (!config._retryCount || config._retryCount < config.retry)) {
+    // 재시도 횟수 증가
+    config._retryCount = config._retryCount ? config._retryCount + 1 : 1;
+    
+    // 재시도 딜레이 설정
+    const delay = config.retryDelay || 1000;
+    
+    // 로그 출력
+    console.log(`요청 재시도 (${config._retryCount}/${config.retry}): ${config.url}`);
+    
+    // 지정된 시간만큼 대기
+    await new Promise(resolve => setTimeout(resolve, delay));
+    
+    // 같은 설정으로 요청 재시도
+    return axios(config);
+  }
+  
+  // 모든 재시도가 실패하면 오류 전달
+  return Promise.reject(error);
+});
 
 const apiClient = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: false // CORS 요청 시 credentials 전송 안함
 });
 
 // 요청 인터셉터 - 인증 토큰 추가
@@ -51,12 +79,55 @@ export const travelApi = {
   // 여행 계획 생성 요청
   createTravelPlan: async (travelData) => {
     try {
-      const response = await apiClient.post('/api/travel/python-plan', {
+      const response = await axios.post(`${API_URL}/api/travel/python-plan`, {
         query: travelData.prompt
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+        }
       });
+      
       return response.data;
     } catch (error) {
       console.error('여행 계획 생성 실패:', error);
+      throw error;
+    }
+  },
+  
+  // 최신 여행 계획 또는 조건에 맞는 계획 불러오기
+  loadPlan: async (params = { newest: true }) => {
+    try {
+      console.log('여행 계획 불러오기 시도 - URL:', `${API_URL}/api/travel/load`, 'Params:', params);
+      
+      const response = await axios.post(`${API_URL}/api/travel/load`, params, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Origin': window.location.origin,
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': 'Content-Type,Authorization'
+        },
+        // 타임아웃 설정 (8초)
+        timeout: 8000,
+        // 재시도 설정 
+        retry: 2,
+        retryDelay: 1000
+      });
+      
+      return response.data;
+    } catch (error) {
+      // 오류 상세 로깅
+      if (error.response) {
+        // 서버가 응답했지만 2xx 범위 외의 상태 코드인 경우
+        console.error('여행 계획 불러오기 실패 - 서버 응답:', error.response.status, error.response.data);
+      } else if (error.request) {
+        // 요청이 전송되었지만 응답이 없는 경우
+        console.error('여행 계획 불러오기 실패 - 응답 없음:', error.request);
+      } else {
+        // 요청 설정 중 오류가 발생한 경우
+        console.error('여행 계획 불러오기 실패 - 요청 오류:', error.message);
+      }
+      
+      // 예외 정보 전달
       throw error;
     }
   },
