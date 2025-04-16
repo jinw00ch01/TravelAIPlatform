@@ -77,19 +77,20 @@ apiClient.interceptors.response.use(
 // API 함수들
 export const travelApi = {
   // 여행 계획 생성 요청
-  createTravelPlan: async (travelData) => {
+  createTravelPlan: async (planDetails) => {
     try {
-      const response = await axios.post(`${API_URL}/api/travel/python-plan`, {
-        query: travelData.prompt
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
-        }
+      console.log('여행 계획 생성 요청 시도 - URL:', `${API_URL}/api/travel/python-plan`, 'Details:', planDetails);
+      
+      // apiClient 인스턴스를 사용하여 요청 (인터셉터에서 인증 헤더 자동 추가)
+      const response = await apiClient.post('/api/travel/python-plan', planDetails, {
+        timeout: 60000, // Gemini 호출 포함 시 타임아웃 늘림 (60초)
+        // 재시도는 생성 요청에 부적합
       });
       
       return response.data;
     } catch (error) {
-      console.error('여행 계획 생성 실패:', error);
+      // 오류 로깅은 인터셉터에서 처리되므로 여기서는 throw만 해도 됨
+      // console.error('여행 계획 생성 실패:', error); 
       throw error;
     }
   },
@@ -99,13 +100,8 @@ export const travelApi = {
     try {
       console.log('여행 계획 불러오기 시도 - URL:', `${API_URL}/api/travel/load`, 'Params:', params);
       
-      const response = await axios.post(`${API_URL}/api/travel/load`, params, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Origin': window.location.origin,
-          'Access-Control-Request-Method': 'POST',
-          'Access-Control-Request-Headers': 'Content-Type,Authorization'
-        },
+      // 직접 axios 대신 apiClient 사용 (인터셉터에서 인증 헤더 자동 추가)
+      const response = await apiClient.post('/api/travel/load', params, {
         // 타임아웃 설정 (8초)
         timeout: 8000,
         // 재시도 설정 

@@ -258,70 +258,70 @@ export const PlanTravel = () => {
                 </svg>
               </div>
             </div>
-            
-            {/* Search section */}
+
+          {/* Search section */}
             <div className="mb-6">
-              <div className="relative h-[88px]">
+            <div className="relative h-[88px]">
                 <Card className="w-full border-gray-200 bg-white">
-                  <CardContent className="p-0">
-                    <div className="flex items-center">
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        className="hidden"
-                        accept=".txt,.jpg,.jpeg,.png"
-                        multiple
-                        onChange={handleFileUpload}
-                        disabled={isProcessing}
-                      />
-                      <Button
-                        className="absolute w-[25px] h-[25px] top-[30px] left-[8px] bg-gray-50 rounded-full border border-primary/90 flex items-center justify-center z-10 p-0 min-w-0 hover:bg-gray-100"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={isProcessing}
+                <CardContent className="p-0">
+                  <div className="flex items-center">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      className="hidden"
+                      accept=".txt,.jpg,.jpeg,.png"
+                      multiple
+                      onChange={handleFileUpload}
+                      disabled={isProcessing}
+                    />
+                    <Button
+                      className="absolute w-[25px] h-[25px] top-[30px] left-[8px] bg-gray-50 rounded-full border border-primary/90 flex items-center justify-center z-10 p-0 min-w-0 hover:bg-gray-100"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isProcessing}
+                    >
+                      <svg
+                        width="15"
+                        height="15"
+                        viewBox="0 0 15 15"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
                       >
-                        <svg
-                          width="15"
-                          height="15"
-                          viewBox="0 0 15 15"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <path
-                            d="M7.5 0C3.36 0 0 3.36 0 7.5C0 11.64 3.36 15 7.5 15C11.64 15 15 11.64 15 7.5C15 3.36 11.64 0 7.5 0ZM11.25 8.25H8.25V11.25H6.75V8.25H3.75V6.75H6.75V3.75H8.25V6.75H11.25V8.25Z"
-                            fill="currentColor"
-                            className="text-primary"
-                          />
-                        </svg>
-                      </Button>
-                      <Input
-                        className="min-h-[60px] pl-10 text-gray-400 text-base tracking-normal leading-normal border-none bg-white placeholder:text-gray-400"
-                        placeholder="+버튼을 눌러 이미지나 텍스트파일을 추가할 수 있습니다."
-                        value={searchText}
-                        onChange={(e) => setSearchText(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                        disabled={isProcessing}
-                      />
-                      <Button
-                        className="absolute right-0 w-[25px] h-[25px] top-[30px] right-[10px] bg-primary/90 rounded-full p-0 min-w-0 flex items-center justify-center hover:bg-primary-dark/90"
-                        size="icon"
-                        onClick={handleSearch}
-                        disabled={isProcessing}
-                      >
+                        <path
+                          d="M7.5 0C3.36 0 0 3.36 0 7.5C0 11.64 3.36 15 7.5 15C11.64 15 15 11.64 15 7.5C15 3.36 11.64 0 7.5 0ZM11.25 8.25H8.25V11.25H6.75V8.25H3.75V6.75H6.75V3.75H8.25V6.75H11.25V8.25Z"
+                          fill="currentColor"
+                          className="text-primary"
+                        />
+                      </svg>
+                    </Button>
+                    <Input
+                      className="min-h-[60px] pl-10 text-gray-400 text-base tracking-normal leading-normal border-none bg-white placeholder:text-gray-400"
+                      placeholder="+버튼을 눌러 이미지나 텍스트파일을 추가할 수 있습니다."
+                      value={searchText}
+                      onChange={(e) => setSearchText(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                      disabled={isProcessing}
+                    />
+                    <Button
+                      className="absolute right-0 w-[25px] h-[25px] top-[30px] right-[10px] bg-primary/90 rounded-full p-0 min-w-0 flex items-center justify-center hover:bg-primary-dark/90"
+                      size="icon"
+                      onClick={handleSearch}
+                      disabled={isProcessing}
+                    >
                         {isProcessing ? (
                           <Loader2 className="h-4 w-4 animate-spin text-white" />
                         ) : (
-                          <img
-                            className="w-[9px] h-2.5"
-                            alt="SearchIcon arrow"
-                            src="https://c.animaapp.com/m8mvwkhbmqwOZ5/img/polygon-1.svg"
-                          />
+                      <img
+                        className="w-[9px] h-2.5"
+                        alt="SearchIcon arrow"
+                        src="https://c.animaapp.com/m8mvwkhbmqwOZ5/img/polygon-1.svg"
+                      />
                         )}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
+          </div>
 
             {/* Date selection section */}
             <div className="mb-6">
