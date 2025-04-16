@@ -105,48 +105,57 @@ export const PlanTravel = () => {
 
   const handleSearch = async () => {
     if (!searchText.trim()) {
-      alert('여행 계획을 입력해주세요.');
+      alert('여행 관련 정보를 입력해주세요. (예: 3박 4일 도쿄 여행)');
       return;
     }
 
-    setIsProcessing(true);
+    setIsProcessing(true); // 로딩 시작
     try {
-      const result = await travelApi.createTravelPlan({
-        prompt: searchText
-      });
-      
-      console.log('여행 계획 생성 성공:', result);
-      
-      // 여행 계획 생성 성공 시 플래너 페이지로 이동
-      navigate('/planner', { state: { planData: result.plan } });
-      
+      // Lambda 함수에 전달할 정보 구성 (children 제외)
+      const planDetails = {
+        query: searchText,
+        startDate: startDate ? format(startDate, 'yyyy-MM-dd', { locale: ko }) : null,
+        endDate: endDate ? format(endDate, 'yyyy-MM-dd', { locale: ko }) : null,
+        adults: adultCount,
+      };
+      console.log('[PlanTravel] AI 여행 계획 생성 요청:', planDetails);
+
+      // travelApi.createTravelPlan 호출
+      // 주의: api.js의 createTravelPlan 함수가 올바른 Python Lambda 엔드포인트를 호출하는지 확인 필요
+      const result = await travelApi.createTravelPlan(planDetails);
+
+      console.log('[PlanTravel] AI 여행 계획 생성 성공:', result);
+
+      // 성공 시 플래너 페이지로 이동 (생성된 데이터 전달)
+      if (result && result.plan) {
+         navigate('/planner', { state: { planData: result.plan } });
+      } else {
+         console.warn('[PlanTravel] 생성 응답에 plan 데이터가 없거나 유효하지 않음:', result);
+         alert('AI 여행 계획 생성 응답 형식이 올바르지 않습니다. 수동 플래너로 이동합니다.');
+         navigate('/planner'); 
+      }
+
     } catch (error) {
-      console.error('여행 계획 생성 오류:', error);
-      alert('여행 계획 생성에 실패했습니다. 다시 시도해주세요.');
+      console.error('[PlanTravel] AI 여행 계획 생성 오류:', error);
+      alert('AI 여행 계획 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
     } finally {
-      setIsProcessing(false);
+      setIsProcessing(false); // 로딩 종료
     }
   };
 
   const handleAdultCountChange = (increment) => {
-    setAdultCount(prev => {
-      const newCount = prev + increment;
-      return newCount >= 1 ? newCount : 1;
-    });
+    setAdultCount(prev => Math.max(1, prev + increment));
   };
 
   const handleChildCountChange = (increment) => {
-    setChildCount(prev => {
-      const newCount = prev + increment;
-      return newCount >= 0 ? newCount : 0;
-    });
+    setChildCount(prev => Math.max(0, prev + increment));
   };
 
   const CustomInput = React.forwardRef(({ value, onClick, placeholder }, ref) => (
     <Button
       variant="outline"
       className={cn(
-        "w-[200px] justify-center text-center font-normal bg-white",
+        "w-full sm:w-[200px] justify-center text-center font-normal bg-white",
         !value && "text-gray-400"
       )}
       onClick={onClick}
@@ -224,7 +233,7 @@ export const PlanTravel = () => {
           </h1>
 
           {/* Stack View Container - 모든 입력 요소를 포함하는 컨테이너 */}
-          <div className="absolute w-full max-w-[650px] top-[200px] left-1/2 -translate-x-1/2 bg-gray-800/80 backdrop-blur-sm rounded-xl p-6 shadow-lg border border-gray-700">
+          <div className="absolute w-full max-w-[750px] top-[200px] left-1/2 -translate-x-1/2 bg-gray-800/80 backdrop-blur-sm rounded-xl p-6 shadow-lg border border-gray-700">
             {/* 상단 바 추가 */}
             <div className="flex justify-end mb-4">
               <div 
@@ -298,11 +307,15 @@ export const PlanTravel = () => {
                         onClick={handleSearch}
                         disabled={isProcessing}
                       >
-                        <img
-                          className="w-[9px] h-2.5"
-                          alt="SearchIcon arrow"
-                          src="https://c.animaapp.com/m8mvwkhbmqwOZ5/img/polygon-1.svg"
-                        />
+                        {isProcessing ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-white" />
+                        ) : (
+                          <img
+                            className="w-[9px] h-2.5"
+                            alt="SearchIcon arrow"
+                            src="https://c.animaapp.com/m8mvwkhbmqwOZ5/img/polygon-1.svg"
+                          />
+                        )}
                       </Button>
                     </div>
                   </CardContent>
@@ -312,101 +325,69 @@ export const PlanTravel = () => {
 
             {/* Date selection section */}
             <div className="mb-6">
-              <div className="flex justify-between items-center">
-                <div className="flex flex-col gap-2">
-                  <label className="text-white text-sm font-medium">여행 시작일</label>
+              <div className="flex flex-wrap justify-between items-center bg-white/90 rounded-lg p-3 mb-4">
+                <div className="flex flex-wrap gap-2 mb-2 sm:mb-0">
                   <DatePicker
                     selected={startDate}
                     onChange={(date) => setStartDate(date)}
+                    selectsStart
+                    startDate={startDate}
+                    endDate={endDate}
+                    dateFormat="yyyy/MM/dd"
                     locale={ko}
-                    dateFormat="yyyy년 MM월 dd일 (EEEE)"
-                    placeholderText="날짜 선택"
-                    customInput={<CustomInput placeholder="날짜 선택" />}
-                    minDate={new Date()}
-                    className="w-[200px]"
+                    placeholderText="가는 날"
+                    customInput={<CustomInput />}
+                    className="w-full"
                   />
-                </div>
-                
-                <div className="flex flex-col gap-2">
-                  <label className="text-white text-sm font-medium">여행 종료일</label>
                   <DatePicker
                     selected={endDate}
                     onChange={(date) => setEndDate(date)}
+                    selectsEnd
+                    startDate={startDate}
+                    endDate={endDate}
+                    minDate={startDate}
+                    dateFormat="yyyy/MM/dd"
                     locale={ko}
-                    dateFormat="yyyy년 MM월 dd일 (EEEE)"
-                    placeholderText="날짜 선택"
-                    customInput={<CustomInput placeholder="날짜 선택" />}
-                    minDate={startDate || new Date()}
-                    className="w-[200px]"
+                    placeholderText="오는 날"
+                    customInput={<CustomInput />}
+                    className="w-full"
                   />
                 </div>
-              </div>
-            </div>
-            
-            {/* People selector button */}
-            <div className="mb-2">
-              <Button 
-                className="w-full bg-white text-gray-700 hover:bg-gray-100"
-                onClick={() => setShowPeopleSelector(!showPeopleSelector)}
-              >
-                {adultCount}명의 성인 {childCount > 0 ? `, ${childCount}명의 아동` : ''}
-              </Button>
-            </div>
-            
-            {/* People selector panel */}
-            {showPeopleSelector && (
-              <div className="bg-white rounded-md shadow-lg p-4 transition-all duration-300">
-                <div className="flex flex-col gap-4">
-                  {/* 성인 선택 */}
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium">성인</span>
-                    <div className="flex items-center gap-4">
-                      <Button 
-                        variant="outline" 
-                        size="icon" 
-                        className="h-8 w-8 rounded-full"
-                        onClick={() => handleAdultCountChange(-1)}
-                      >
-                        <Minus className="h-4 w-4" />
-                      </Button>
-                      <span className="w-8 text-center">{adultCount}</span>
-                      <Button 
-                        variant="outline" 
-                        size="icon" 
-                        className="h-8 w-8 rounded-full"
-                        onClick={() => handleAdultCountChange(1)}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  {/* 아동 선택 */}
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium">아동</span>
-                    <div className="flex items-center gap-4">
-                      <Button 
-                        variant="outline" 
-                        size="icon" 
-                        className="h-8 w-8 rounded-full"
-                        onClick={() => handleChildCountChange(-1)}
-                      >
-                        <Minus className="h-4 w-4" />
-                      </Button>
-                      <span className="w-8 text-center">{childCount}</span>
-                      <Button 
-                        variant="outline" 
-                        size="icon" 
-                        className="h-8 w-8 rounded-full"
-                        onClick={() => handleChildCountChange(1)}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
+                
+                {/* People selector button */}
+                <div className="relative mb-2 sm:mb-0">
+                  <Button 
+                    variant="outline" 
+                    className="w-full sm:w-auto justify-center font-normal bg-white h-[40px] px-4"
+                    onClick={() => setShowPeopleSelector(!showPeopleSelector)}
+                  >
+                    성인 {adultCount}명{childCount > 0 ? `, 어린이 ${childCount}명` : ''}
+                  </Button>
+                  {showPeopleSelector && (
+                    <Card className="absolute top-full right-0 mt-1 w-[250px] z-20 shadow-lg border bg-white">
+                      <CardContent className="p-4 space-y-4">
+                        <div className="flex justify-between items-center">
+                          <span>성인</span>
+                          <div className="flex items-center space-x-2">
+                            <Button variant="ghost" size="icon" onClick={() => handleAdultCountChange(-1)}><Minus className="h-4 w-4" /></Button>
+                            <span>{adultCount}</span>
+                            <Button variant="ghost" size="icon" onClick={() => handleAdultCountChange(1)}><Plus className="h-4 w-4" /></Button>
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span>어린이</span>
+                          <div className="flex items-center space-x-2">
+                            <Button variant="ghost" size="icon" onClick={() => handleChildCountChange(-1)}><Minus className="h-4 w-4" /></Button>
+                            <span>{childCount}</span>
+                            <Button variant="ghost" size="icon" onClick={() => handleChildCountChange(1)}><Plus className="h-4 w-4" /></Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
               </div>
-            )}
+            </div>
           </div>
         </div>
         
