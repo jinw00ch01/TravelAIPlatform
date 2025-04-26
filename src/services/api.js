@@ -125,4 +125,32 @@ export const travelApi = {
   }
 };
 
+export const fetchAirportFlights = async (iataCode) => {
+  const endpoint = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/flightinfo';
+  
+  // 디버깅을 위한 로그 추가
+  console.log('API 호출 파라미터:', { iataCode });
+  
+  try {
+    const url = `${endpoint}?iataCode=${encodeURIComponent(iataCode)}`;
+    console.log('최종 요청 URL:', url);
+    
+    const response = await fetch(url);
+    console.log('API 응답 상태:', response.status);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('API 오류 응답:', errorText);
+      throw new Error('API 호출 실패');
+    }
+
+    const data = await response.json();
+    console.log('API 성공 응답:', data);
+    return data;
+  } catch (error) {
+    console.error('Lambda API 호출 실패:', error);
+    return null;
+  }
+};
+
 export default apiClient;
