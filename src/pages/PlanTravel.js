@@ -147,17 +147,15 @@ export const PlanTravel = () => {
       navigate('/planner', { state: { planData: result.plan } });
       
     } catch (error) {
-      console.error('Error sending search text to Gemini:', error);
+      console.error('[PlanTravel] AI 여행 계획 생성 오류:', error);
+      alert('AI 여행 계획 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
     } finally {
-      setIsProcessing(false);
+      setIsProcessing(false); // 로딩 종료
     }
   };
 
   const handleAdultCountChange = (increment) => {
-    setAdultCount(prev => {
-      const newCount = prev + increment;
-      return newCount >= 1 ? newCount : 1;
-    });
+    setAdultCount(prev => Math.max(1, prev + increment));
   };
 
   const handleChildCountChange = (increment) => {
@@ -178,7 +176,7 @@ export const PlanTravel = () => {
     <Button
       variant="outline"
       className={cn(
-        "w-[200px] justify-center text-center font-normal bg-white",
+        "w-full sm:w-[200px] justify-center text-center font-normal bg-white",
         !value && "text-gray-400"
       )}
       onClick={onClick}
@@ -204,7 +202,8 @@ export const PlanTravel = () => {
       // 임시 데이터로 UI 미리 구현
       setTimeout(() => {
         setPopularDestinations([
-          { id: 1, name: '도쿄', image: 'https://images.unsplash.com/photo-1540959733332-eab4de381ee7?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60', description: '일본의 수도' },
+          
+          { id: 1, name: '도쿄', image: 'https://images.unsplash.com/photo-1498036882173-b41c28a8ba34?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60', description: '일본의 수도' },
           { id: 2, name: '파리', image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60', description: '프랑스의 수도' },
           { id: 3, name: '뉴욕', image: 'https://images.unsplash.com/photo-1538970272646-f61fabb3a8a2?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60', description: '미국의 대도시' },
           { id: 4, name: '로마', image: 'https://images.unsplash.com/photo-1552832230-c0197dd311b5?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60', description: '이탈리아의 수도' },
@@ -486,12 +485,15 @@ export const PlanTravel = () => {
 
             {/* Date selection section */}
             <div className="mb-6">
-              <div className="flex justify-between items-center">
-                <div className="flex flex-col gap-2">
-                  <label className="text-white text-sm font-medium">여행 시작일</label>
+              <div className="flex flex-wrap justify-between items-center bg-white/90 rounded-lg p-3 mb-4">
+                <div className="flex flex-wrap gap-2 mb-2 sm:mb-0">
                   <DatePicker
                     selected={startDate}
                     onChange={(date) => setStartDate(date)}
+                    selectsStart
+                    startDate={startDate}
+                    endDate={endDate}
+                    dateFormat="yyyy/MM/dd"
                     locale={ko}
                     dateFormat="yyyy년 MM월 dd일 (EEEE)"
                     placeholderText="날짜 선택"
@@ -532,6 +534,11 @@ export const PlanTravel = () => {
                   <DatePicker
                     selected={endDate}
                     onChange={(date) => setEndDate(date)}
+                    selectsEnd
+                    startDate={startDate}
+                    endDate={endDate}
+                    minDate={startDate}
+                    dateFormat="yyyy/MM/dd"
                     locale={ko}
                     dateFormat="yyyy년 MM월 dd일 (EEEE)"
                     placeholderText="날짜 선택"

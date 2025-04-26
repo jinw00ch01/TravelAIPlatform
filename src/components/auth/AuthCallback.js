@@ -113,153 +113,16 @@ const AuthCallback = () => {
   useEffect(() => {
     const handleCallback = async () => {
       try {
-        console.log('AuthCallback 마운트됨, URL:', window.location.href);
-        
-        // URL에서 오류 파라미터 확인
-        const urlParams = new URLSearchParams(location.search);
-        const errorParam = urlParams.get('error');
-        const errorDescription = urlParams.get('error_description');
-        
-        if (errorParam) {
-          console.error('인증 오류 파라미터 발견:', errorParam, errorDescription);
-          setError(`인증 오류: ${errorDescription || errorParam}`);
-          setLoading(false);
-          return;
-        }
-        
-        // 인증 상태 확인
-        await checkAuth();
-        
-        // customState가 있으면 해당 경로로 리디렉션, 없으면 홈으로
-        const state = urlParams.get('state');
-        let redirectTo = '/';
-        
-        try {
-          if (state) {
-            const stateObj = JSON.parse(decodeURIComponent(state));
-            redirectTo = stateObj.path || '/';
-          }
-        } catch (e) {
-          console.error('state 파라미터 파싱 오류:', e);
-          redirectTo = state && state !== '/' ? state : '/';
-        }
-        
-        console.log('리디렉션 경로:', redirectTo);
-        navigate(redirectTo);
-      } catch (err) {
-        console.error('콜백 처리 오류:', err);
-        setError('인증 처리 중 오류가 발생했습니다.');
-        setLoading(false);
+        await exchangeCodeForTokens();
+        navigate('/');
+      } catch (error) {
+        console.error('인증 처리 중 오류 발생:', error);
+        navigate('/login');
       }
     };
 
-    // 인증 코드를 처리하는 함수
-    const handleAuthCode = async (code) => {
-      try {
-        console.log('인증 코드 처리 시작:', code.substring(0, 5) + '...');
-        
-        try {
-          // 인증 코드를 직접 토큰으로 교환 시도
-          await exchangeCodeForTokens(code);
-          setLoading(false);
-          return;
-        } catch (tokenError) {
-          console.error('토큰 교환 실패, Amplify 세션 확인 시도:', tokenError);
-          
-          // 토큰 교환이 실패하면 세션 확인 시도
-          try {
-            console.log('인증 세션 가져오기 시도');
-            const session = await fetchAuthSession();
-            console.log('인증 세션 가져오기 성공:', session?.tokens ? '토큰 있음' : '토큰 없음');
-            
-            if (session?.tokens?.idToken) {
-              console.log('ID 토큰 확인됨 - 인증이 성공적으로 완료되었습니다');
-              await checkAuth();
-              console.log('인증 확인 완료, 홈으로 이동합니다');
-              navigate('/');
-              return;
-            } else {
-              throw new Error('인증 토큰을 찾을 수 없습니다');
-            }
-          } catch (sessionError) {
-            console.error('인증 세션 가져오기 실패:', sessionError);
-            
-            // URL에서 필요한 정보 추출
-            const urlParams = new URLSearchParams(location.search);
-            const state = urlParams.get('state');
-            
-            // 소셜 로그인 제공자 정보 추출
-            let provider = 'Google'; // 기본값
-            try {
-              if (state) {
-                const stateObj = JSON.parse(decodeURIComponent(state));
-                if (stateObj.provider) {
-                  provider = stateObj.provider;
-                }
-              }
-            } catch (e) {
-              console.error('state 파싱 오류:', e);
-            }
-            
-            console.log(`${provider} 로그인 수동 처리 시도 중...`);
-            setError('인증 처리 중 오류가 발생했습니다. 다시 시도해주세요.');
-            setLoading(false);
-          }
-        }
-      } catch (err) {
-        console.error('인증 코드 처리 오류:', err);
-        setError('인증 코드 처리 중 오류가 발생했습니다.');
-        setLoading(false);
-      }
-    };
-
-    // 소셜 로그인 이벤트 처리 리스너 설정
-    const authListener = ({ payload }) => {
-      console.log('Auth 이벤트 발생:', payload.event);
-      
-      switch (payload.event) {
-        case 'signIn':
-          console.log('사용자 로그인 성공');
-          handleCallback();
-          break;
-        case 'signOut':
-          console.log('사용자 로그아웃');
-          setLoading(false);
-          navigate('/signin');
-          break;
-        case 'signIn_failure':
-          console.error('사용자 로그인 실패', payload.data);
-          setError('로그인에 실패했습니다. 다시 시도해주세요.');
-          setLoading(false);
-          break;
-        default:
-          break;
-      }
-    };
-
-    // Amplify v6에서는 Hub.listen이 리스너 제거 함수를 반환
-    const unsubscribe = Hub.listen('auth', authListener);
-
-    // 인증 콜백 코드가 있는 경우 처리
-    const code = new URLSearchParams(location.search).get('code');
-    if (code) {
-      console.log('인증 코드 발견, 처리 중...');
-      handleAuthCode(code);
-    } else if (isAuthenticated) {
-      // 이미 인증된 상태이고 코드가 없는 경우 홈으로 이동
-      console.log('이미 인증된 상태, 홈으로 이동');
-      navigate('/');
-    } else {
-      // 콜백 실행
-      handleCallback();
-    }
-
-    return () => {
-      console.log('AuthCallback 언마운트됨');
-      // Hub.removeListener 대신 unsubscribe 함수 호출
-      unsubscribe();
-    };
-  }, [navigate, isAuthenticated, location.search, checkAuth]);
+    handleCallback();
+  }, [exchangeCodeForTokens, navigate]);
 
   if (loading) {
     return (

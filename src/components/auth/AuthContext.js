@@ -45,10 +45,11 @@ export const AuthProvider = ({ children }) => {
         setAuthState({
           isAuthenticated: true,
           user: {
-            id: 'dev-user-id',
-            username: 'dev-user',
-            email: 'dev@example.com',
+            userId: 'dev-user-id',
             name: 'Dev User',
+            email: 'dev@example.com',
+            phoneNumber: '+821012345678',
+            birthdate: '2000-01-01',
             picture: null
           },
           isLoading: false,

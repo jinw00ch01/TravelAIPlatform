@@ -92,8 +92,8 @@ export const signUp = async (email, password, name, birthdate, phoneNumber) => {
         userAttributes: {
           email,
           name,
-          birthdate: birthdate, // 사용자가 입력한 생년월일
-          phone_number: phoneNumber // 사용자가 입력한 전화번호
+          birthdate: birthdate,
+          phone_number: phoneNumber
         }
       }
     };

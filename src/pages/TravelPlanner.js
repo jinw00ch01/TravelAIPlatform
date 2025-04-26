@@ -10,6 +10,9 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import SearchPopup from '../components/SearchPopup';
 import MapboxComponent from '../components/MapboxComponent';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import AccommodationPlan from '../components/AccommodationPlan';
+import FlightPlan from '../components/FlightPlan';
+import { travelApi } from '../services/api';
 
 const StrictModeDroppable = ({ children, ...props }) => {
   const [enabled, setEnabled] = useState(false);
@@ -42,12 +45,207 @@ const TravelPlanner = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [showAllMarkers, setShowAllMarkers] = useState(false);
   const [dayOrder, setDayOrder] = useState(Object.keys(travelPlans));
+  const [sidebarTab, setSidebarTab] = useState('schedule');
+  const [isLoadingPlan, setIsLoadingPlan] = useState(false);
 
-  useEffect(() => {
-    if (!user) {
-      navigate('/login');
+  // 여행 계획 로드 함수 - 외부에서 재사용할 수 있도록 분리
+  const loadTravelPlan = async (params = { newest: true }) => {
+    console.log('[TravelPlanner] loadTravelPlan 함수 시작', params);
+    setIsLoadingPlan(true);
+    try {
+      console.log('[TravelPlanner] 여행 계획 로드 시작...');
+      const data = await travelApi.loadPlan(params);
+      console.log('[TravelPlanner] travelApi.loadPlan 응답 데이터:', JSON.stringify(data, null, 2)); // 응답 데이터 상세 로깅
+
+      let itineraryData = null;
+
+      // 1. data.plan[0].plan_data 에서 itinerary 추출 시도 (Standard JS Access)
+      if (data?.plan && Array.isArray(data.plan) && data.plan.length > 0) {
+        const firstPlanItem = data.plan[0];
+        // Check if plan_data and the nested structure exist using standard JS access
+        if (firstPlanItem?.plan_data?.candidates && Array.isArray(firstPlanItem.plan_data.candidates) && firstPlanItem.plan_data.candidates.length > 0) {
+          console.log('[TravelPlanner] data.plan[0].plan_data 형식 감지 (Standard JS), 파싱 시도...');
+          try {
+            const candidate = firstPlanItem.plan_data.candidates[0]; // Direct array access
+            if (candidate?.content?.parts && Array.isArray(candidate.content.parts) && candidate.content.parts.length > 0) {
+              const textContent = candidate.content.parts[0]?.text; // Direct property access
+              if (textContent) {
+                const jsonMatch = textContent.match(/```json\n([\s\S]*?)\n```/); // Regex to find the JSON block
+                if (jsonMatch && jsonMatch[1]) {
+                  console.log('[TravelPlanner] JSON 데이터 추출 성공 (data.plan[0].plan_data)');
+                  const parsedData = JSON.parse(jsonMatch[1]);
+                  if (parsedData.itinerary) {
+                    console.log('[TravelPlanner] itinerary 데이터 확인 (data.plan[0].plan_data)');
+                    itineraryData = parsedData.itinerary;
+                  } else {
+                    console.log('[TravelPlanner] 파싱된 JSON에 itinerary 없음');
+                  }
+                } else {
+                  console.log('[TravelPlanner] textContent에서 JSON 블록 못 찾음:', textContent); // Log content if match fails
+                }
+              } else {
+                console.log('[TravelPlanner] content.parts[0]에 text 없음');
+              }
+            } else {
+              console.log('[TravelPlanner] candidates[0]에 content.parts 없음');
+            }
+          } catch (parseError) {
+            console.error('data.plan[0].plan_data 파싱 실패:', parseError);
+          }
+        } else {
+            console.log('[TravelPlanner] data.plan[0]에 plan_data.candidates 구조 없음');
+        }
+      }
+      
+      // 2. (Fallback) 이전 방식: data.candidates 에서 itinerary 추출 시도 (DynamoDB-like format)
+      if (!itineraryData && data?.candidates?.L && data.candidates.L.length > 0) {
+        console.log('[TravelPlanner] data.candidates 형식 감지 (DynamoDB), 파싱 시도...');
+        try {
+          const candidateData = data.candidates.L[0].M;
+          if (candidateData.content?.M?.parts?.L && candidateData.content.M.parts.L.length > 0) {
+            const textContent = candidateData.content.M.parts.L[0].M.text.S;
+            const jsonMatch = textContent.match(/```json\n([\s\S]*?)\n```/);
+            if (jsonMatch && jsonMatch[1]) {
+              console.log('[TravelPlanner] JSON 데이터 추출 성공 (data.candidates)');
+              const parsedData = JSON.parse(jsonMatch[1]);
+              if (parsedData.itinerary) {
+                console.log('[TravelPlanner] itinerary 데이터 확인 (data.candidates)');
+                itineraryData = parsedData.itinerary;
+              }
+            }
+          }
+        } catch (parseError) {
+          console.error('data.candidates 파싱 실패:', parseError);
+        }
+      }
+      
+      // 3. (Fallback) 가장 기본적인 planData 또는 plan 배열 확인
+      if (!itineraryData) {
+        const basicPlanData = data?.planData || data?.plan;
+        // Check if it's the plan array itself, not the outer structure
+        if (Array.isArray(basicPlanData) && basicPlanData.length > 0 && basicPlanData[0].day) { 
+          itineraryData = basicPlanData;
+           console.log('[TravelPlanner] 기본 planData/plan 필드 (itinerary 형식) 사용');
+        } else {
+            console.log('[TravelPlanner] 기본 planData/plan 필드가 itinerary 형식이 아님');
+        }
+      }
+
+      if (itineraryData && Array.isArray(itineraryData)) {
+        console.log('[TravelPlanner] 유효한 itinerary 데이터 수신:', itineraryData);
+        
+        // 데이터 형식 변환: itinerary 배열 → 일차별 객체 맵핑
+        const formattedPlans = {};
+        console.log('[TravelPlanner] itinerary 데이터 변환 시작...');
+        
+        itineraryData.forEach((dayPlan, index) => {
+          const dayNumber = (dayPlan.day || index + 1).toString();
+          console.log(`[TravelPlanner] ${dayNumber}일차 데이터 처리 중...`, dayPlan);
+
+          let schedules = [];
+          if (dayPlan.activities && Array.isArray(dayPlan.activities)) {
+            console.log(`[TravelPlanner] ${dayNumber}일차 activities 발견`);
+            schedules = dayPlan.activities.map((activity, idx) => ({
+              id: `${dayNumber}-${idx}`,
+              name: activity.title,
+              time: activity.time || '00:00',
+              address: activity.location || '',
+              category: activity.description || '',
+              duration: activity.duration || '1시간',
+              notes: '',
+              lat: activity.latitude || (dayPlan.last_location?.latitude),
+              lng: activity.longitude || (dayPlan.last_location?.longitude)
+            }));
+          } else if (dayPlan.schedules && Array.isArray(dayPlan.schedules)) {
+            // 기존 형식 호환성
+            console.log(`[TravelPlanner] ${dayNumber}일차 schedules 발견 (호환성)`);
+            schedules = dayPlan.schedules;
+          }
+          
+          formattedPlans[dayNumber] = {
+            title: dayPlan.title || `${dayNumber}일차`,
+            description: dayPlan.description || '',
+            schedules: schedules
+          };
+        });
+                
+        if (Object.keys(formattedPlans).length > 0) {
+          console.log('[TravelPlanner] 상태 업데이트 예정:', formattedPlans);
+          setTravelPlans(formattedPlans);
+          setDayOrder(Object.keys(formattedPlans));
+          setSelectedDay(Object.keys(formattedPlans)[0]);
+        } else {
+          console.log('[TravelPlanner] 변환된 계획 데이터가 없음');
+          // 기본 상태 유지
+          setTravelPlans({ 1: { title: '1일차', schedules: [] } });
+          setDayOrder(['1']);
+          setSelectedDay(1);
+        }
+      } else {
+        console.log('[TravelPlanner] 최종적으로 유효한 itinerary 데이터를 찾지 못함:', data);
+        // 기본 상태 유지 또는 초기화 (기존 로직)
+        setTravelPlans({ 1: { title: '1일차', schedules: [] } });
+        setDayOrder(['1']);
+        setSelectedDay(1);
+      }
+    } catch (error) {
+      console.error('[TravelPlanner] 여행 계획 로드 실패:', error);
+      
+      // 더 구체적인 오류 메시지 제공
+      if (error.response) {
+        if (error.response.status === 502) {
+          alert('서버 연결에 문제가 발생했습니다. 잠시 후 다시 시도해주세요. (502 Bad Gateway)');
+        } else {
+          alert(`여행 계획을 불러오는데 실패했습니다. (HTTP 오류 ${error.response.status})`);
+        }
+      } else if (error.request) {
+        alert('서버에서 응답이 없습니다. 네트워크 연결을 확인해주세요.');
+      } else {
+        alert('여행 계획을 불러오는데 실패했습니다.');
+      }
+    } finally {
+      setIsLoadingPlan(false);
+      console.log('[TravelPlanner] loadTravelPlan 함수 종료');
     }
-  }, [user, navigate]);
+  };
+
+  // 컴포넌트 마운트 시 최신 여행 계획 로드
+  useEffect(() => {
+    console.log('[TravelPlanner] 마운트 useEffect 실행됨. 현재 user 상태:', user);
+
+    if (user) { // 로그인된 경우에만 로드
+      console.log('[TravelPlanner] user 확인됨. loadTravelPlan 호출 시도 (마운트).');
+      loadTravelPlan();
+    } else {
+      console.log('[TravelPlanner] user 없음. loadTravelPlan 호출 안 함 (마운트).');
+    }
+  }, [user]); // user가 변경될 때 (로그인/로그아웃 시) 다시 로드
+
+  // F5 키 이벤트 핸들러 추가
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      // F5 키 코드는 116
+      if (event.keyCode === 116) {
+        console.log('[TravelPlanner] F5 키 입력 감지');
+        event.preventDefault(); // 기본 새로고침 동작 방지
+        if (user) {
+          console.log('[TravelPlanner] F5 감지: loadTravelPlan 호출 시도');
+          loadTravelPlan();
+        } else {
+          console.log('[TravelPlanner] F5 감지: user 없음, 로드 안 함');
+        }
+      }
+    };
+
+    console.log('[TravelPlanner] F5 이벤트 리스너 등록');
+    window.addEventListener('keydown', handleKeyDown);
+
+    // 컴포넌트 언마운트 시 이벤트 리스너 제거
+    return () => {
+      console.log('[TravelPlanner] F5 이벤트 리스너 제거');
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [user]); // user 상태가 변경될 때 이벤트 리스너 재설정
 
   // 지도 리사이즈 핸들러 추가
   useEffect(() => {
@@ -238,7 +436,7 @@ const TravelPlanner = () => {
       {/* 사이드바 */}
       <Box
         sx={{
-          width: isSidebarOpen ? '256px' : '0',
+          width: isSidebarOpen ? '300px' : '0',
           flexShrink: 0,
           whiteSpace: 'nowrap',
           boxSizing: 'border-box',
@@ -246,115 +444,136 @@ const TravelPlanner = () => {
           transition: 'width 0.3s ease',
           bgcolor: 'background.paper',
           boxShadow: 2,
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
         <Box sx={{ 
-          width: '256px',
+          width: '300px',
           visibility: isSidebarOpen ? 'visible' : 'hidden',
-          p: 2
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%'
         }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-            <Typography variant="h6" noWrap>여행 계획</Typography>
+          {/* 사이드바 헤더 */}
+          <Box sx={{ 
+            p: 2, 
+            borderBottom: 1, 
+            borderColor: 'divider',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
+            <Typography variant="h6" noWrap>여행 플래너</Typography>
             <IconButton onClick={toggleSidebar}>
               <span className="text-2xl">☰</span>
             </IconButton>
           </Box>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={addDay}
-            fullWidth
-            sx={{ mb: 2 }}
+
+          {/* 사이드바 탭 */}
+          <Tabs
+            value={sidebarTab}
+            onChange={(e, newValue) => setSidebarTab(newValue)}
+            variant="fullWidth"
+            className="border-b border-gray-200"
           >
-            날짜 추가
-          </Button>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {/* 날짜 선택 탭 */}
-            <DragDropContext onDragEnd={handleDayDragEnd}>
-              <StrictModeDroppable droppableId="days" direction="vertical">
-                {(provided) => (
-                  <Box
-                    {...provided.droppableProps}
-                    ref={provided.innerRef}
-                    sx={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 1,
-                      maxHeight: '60vh',
-                      overflowY: 'auto',
-                      '&::-webkit-scrollbar': {
-                        width: '8px',
-                      },
-                      '&::-webkit-scrollbar-track': {
-                        background: '#f1f1f1',
-                        borderRadius: '4px',
-                      },
-                      '&::-webkit-scrollbar-thumb': {
-                        background: '#888',
-                        borderRadius: '4px',
-                        '&:hover': {
-                          background: '#555',
-                        },
-                      },
-                    }}
+            <Tab label="여행 계획" value="schedule" />
+            <Tab label="숙소 계획" value="accommodation" />
+            <Tab label="비행 계획" value="flight" />
+          </Tabs>
+
+          {/* 사이드바 컨텐츠 */}
+          <div className="flex-1 overflow-y-auto">
+            {sidebarTab === 'schedule' && (
+              <>
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={addDay}
+                  fullWidth
+                  sx={{ mb: 2 }}
+                >
+                  날짜 추가
+                </Button>
+                <DragDropContext onDragEnd={handleDayDragEnd}>
+                  <StrictModeDroppable droppableId="days" direction="vertical">
+                    {(provided) => (
+                      <Box
+                        {...provided.droppableProps}
+                        ref={provided.innerRef}
+                        sx={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 1
+                        }}
+                      >
+                        {/* 기존 일정 목록 유지 */}
+                        {dayOrder.map((day, index) => (
+                          <Draggable key={day} draggableId={`day-${day}`} index={index}>
+                            {(provided, snapshot) => (
+                              <Paper
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                {...provided.dragHandleProps}
+                                sx={{
+                                  p: 1.5,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s',
+                                  bgcolor: selectedDay === parseInt(day) ? 'primary.light' : 'background.paper',
+                                  border: selectedDay === parseInt(day) ? 2 : 1,
+                                  borderColor: selectedDay === parseInt(day) ? 'primary.main' : 'divider',
+                                  '&:hover': {
+                                    bgcolor: selectedDay === parseInt(day) ? 'primary.light' : 'action.hover',
+                                  },
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                }}
+                                onClick={() => setSelectedDay(parseInt(day))}
+                              >
+                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                  <DragIndicatorIcon sx={{ mr: 1, color: 'action.active' }} />
+                                  <Typography variant="subtitle1">{getDayTitle(parseInt(day))}</Typography>
+                                </Box>
+                                <IconButton
+                                  size="small"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeDay(parseInt(day));
+                                  }}
+                                >
+                                  <DeleteIcon />
+                                </IconButton>
+                              </Paper>
+                            )}
+                          </Draggable>
+                        ))}
+                        {provided.placeholder}
+                      </Box>
+                    )}
+                  </StrictModeDroppable>
+                </DragDropContext>
+                <Box sx={{ mt: 2 }}>
+                  <Button
+                    variant={showAllMarkers ? "contained" : "outlined"}
+                    color="primary"
+                    fullWidth
+                    onClick={() => setShowAllMarkers(!showAllMarkers)}
                   >
-                    {dayOrder.map((day, index) => (
-                      <Draggable key={day} draggableId={`day-${day}`} index={index}>
-                        {(provided, snapshot) => (
-                          <Paper
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
-                            {...provided.dragHandleProps}
-                            sx={{
-                              p: 1.5,
-                              cursor: 'pointer',
-                              transition: 'all 0.2s',
-                              bgcolor: selectedDay === parseInt(day) ? 'primary.light' : 'background.paper',
-                              border: selectedDay === parseInt(day) ? 2 : 1,
-                              borderColor: selectedDay === parseInt(day) ? 'primary.main' : 'divider',
-                              '&:hover': {
-                                bgcolor: selectedDay === parseInt(day) ? 'primary.light' : 'action.hover',
-                              },
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                            }}
-                      onClick={() => setSelectedDay(parseInt(day))}
-                    >
-                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                              <DragIndicatorIcon sx={{ mr: 1, color: 'action.active' }} />
-                              <Typography variant="subtitle1">{getDayTitle(parseInt(day))}</Typography>
-                            </Box>
-                            <IconButton
-                              size="small"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeDay(parseInt(day));
-                            }}
-                            >
-                              <DeleteIcon />
-                            </IconButton>
-                          </Paper>
-                        )}
-                      </Draggable>
-                    ))}
-                    {provided.placeholder}
-                  </Box>
-                )}
-              </StrictModeDroppable>
-            </DragDropContext>
-          </Box>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 2 }}>
-            {/* 전체 마커 보기 버튼 */}
-            <Button
-              variant={showAllMarkers ? "contained" : "outlined"}
-              color="primary"
-              fullWidth
-              onClick={() => setShowAllMarkers(!showAllMarkers)}
-            >
-              {showAllMarkers ? "현재 날짜 마커만 보기" : "전체 날짜 마커 보기"}
-            </Button>
-          </Box>
+                    {showAllMarkers ? "현재 날짜 마커만 보기" : "전체 날짜 마커 보기"}
+                  </Button>
+                </Box>
+              </>
+            )}
+
+            {sidebarTab === 'accommodation' && (
+              <AccommodationPlan />
+            )}
+
+            {sidebarTab === 'flight' && (
+              <FlightPlan />
+            )}
+          </div>
         </Box>
       </Box>
 
@@ -366,20 +585,26 @@ const TravelPlanner = () => {
         transition: 'margin-left 0.3s ease',
       }}>
         {/* 상단 바 */}
-        <div className="bg-white shadow-md p-4 flex justify-between items-center">
-          <div className="flex items-center space-x-4">
-            <Button
-              variant="outlined"
-              onClick={toggleSidebar}
-              startIcon={<span className="text-xl">☰</span>}
-            >
-              메뉴
-            </Button>
-            <Typography variant="h6">여행 계획</Typography>
-          </div>
-                      </div>
+        <Box sx={{ 
+          bgcolor: 'background.paper',
+          p: 2,
+          display: 'flex',
+          alignItems: 'center',
+          borderBottom: 1,
+          borderColor: 'divider'
+        }}>
+          <Button
+            variant="outlined"
+            onClick={toggleSidebar}
+            startIcon={<span className="text-xl">☰</span>}
+            sx={{ mr: 2 }}
+          >
+            메뉴
+          </Button>
+          <Typography variant="h6">여행 플래너</Typography>
+        </Box>
 
-        {/* 메인 컨텐츠 영역 */}
+        {/* 기존 메인 컨텐츠 유지 */}
         <Box sx={{ flex: 1, p: 2, overflow: 'hidden' }}>
           {selectedDay ? (
             <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
