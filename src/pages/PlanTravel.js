@@ -11,7 +11,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { travelApi } from "../services/api";
 import { createPortal } from "react-dom";
-import { fetchAirportFlights } from "../services/api";
+import { fetchAirportFlights, searchFlights, searchAirports } from "../services/api";
 
 export const PlanTravel = () => {
   const navigate = useNavigate();
@@ -280,41 +280,106 @@ export const PlanTravel = () => {
     return airportMap[airportName] || null;
   };
 
-  // 항공편 정보 조회 함수
+  // 항공편 정보 조회 함수 수정
   const handleFlightSearch = async () => {
-    if (!departureAirport.trim()) {
-      alert('출발 공항을 입력해주세요.');
+    if (!departureAirport.trim() || !startDate || !endDate) {
+      alert('출발 공항과 여행 기간을 입력해주세요.');
       return;
     }
 
-    const iataCode = getAirportCode(departureAirport);
-    if (!iataCode) {
+    const departureCode = getAirportCode(departureAirport);
+    if (!departureCode) {
       alert('올바른 공항 이름을 입력해주세요.');
       return;
     }
 
     setIsLoadingFlight(true);
+    setFilteredFlights([]); // 검색 전에 이전 결과 초기화
+    
     try {
-      const data = await fetchAirportFlights(iataCode);
-      console.log('API 응답:', data);
-      setFlightData(data);
+      console.log('검색 시작:', {
+        출발공항: departureCode,
+        도착공항: 'NRT',
+        출발일: format(startDate, 'yyyy-MM-dd'),
+        도착일: format(endDate, 'yyyy-MM-dd')
+      });
+
+      const response = await searchFlights(
+        departureCode,
+        'NRT',  // 나리타 국제공항
+        format(startDate, 'yyyy-MM-dd'),
+        format(endDate, 'yyyy-MM-dd'),
+        adultCount,
+        childCount,
+        infantCount,
+        20
+      );
+
+      console.log('API 응답:', response);
+
+      // API 응답 구조에 따라 처리
+      const flightData = response.data || response;
+      
+      if (flightData && Array.isArray(flightData)) {
+        if (flightData.length > 0) {
+          const flights = flightData.map((flight, index) => ({
+            id: index + 1,
+            airline: {
+              name: flight.airline || flight.validatingAirlineCodes?.[0] || 'Unknown Airline',
+              logo: `/airline-logos/${flight.airline || flight.validatingAirlineCodes?.[0] || 'default'}.png`
+            },
+            departureTime: flight.departure?.at || flight.itineraries?.[0]?.segments?.[0]?.departure?.at,
+            arrivalTime: flight.arrival?.at || flight.itineraries?.[0]?.segments?.[0]?.arrival?.at,
+            departureAirport: flight.departure?.iataCode || flight.itineraries?.[0]?.segments?.[0]?.departure?.iataCode,
+            arrivalAirport: flight.arrival?.iataCode || flight.itineraries?.[0]?.segments?.[0]?.arrival?.iataCode,
+            price: flight.price?.total || flight.price,
+            duration: flight.duration || flight.itineraries?.[0]?.duration
+          }));
+          
+          console.log('처리된 항공편 데이터:', flights);
+          setFilteredFlights(flights);
+          setActiveTab('airlines');
+        } else {
+          alert('선택한 날짜에 해당하는 항공편이 없습니다.');
+        }
+      } else {
+        console.error('잘못된 API 응답 형식:', flightData);
+        throw new Error('API 응답 형식이 올바르지 않습니다.');
+      }
     } catch (error) {
       console.error('비행 정보 조회 실패:', error);
-      setFlightData(null);
+      alert(error.message || '항공편 검색 중 오류가 발생했습니다. 다시 시도해주세요.');
+      setFilteredFlights([]);
     } finally {
       setIsLoadingFlight(false);
     }
   };
 
-  // 항공사 로고를 가져오는 함수를 수정
-  const fetchAirlineLogo = async (airlineIata) => {
-    if (!airlineIata) {
-      console.error('항공사 IATA 코드가 없습니다.');
-      return null;
+  // 공항 검색 함수 수정
+  const handleAirportSearch = async (keyword) => {
+    try {
+      const results = await searchAirports(keyword);
+      if (results && results.body) {
+        const parsedData = JSON.parse(results.body);
+        return parsedData.data.map(airport => ({
+          code: airport.iataCode,
+          name: airport.name,
+          city: airport.address.cityName
+        }));
+      }
+      return [];
+    } catch (error) {
+      console.error('공항 검색 실패:', error);
+      return [];
     }
+  };
 
-    // 항공사 로고 URL 생성 (daisycon.io 서비스 사용) - 크기 조정
-    const logoUrl = `https://daisycon.io/images/airline/?width=300&height=150&color=ffffff&iata=${airlineIata}`;
+  // 항공사 로고를 가져오는 함수 수정
+  const fetchAirlineLogo = (airlineCode) => {
+    console.log('항공사 코드:', airlineCode); // 디버깅용 로그 추가
+    if (!airlineCode) return '/default-airline-logo.png';
+    const logoUrl = `https://logos.skyscnr.com/images/airlines/favicon/${airlineCode.toLowerCase()}.png`;
+    console.log('로고 URL:', logoUrl); // 디버깅용 로그 추가
     return logoUrl;
   };
 
@@ -460,7 +525,7 @@ export const PlanTravel = () => {
                 <label className="text-white text-sm font-medium mb-2 block">여행지</label>
                 <Input
                   type="text"
-                  placeholder="여행지를 입력하세요"
+                  placeholder="여행지를 입력하세요 (선택사항)"
                   value={destination}
                   onChange={(e) => setDestination(e.target.value)}
                   className="w-full bg-white"
@@ -485,17 +550,17 @@ export const PlanTravel = () => {
 
             {/* Date selection section */}
             <div className="mb-6">
-              <div className="flex flex-wrap justify-between items-center bg-white/90 rounded-lg p-3 mb-4">
-                <div className="flex flex-wrap gap-2 mb-2 sm:mb-0">
+              <div className="flex flex-wrap justify-between items-center p-3 mb-4">
+                <div className="flex flex-col gap-2">
+                  <label className="text-white text-sm font-medium">여행 시작일</label>
                   <DatePicker
                     selected={startDate}
                     onChange={(date) => setStartDate(date)}
                     selectsStart
                     startDate={startDate}
                     endDate={endDate}
-                    dateFormat="yyyy/MM/dd"
-                    locale={ko}
                     dateFormat="yyyy년 MM월 dd일 (EEEE)"
+                    locale={ko}
                     placeholderText="날짜 선택"
                     customInput={<CustomInput placeholder="날짜 선택" />}
                     minDate={new Date()}
@@ -537,13 +602,11 @@ export const PlanTravel = () => {
                     selectsEnd
                     startDate={startDate}
                     endDate={endDate}
-                    minDate={startDate}
-                    dateFormat="yyyy/MM/dd"
+                    minDate={startDate || new Date()}
                     locale={ko}
                     dateFormat="yyyy년 MM월 dd일 (EEEE)"
                     placeholderText="날짜 선택"
                     customInput={<CustomInput placeholder="날짜 선택" />}
-                    minDate={startDate || new Date()}
                     className="w-[200px]"
                     popperPlacement="bottom-end"
                     popperContainer={DatePickerPortal}
@@ -666,6 +729,29 @@ export const PlanTravel = () => {
                 </div>
               </div>
             )}
+
+            {/* 검색 버튼 추가 */}
+            <div className="mt-6">
+              <Button
+                className="w-full bg-primary hover:bg-primary-dark text-white"
+                onClick={handleFlightSearch}
+                disabled={isLoadingFlight || !departureAirport || !startDate || !endDate}
+              >
+                {isLoadingFlight ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    검색 중...
+                  </>
+                ) : (
+                  '항공편 검색'
+                )}
+              </Button>
+              {(!departureAirport || !startDate || !endDate) && (
+                <p className="text-sm text-red-500 mt-2">
+                  출발 공항과 여행 기간을 모두 입력해주세요.
+                </p>
+              )}
+            </div>
           </div>
 
           {/* 기존 텍스트 필드를 컨테이너 하단부로 이동 */}
@@ -791,43 +877,51 @@ export const PlanTravel = () => {
           {!isLoadingData && activeTab === 'airlines' && (
             <div className="grid grid-cols-1 gap-6">
               {filteredFlights.length > 0 ? (
-                filteredFlights.map((flight) => (
-                  <Card key={flight.id} className="p-6 hover:shadow-lg transition-shadow">
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-6">
-                        <div className="w-[200px] h-[100px] bg-white rounded-lg flex items-center justify-center border border-gray-200 p-2">
-                          <img
-                            src={flight.airline.logo}
-                            alt={flight.airline.name}
-                            className="max-w-full max-h-full object-contain"
-                          />
-                        </div>
-                        <div className="text-lg font-medium text-gray-700">
-                          {flight.airline.name}
-                        </div>
-                      </div>
-                      <div className="flex-1 flex justify-center items-center gap-4 px-6">
-                        <div className="text-center">
-                          <div className="text-2xl font-bold">{flight.departureTime}</div>
-                          <div className="text-sm text-gray-500">{flight.departureAirport}</div>
-                        </div>
-                        <div className="flex flex-col items-center px-4">
-                          <div className="w-32 h-[2px] bg-gray-300 relative">
-                            <div className="absolute -right-1 -top-[4px] w-2 h-2 rotate-45 border-t-2 border-r-2 border-gray-300"></div>
+                filteredFlights.map((flight) => {
+                  console.log('항공사 데이터:', flight.airline); // 디버깅용 로그 추가
+                  return (
+                    <Card key={flight.id} className="p-6 hover:shadow-lg transition-shadow">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-6">
+                          <div className="w-[32px] h-[32px] bg-white rounded-lg flex items-center justify-center border border-gray-200 p-1">
+                            <img
+                              src={fetchAirlineLogo(flight.airline?.iataCode)}
+                              alt={flight.airline?.name}
+                              className="max-w-full max-h-full object-contain"
+                              onError={(e) => {
+                                console.log('이미지 로드 실패:', e.target.src); // 디버깅용 로그 추가
+                                e.target.onerror = null;
+                                e.target.src = '/default-airline-logo.png';
+                              }}
+                            />
                           </div>
-                          <span className="text-sm text-gray-500 mt-1">{flight.duration}</span>
+                          <div className="text-lg font-medium text-gray-700">
+                            {flight.airline?.name}
+                          </div>
                         </div>
-                        <div className="text-center">
-                          <div className="text-2xl font-bold">{flight.arrivalTime}</div>
-                          <div className="text-sm text-gray-500">{flight.arrivalAirport}</div>
+                        <div className="flex-1 flex justify-center items-center gap-4 px-6">
+                          <div className="text-center">
+                            <div className="text-2xl font-bold">{flight.departureTime}</div>
+                            <div className="text-sm text-gray-500">{flight.departureAirport}</div>
+                          </div>
+                          <div className="flex flex-col items-center px-4">
+                            <div className="w-32 h-[2px] bg-gray-300 relative">
+                              <div className="absolute -right-1 -top-[4px] w-2 h-2 rotate-45 border-t-2 border-r-2 border-gray-300"></div>
+                            </div>
+                            <span className="text-sm text-gray-500 mt-1">{flight.duration}</span>
+                          </div>
+                          <div className="text-center">
+                            <div className="text-2xl font-bold">{flight.arrivalTime}</div>
+                            <div className="text-sm text-gray-500">{flight.arrivalAirport}</div>
+                          </div>
+                        </div>
+                        <div className="w-[120px] text-right">
+                          <div className="text-xl font-bold text-primary">₩ {flight.price.toLocaleString()}</div>
                         </div>
                       </div>
-                      <div className="w-[120px] text-right">
-                        <div className="text-xl font-bold text-primary">₩ {flight.price.toLocaleString()}</div>
-                      </div>
-                    </div>
-                  </Card>
-                ))
+                    </Card>
+                  );
+                })
               ) : (
                 <div className="text-center py-8">
                   <p className="text-gray-500">선택한 날짜에 해당하는 항공편이 없습니다.</p>
@@ -863,24 +957,6 @@ export const PlanTravel = () => {
               ))}
             </div>
           )}
-        </div>
-
-        {/* IATA 코드 입력 필드와 테스트 버튼 추가 */}
-        <div className="absolute top-4 right-4 flex gap-2">
-          <Input
-            type="text"
-            placeholder="IATA 코드 입력 (예: ICN)"
-            value={iataCode}
-            onChange={(e) => setIataCode(e.target.value.toUpperCase())}
-            className="w-40"
-          />
-          <Button
-            onClick={handleFlightSearch}
-            disabled={isLoadingFlight}
-            className="bg-blue-500 hover:bg-blue-600 text-white"
-          >
-            {isLoadingFlight ? '로딩 중...' : '비행 정보 조회'}
-          </Button>
         </div>
 
         {/* 비행 정보 표시 */}
