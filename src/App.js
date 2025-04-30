@@ -20,6 +20,7 @@ import SignUp from './components/auth/SignUp';
 import ResetPassword from './components/auth/ResetPassword';
 import AuthCallback from './components/auth/AuthCallback';
 import TravelPlanner from './pages/TravelPlanner';
+import HotelSearchTest from './components/HotelSearchTest';
 
 const queryClient = new QueryClient();
 

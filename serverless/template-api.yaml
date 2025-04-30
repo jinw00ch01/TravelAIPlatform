@@ -15,6 +15,14 @@ Globals:
         FRONTEND_URL: 'http://localhost:3000'
         USER_POOL_ID: !ImportValue TravelAI-UserPoolId-Base
         OPENAI_API_KEY_PARAM: '/travel-ai/openai-api-key'
+  Api:
+    Cors:
+      AllowMethods: "'*'"
+      AllowHeaders: "'*'"
+      AllowOrigin: "'*'"
+    EndpointConfiguration: REGIONAL
+    BinaryMediaTypes:
+      - '*/*'
 
 # Resource Definitions
 Resources:
@@ -22,13 +30,26 @@ Resources:
   TravelApi:
     Type: AWS::Serverless::Api
     Properties:
-      StageName: prod
+      StageName: Stage
       Cors:
-        AllowMethods: "'GET, POST, PUT, DELETE, OPTIONS'"
-        AllowHeaders: "'Content-Type,Authorization'"
-        AllowOrigin: "'http://localhost:3000'"
+        AllowMethods: "'*'"
+        AllowHeaders: "'*'"
+        AllowOrigin: "'*'"
       Auth:
         ApiKeyRequired: false
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'http://localhost:3000'"
+              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        DEFAULT_5XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'http://localhost:3000'"
+              Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
 
   # OAuth Call Back Lambda
   AuthCallbackFunction:
@@ -226,8 +247,41 @@ Resources:
             Path: /api/user/profile
             Method: put
 
+  # Search Hotels Lambda
+  SearchHotelsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/travel-plan/
+      Handler: search-hotels.handler
+      Environment:
+        Variables:
+          RAPIDAPI_KEY: !Ref RapidApiKey
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: /travel-ai/amadeus-api-key
+        - SSMParameterReadPolicy:
+            ParameterName: /travel-ai/amadeus-api-secret
+      Events:
+        SearchHotels:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TravelApi
+            Path: /api/travel/hotels
+            Method: post
+
 # Output Definitions
 Outputs:
   TravelApi:
     Description: API Gateway endpoint URL
-    Value: !Sub 'https://${TravelApi}.execute-api.${AWS::Region}.amazonaws.com/prod/' 
+    Value: !Sub 'https://${TravelApi}.execute-api.${AWS::Region}.amazonaws.com/prod/'
+
+Parameters:
+  AmadeusApiKey:
+    Type: String
+    Default: ${env:AMADEUS_API_KEY}
+  AmadeusApiSecret:
+    Type: String
+    Default: ${env:AMADEUS_API_SECRET}
+  RapidApiKey:
+    Type: String
+    Default: ${env:RAPIDAPI_KEY} 
