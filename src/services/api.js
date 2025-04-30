@@ -242,6 +242,17 @@ export const travelApi = {
     } catch (error) {
       throw error;
     }
+  },
+
+  // 숙소 검색
+  searchHotels: async (searchParams) => {
+    try {
+      const response = await apiClient.post('/api/travel/hotels', searchParams);
+      return response.data;
+    } catch (error) {
+      console.error('숙소 검색 실패:', error);
+      throw error;
+    }
   }
 };
 
