@@ -1,22 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { TextField, List, ListItem, ListItemText, CircularProgress, Typography, Box } from '@mui/material';
 import debounce from 'lodash/debounce';
 
 const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
 const SCRIPT_ID = 'google-maps-script';
 
+// 전역 변수로 서비스 인스턴스 관리
+let globalPlacesService = null;
+let globalGeocoder = null;
+let globalMapInstance = null;
+let globalMapDiv = null;
+
 const SearchPopup = ({ onSelect, onClose }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [placesService, setPlacesService] = useState(null);
-  const [geocoder, setGeocoder] = useState(null);
+  const initialized = useRef(false);
 
   useEffect(() => {
     let isSubscribed = true;
-    let mapInstance = null;
-    let mapDiv = null;
 
     const loadGoogleMapsScript = () => {
       return new Promise((resolve, reject) => {
@@ -71,34 +74,30 @@ const SearchPopup = ({ onSelect, onClose }) => {
     };
 
     const initializeServices = async () => {
+      if (initialized.current) return;
+      
       try {
         console.log('Initializing Google Maps services...');
         const maps = await loadGoogleMapsScript();
         
         if (!isSubscribed) return;
 
-        if (mapInstance) {
-          console.log('Cleaning up previous map instance');
-          mapDiv.remove();
-          mapInstance = null;
-        }
+        if (!globalMapInstance) {
+          console.log('Creating new map instance');
+          globalMapDiv = document.createElement('div');
+          globalMapDiv.style.visibility = 'hidden';
+          globalMapDiv.style.position = 'absolute';
+          globalMapDiv.style.left = '-9999px';
+          document.body.appendChild(globalMapDiv);
 
-        console.log('Creating new map instance');
-        mapDiv = document.createElement('div');
-        mapDiv.style.visibility = 'hidden';
-        mapDiv.style.position = 'absolute';
-        mapDiv.style.left = '-9999px';
-        document.body.appendChild(mapDiv);
+          globalMapInstance = new maps.Map(globalMapDiv, {
+            center: { lat: 37.5665, lng: 126.9780 },
+            zoom: 15
+          });
 
-        mapInstance = new maps.Map(mapDiv, {
-          center: { lat: 37.5665, lng: 126.9780 },
-          zoom: 15
-        });
-
-        if (isSubscribed) {
-          console.log('Initializing Places Service and Geocoder');
-          setPlacesService(new maps.places.PlacesService(mapInstance));
-          setGeocoder(new maps.Geocoder());
+          globalPlacesService = new maps.places.PlacesService(globalMapInstance);
+          globalGeocoder = new maps.Geocoder();
+          initialized.current = true;
         }
       } catch (err) {
         console.error('Service initialization failed:', err);
@@ -112,16 +111,11 @@ const SearchPopup = ({ onSelect, onClose }) => {
 
     return () => {
       isSubscribed = false;
-      if (mapDiv) {
-        mapDiv.remove();
-      }
-      setPlacesService(null);
-      setGeocoder(null);
     };
   }, []);
 
   const handleSearch = debounce(async (query) => {
-    if (!query.trim() || !placesService || !geocoder) return;
+    if (!query.trim() || !globalPlacesService || !globalGeocoder) return;
 
     setLoading(true);
     setError(null);
@@ -133,7 +127,7 @@ const SearchPopup = ({ onSelect, onClose }) => {
         region: 'kr'
       };
 
-      placesService.textSearch(request, (results, status) => {
+      globalPlacesService.textSearch(request, (results, status) => {
         if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
           const processedResults = results.map(result => ({
             name: result.name,
@@ -151,9 +145,8 @@ const SearchPopup = ({ onSelect, onClose }) => {
         setLoading(false);
       });
     } catch (err) {
-      console.error('검색 오류:', err);
+      console.error('Search error:', err);
       setError('검색 중 오류가 발생했습니다.');
-      setResults([]);
       setLoading(false);
     }
   }, 300);
@@ -164,59 +157,48 @@ const SearchPopup = ({ onSelect, onClose }) => {
   };
 
   return (
-    <Box sx={{ p: 2 }}>
+    <Box sx={{ p: 2, width: '100%' }}>
       <TextField
         fullWidth
-        placeholder="장소를 검색하세요"
+        variant="outlined"
+        placeholder="장소 검색"
         value={searchTerm}
         onChange={(e) => {
           setSearchTerm(e.target.value);
           handleSearch(e.target.value);
         }}
-        sx={{ mb: 2 }}
+        autoFocus
       />
-
+      
       {loading && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
-          <CircularProgress />
+        <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
+          <CircularProgress size={24} />
         </Box>
       )}
-
+      
       {error && (
-        <Typography color="error" sx={{ my: 2 }}>
+        <Typography color="error" sx={{ mt: 1 }}>
           {error}
         </Typography>
       )}
-
-      <List>
-        {results.map((place, index) => (
-          <ListItem
-            key={`${place.name}-${index}`}
-            onClick={() => handleSelect(place)}
-            sx={{
-              cursor: 'pointer',
-              '&:hover': {
-                bgcolor: 'action.hover',
-              },
-            }}
-          >
-            <ListItemText
-              primary={place.name}
-              secondary={
-                <React.Fragment>
-                  <Typography component="span" variant="body2" color="text.primary">
-                    {place.address}
-                  </Typography>
-                  <br />
-                  <Typography component="span" variant="body2" color="text.secondary">
-                    {place.category}
-                  </Typography>
-                </React.Fragment>
-              }
-            />
-          </ListItem>
-        ))}
-      </List>
+      
+      {results.length > 0 && (
+        <List sx={{ mt: 2, maxHeight: 300, overflow: 'auto' }}>
+          {results.map((result, index) => (
+            <ListItem
+              key={index}
+              button
+              onClick={() => handleSelect(result)}
+              sx={{ '&:hover': { bgcolor: 'action.hover' } }}
+            >
+              <ListItemText
+                primary={result.name}
+                secondary={result.address}
+              />
+            </ListItem>
+          ))}
+        </List>
+      )}
     </Box>
   );
 };
