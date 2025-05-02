@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/auth/AuthContext';
 import { Box, Button, Typography, Paper, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, List, ListItem, ListItemText, TextField, Tabs, Tab } from '@mui/material';
@@ -14,6 +14,7 @@ import AccommodationPlan from '../components/AccommodationPlan';
 import FlightPlan from '../components/FlightPlan';
 import { travelApi } from '../services/api';
 import HotelMap from '../components/HotelMap';
+import amadeusApi from '../utils/amadeusApi';
 
 const StrictModeDroppable = ({ children, ...props }) => {
   const [enabled, setEnabled] = useState(false);
@@ -65,6 +66,31 @@ const TravelPlanner = () => {
     latitude: null,
     longitude: null
   });
+
+  // --- Lifted State for FlightPlan ---
+  const [flightSearchParams, setFlightSearchParams] = useState({
+      originSearch: '',
+      destinationSearch: '',
+      selectedOrigin: null,
+      selectedDestination: null,
+      departureDate: null,
+      returnDate: null,
+      adults: 1,
+      children: 0,
+      infants: 0,
+      travelClass: '',
+      nonStop: false,
+      currencyCode: 'KRW',
+      maxPrice: '',
+      max: 10,
+  });
+  const [originCities, setOriginCities] = useState([]);
+  const [destinationCities, setDestinationCities] = useState([]);
+  const [flightResults, setFlightResults] = useState([]);
+  const [isLoadingCities, setIsLoadingCities] = useState(false);
+  const [isLoadingFlights, setIsLoadingFlights] = useState(false);
+  const [flightError, setFlightError] = useState(null);
+  // --- End Lifted State ---
 
   // 여행 계획 로드 함수 - 외부에서 재사용할 수 있도록 분리
   const loadTravelPlan = async (params = { newest: true }) => {
@@ -496,16 +522,121 @@ const TravelPlanner = () => {
     }
   };
 
+  // --- Flight Search Handlers ---
+  const handleCitySearch = useCallback(async (value, type) => {
+    if (!value || value.length < 2) {
+        if (type === 'origin') setOriginCities([]);
+        else setDestinationCities([]);
+        return;
+    };
+
+    setIsLoadingCities(true);
+    setFlightError(null);
+    try {
+        const response = await amadeusApi.searchCities(value);
+        if (response && response.data && Array.isArray(response.data)) {
+            const options = response.data.map(location => ({
+                name: location.name,
+                iataCode: location.iataCode,
+                address: location.address?.cityName || '',
+                id: location.id || `${location.iataCode}-${location.name}`
+            }));
+             if (type === 'origin') setOriginCities(options);
+             else setDestinationCities(options);
+        } else {
+             if (type === 'origin') setOriginCities([]);
+             else setDestinationCities([]);
+        }
+    } catch (err) {
+        console.error("City search error:", err);
+        setFlightError(err.message || '도시 검색 중 오류 발생');
+        if (type === 'origin') setOriginCities([]);
+        else setDestinationCities([]);
+    } finally {
+        setIsLoadingCities(false);
+    }
+  }, []);
+
+  const handleFlightSearch = useCallback(async () => {
+    setFlightError(null);
+    setFlightResults([]);
+
+    const {
+        selectedOrigin, selectedDestination, departureDate, returnDate,
+        adults, children, infants, travelClass,
+        nonStop, currencyCode, maxPrice, max
+     } = flightSearchParams;
+
+    // Updated Validation with clearer messages
+    let missingFields = [];
+    if (!selectedOrigin) missingFields.push('출발지');
+    if (!selectedDestination) missingFields.push('도착지');
+    if (!departureDate) missingFields.push('가는 날짜');
+    if (!adults || adults < 1) missingFields.push('성인 수(1명 이상)');
+
+    if (missingFields.length > 0) {
+        setFlightError(`${missingFields.join(', ')} 항목을 입력해주세요.`);
+        return;
+    }
+    if (infants > adults) {
+        setFlightError('유아 수는 성인 수를 초과할 수 없습니다.');
+        return;
+    }
+     const totalPassengers = (parseInt(adults, 10) || 0) + (parseInt(children, 10) || 0);
+     if (totalPassengers > 9) {
+          setFlightError('총 탑승객(성인+소아)은 9명을 초과할 수 없습니다.');
+          return;
+     }
+
+    setIsLoadingFlights(true);
+    try {
+        const paramsToApi = {
+             originCode: selectedOrigin.iataCode,
+             destinationCode: selectedDestination.iataCode,
+             departureDate: departureDate.toISOString().split('T')[0],
+             returnDate: returnDate ? returnDate.toISOString().split('T')[0] : null,
+             adults: parseInt(adults, 10),
+             ...(children > 0 && { children: parseInt(children, 10) }),
+             ...(infants > 0 && { infants: parseInt(infants, 10) }),
+             ...(travelClass && { travelClass }),
+             ...(nonStop && { nonStop }),
+             currencyCode: currencyCode || 'KRW',
+             ...(maxPrice && { maxPrice: parseInt(maxPrice, 10) }),
+             max: max || 10,
+        };
+
+        const response = await amadeusApi.searchFlights(paramsToApi);
+        if (response && response.data && Array.isArray(response.data)) {
+             setFlightResults(response.data);
+             if(response.data.length === 0) {
+                 setFlightError('검색 조건에 맞는 항공편이 없습니다.');
+             }
+        } else {
+            setFlightResults([]);
+            setFlightError('항공편 검색 결과가 없거나 형식이 올바르지 않습니다.');
+            console.log("Unexpected flight search response:", response);
+        }
+    } catch (err) {
+        console.error("Flight search error:", err);
+        setFlightError(err.message || '항공편 검색 중 오류 발생');
+        setFlightResults([]);
+    } finally {
+        setIsLoadingFlights(false);
+    }
+  }, [flightSearchParams]);
+
+  // --- End Flight Search Handlers ---
+
   if (!user) return null;
 
   const currentPlan = travelPlans[selectedDay] || { title: '', schedules: [] };
 
   return (
-    <Box sx={{ display: 'flex', height: '100vh' }}>
+    <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)' }}>
       {/* 사이드바 */}
       <Box
         sx={{
-          width: isSidebarOpen ? '300px' : '0',
+          width: isSidebarOpen ? '350px' : '0',
           flexShrink: 0,
           whiteSpace: 'nowrap',
           boxSizing: 'border-box',
@@ -518,7 +649,7 @@ const TravelPlanner = () => {
         }}
       >
         <Box sx={{ 
-          width: '300px',
+          width: '350px',
           visibility: isSidebarOpen ? 'visible' : 'hidden',
           display: 'flex',
           flexDirection: 'column',
@@ -544,7 +675,7 @@ const TravelPlanner = () => {
             value={sidebarTab}
             onChange={(e, newValue) => setSidebarTab(newValue)}
             variant="fullWidth"
-            className="border-b border-gray-200"
+            className="border-b border-gray-200 flex-shrink-0"
           >
             <Tab label="여행 계획" value="schedule" />
             <Tab label="숙소 계획" value="accommodation" />
@@ -566,7 +697,7 @@ const TravelPlanner = () => {
                 </Button>
                 <DragDropContext onDragEnd={handleDayDragEnd}>
                   <StrictModeDroppable droppableId="days" direction="vertical">
-                    {(provided) => (
+                    {(provided, snapshot) => (
                       <Box
                         {...provided.droppableProps}
                         ref={provided.innerRef}
@@ -651,7 +782,19 @@ const TravelPlanner = () => {
             )}
 
             {sidebarTab === 'flight' && (
-              <FlightPlan />
+              <FlightPlan
+                fullWidth={false}
+                searchParams={flightSearchParams}
+                setSearchParams={setFlightSearchParams}
+                originCities={originCities}
+                destinationCities={destinationCities}
+                handleCitySearch={handleCitySearch}
+                flights={flightResults}
+                isLoadingCities={isLoadingCities}
+                isLoadingFlights={isLoadingFlights}
+                error={flightError}
+                handleFlightSearch={handleFlightSearch}
+              />
             )}
           </div>
         </Box>
@@ -684,246 +827,135 @@ const TravelPlanner = () => {
           <Typography variant="h6">
             {sidebarTab === 'schedule' ? '여행 일정' : 
              sidebarTab === 'accommodation' ? '숙소 검색 결과' : 
-             '비행 계획'}
+             '항공편 검색 결과'}
           </Typography>
         </Box>
 
-        {/* 메인 컨텐츠 영역 - 탭에 따라 다른 컨텐츠 표시 */}
-        <Box sx={{ flex: 1, p: 2, overflow: 'hidden' }}>
+        {/* Main Content Area */}
+        <Box sx={{ flex: 1, p: 2, overflow: 'hidden', bgcolor: '#f4f6f8' }}>
           {sidebarTab === 'schedule' ? (
-            // 여행 일정 탭
-            selectedDay ? (
-            <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h5">
-                  {currentPlan.title}
-                </Typography>
-                <Button
-                  variant="contained"
-                  startIcon={<SearchIcon />}
-                  onClick={() => setIsSearchOpen(true)}
-                >
-                  장소 검색
-                </Button>
-              </Box>
-              <Box sx={{ 
-                flex: 1,
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
-                gap: 2,
-                overflow: 'hidden'
-              }}>
-                {/* 일정 목록 */}
-                <Box sx={{ 
-                  bgcolor: 'background.paper',
-                  borderRadius: 1,
-                  boxShadow: 1,
-                  p: 2,
-                  overflow: 'auto'
-                }}>
-                  <Typography variant="h6" sx={{ mb: 2 }}>일정 목록</Typography>
-                  <DragDropContext onDragEnd={handleDragEnd}>
-                    <StrictModeDroppable droppableId="schedules">
-                      {(provided, snapshot) => (
-                        <List
-                          ref={provided.innerRef}
-                          {...provided.droppableProps}
-                          sx={{
-                            minHeight: '100px',
-                            bgcolor: snapshot.isDraggingOver ? 'action.hover' : 'transparent',
-                            transition: 'background-color 0.2s ease',
-                            '& > *:not(:last-child)': {
-                              mb: 1
-                            }
-                          }}
-                        >
-                          {currentPlan.schedules.map((schedule, index) => (
-                            <Draggable
-                              key={`schedule-${index}`}
-                              draggableId={`schedule-${index}`}
-                              index={index}
-                            >
-                              {(provided, snapshot) => (
-                                <ListItem
-                                  ref={provided.innerRef}
-                                  {...provided.draggableProps}
-                                  sx={{
-                                    p: 2,
-                                    bgcolor: snapshot.isDragging ? 'action.hover' : 'background.paper',
-                                    borderRadius: 1,
-                                    border: 1,
-                                    borderColor: 'divider',
-                                    '&:hover': {
-                                      bgcolor: 'action.hover',
-                                    },
-                                  }}
-                                  secondaryAction={
-                                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                      <IconButton
-                                        edge="end"
-                                        aria-label="edit"
-                                        onClick={() => handleEditSchedule(schedule)}
-                                        sx={{ mr: 1 }}
-                                      >
-                                        <EditIcon />
-                                      </IconButton>
-                                      <IconButton
-                                        edge="end"
-                                        aria-label="delete"
-                                        onClick={() => handleDeleteSchedule(schedule.id)}
-                                      >
-                                        <DeleteIcon />
-                                      </IconButton>
-                                    </Box>
-                                  }
-                                >
-                                  <div {...provided.dragHandleProps} style={{ marginRight: 8 }}>
-                                    <DragIndicatorIcon color="action" />
-                                  </div>
-                                  <ListItemText
-                                    primary={
-                                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                        <Typography variant="subtitle1">
-                                          {schedule.time}
-                                        </Typography>
-                                        <Typography variant="subtitle1" sx={{ ml: 2 }}>
-                                          {schedule.name}
-                                        </Typography>
-                                      </Box>
-                                    }
-                                    secondary={
-                                      <React.Fragment>
-                                        <Typography component="span" variant="body2" color="text.primary">
-                                          {schedule.address}
-                                        </Typography>
-                                        <br />
-                                        <Typography component="span" variant="body2" color="text.secondary">
-                                          {schedule.category}
-                                          {schedule.duration && ` • ${schedule.duration}`}
-                                        </Typography>
-                              </React.Fragment>
-                                    }
-                                  />
-                                </ListItem>
-                              )}
-                            </Draggable>
-                          ))}
-                          {provided.placeholder}
-                        </List>
-                      )}
-                    </StrictModeDroppable>
-                  </DragDropContext>
+             selectedDay ? (
+               <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                 {/* Schedule Details + Map */}
+                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h5">{currentPlan.title}</Typography>
+                    <Button variant="contained" startIcon={<SearchIcon />} onClick={() => setIsSearchOpen(true)}>장소 검색</Button>
+                 </Box>
+                 <Box sx={{ flex: 1, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, overflow: 'hidden' }}>
+                    {/* Schedule List */}
+                    <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: 1, p: 2, overflow: 'auto' }}>
+                       <Typography variant="h6" sx={{ mb: 2 }}>일정 목록</Typography>
+                       <DragDropContext onDragEnd={handleDragEnd}>
+                           <StrictModeDroppable droppableId="schedules">
+                             {(provided, snapshot) => (
+                               <List ref={provided.innerRef} {...provided.droppableProps} sx={{ minHeight: '100px', bgcolor: snapshot.isDraggingOver ? 'action.hover' : 'transparent', transition: 'background-color 0.2s ease', '& > *:not(:last-child)': { mb: 1 } }}>
+                                 {currentPlan.schedules.map((schedule, index) => (
+                                   <Draggable key={`schedule-${index}`} draggableId={`schedule-${index}`} index={index}>
+                                     {(provided, snapshot) => (
+                                       <ListItem ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} sx={{ p: 2, bgcolor: snapshot.isDragging ? 'action.hover' : 'background.paper', borderRadius: 1, border: 1, borderColor: 'divider', '&:hover': { bgcolor: 'action.hover', }, }} secondaryAction={
+                                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                           <IconButton
+                                             edge="end"
+                                             aria-label="edit"
+                                             onClick={(e) => { e.stopPropagation(); handleEditSchedule(schedule); }}
+                                             sx={{ mr: 1 }}
+                                           >
+                                             <EditIcon />
+                                           </IconButton>
+                                           <IconButton
+                                             edge="end"
+                                             aria-label="delete"
+                                             onClick={(e) => { e.stopPropagation(); handleDeleteSchedule(schedule.id); }}
+                                           >
+                                             <DeleteIcon />
+                                           </IconButton>
+                                         </Box>
+                                       }>
+                                         <div {...provided.dragHandleProps} style={{ marginRight: 8 }}>
+                                           <DragIndicatorIcon color="action" />
+                                         </div>
+                                         <ListItemText
+                                           primary={
+                                             <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                               <Typography variant="subtitle1">
+                                                 {schedule.time}
+                                               </Typography>
+                                               <Typography variant="subtitle1" sx={{ ml: 2 }}>
+                                                 {schedule.name}
+                                               </Typography>
+                                             </Box>
+                                           }
+                                           secondary={
+                                             <React.Fragment>
+                                               <Typography component="span" variant="body2" color="text.primary">
+                                                 {schedule.address}
+                                               </Typography>
+                                               <br />
+                                               <Typography component="span" variant="body2" color="text.secondary">
+                                                 {schedule.category}
+                                                 {schedule.duration && ` • ${schedule.duration}`}
+                                               </Typography>
+                                             </React.Fragment>
+                                           }
+                                         />
+                                       </ListItem>
+                                     )}
+                                   </Draggable>
+                                 ))}
+                                 {provided.placeholder}
+                               </List>
+                             )}
+                           </StrictModeDroppable>
+                       </DragDropContext>
+                    </Box>
+                    {/* Map */}
+                    <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: 1, overflow: 'hidden', height: '100%' }}>
+                       <MapboxComponent selectedPlace={null} travelPlans={travelPlans} selectedDay={selectedDay} showAllMarkers={showAllMarkers}/>
+                    </Box>
+                 </Box>
+               </Box>
+             ) : ( // If no day selected in schedule tab
+               <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                 <Typography variant="h6" color="text.secondary">날짜를 선택해주세요</Typography>
+               </Box>
+             )
+          ) : // End of schedule tab condition
+          sidebarTab === 'accommodation' ? (
+             <Box sx={{ height: '100%', overflow: 'hidden' }}>
+                <Box sx={{ bgcolor: 'background.paper', p: 2, borderRadius: 1, boxShadow: 1, overflow: 'auto', height: '100%' }}>
+                     <AccommodationPlan displayInMain={true} ref={mainAccommodationPlanRef} formData={accommodationFormData} setFormData={setAccommodationFormData}/>
                 </Box>
-
-                {/* 지도 */}
-                <Box sx={{ 
-                  bgcolor: 'background.paper',
-                  borderRadius: 1,
-                  boxShadow: 1,
-                  overflow: 'hidden',
-                  height: '100%'
-                }}>
-                  <MapboxComponent
-                    selectedPlace={null}
-                    travelPlans={travelPlans}
-                    selectedDay={selectedDay}
-                    showAllMarkers={showAllMarkers}
-                  />
-                </Box>
-              </Box>
-            </Box>
-          ) : (
-            <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Typography variant="h6" color="text.secondary">
-                날짜를 선택해주세요
-              </Typography>
-              </Box>
-            )
-          ) : sidebarTab === 'accommodation' ? (
-            // 숙소 계획 탭
-            <Box sx={{ 
-              height: '100%', 
-              overflow: 'hidden'
-            }}>
-              {/* 숙소 검색 결과 영역 */}
-              <Box sx={{ bgcolor: 'background.paper', p: 2, borderRadius: 1, boxShadow: 1, overflow: 'auto' }}>
-                <AccommodationPlan 
-                  displayInMain={true} 
-                  ref={mainAccommodationPlanRef}
-                  formData={accommodationFormData}
-                  setFormData={setAccommodationFormData}
-                />
-              </Box>
-            </Box>
-          ) : (
-            // 비행 계획 탭 - 전체 화면에 표시
-            <Box sx={{ height: '100%', bgcolor: 'background.paper', p: 2, borderRadius: 1, boxShadow: 1 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>비행 일정</Typography>
-              <FlightPlan fullWidth={true} />
-            </Box>
-          )}
+             </Box>
+           ) : // End of accommodation tab condition
+           // sidebarTab === 'flight' (Implicitly)
+           (
+             <FlightPlan fullWidth={true} flights={flightResults} isLoadingFlights={isLoadingFlights} error={flightError} searchParams={{}} setSearchParams={()=>{}} originCities={[]} destinationCities={[]} handleCitySearch={()=>{}} isLoadingCities={false} handleFlightSearch={()=>{}} />
+           )
+          } 
         </Box>
       </Box>
 
-      {/* 검색 팝업 */}
-      <Dialog
-        open={isSearchOpen}
-        onClose={() => setIsSearchOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>장소 검색</DialogTitle>
-        <DialogContent>
-          <SearchPopup
-            onSelect={handleAddPlace}
-            onClose={() => setIsSearchOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* 일정 수정 다이얼로그 */}
-      <Dialog
-        open={editDialogOpen}
-        onClose={() => setEditDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>일정 수정</DialogTitle>
-        <DialogContent>
-          {editSchedule && (
-            <Box sx={{ pt: 2 }}>
-              <TextField
-                fullWidth
-                label="시간"
-                value={editSchedule.time}
-                onChange={(e) => setEditSchedule({ ...editSchedule, time: e.target.value })}
-                sx={{ mb: 2 }}
-              />
-              <TextField
-                fullWidth
-                label="소요 시간"
-                value={editSchedule.duration}
-                onChange={(e) => setEditSchedule({ ...editSchedule, duration: e.target.value })}
-                sx={{ mb: 2 }}
-              />
-              <TextField
-                fullWidth
-                multiline
-                rows={4}
-                label="메모"
-                value={editSchedule.notes}
-                onChange={(e) => setEditSchedule({ ...editSchedule, notes: e.target.value })}
-              />
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditDialogOpen(false)}>취소</Button>
-          <Button onClick={handleUpdateSchedule} variant="contained">저장</Button>
-        </DialogActions>
-      </Dialog>
+      {/* Dialogs */}
+       <Dialog open={isSearchOpen} onClose={() => setIsSearchOpen(false)} maxWidth="md" fullWidth>
+           <DialogTitle>장소 검색</DialogTitle>
+           <DialogContent><SearchPopup onSelect={handleAddPlace} onClose={() => setIsSearchOpen(false)} /></DialogContent>
+       </Dialog>
+       <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth>
+           <DialogTitle>일정 수정</DialogTitle>
+           <DialogContent>
+               {editSchedule && ( <Box sx={{ pt: 2 }}>
+                 <TextField fullWidth label="시간" value={editSchedule.time} onChange={(e) => setEditSchedule({ ...editSchedule, time: e.target.value })} sx={{ mb: 2 }} />
+                 <TextField fullWidth label="소요 시간" value={editSchedule.duration} onChange={(e) => setEditSchedule({ ...editSchedule, duration: e.target.value })} sx={{ mb: 2 }} />
+                 <TextField fullWidth multiline rows={4} label="메모" value={editSchedule.notes} onChange={(e) => setEditSchedule({ ...editSchedule, notes: e.target.value })} />
+               </Box> )}
+           </DialogContent>
+           <DialogActions>
+               <Button onClick={() => setEditDialogOpen(false)}>취소</Button>
+               <Button onClick={handleUpdateSchedule} variant="contained">저장</Button>
+           </DialogActions>
+       </Dialog>
     </Box>
   );
 };
 
-export default TravelPlanner; 
+export default TravelPlanner;

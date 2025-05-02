@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
-import { collection, addDoc, serverTimestamp } from '../../services/firebase';
-import { db } from '../../services/firebase';
 import { useAuth } from '../auth/AuthContext';
 import { travelApi } from '../../services/api';
 
