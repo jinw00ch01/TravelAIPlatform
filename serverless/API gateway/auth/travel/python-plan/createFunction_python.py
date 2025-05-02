@@ -211,7 +211,7 @@ JSON 예시
 
 
         # Gemini API 호출
-        api_key = "AIzaSyCwAlUgBnKLn7nGp8Gv9Zd8AH0Rh-iDvWY"
+        api_key = os.environ.get("GEMINI_API_KEY")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
 
         payload = {
