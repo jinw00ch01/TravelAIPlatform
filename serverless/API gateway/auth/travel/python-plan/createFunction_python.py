@@ -2,6 +2,7 @@ import json
 import urllib.request
 import boto3
 import time
+import os
 from decimal import Decimal
 import jwt  # pyjwt 라이브러리 import
 
@@ -211,7 +212,10 @@ JSON 예시
 
 
         # Gemini API 호출
-        api_key = os.environ.get("GEMINI_API_KEY")
+        api_key = os.environ.get('GEMINI_API_KEY')
+        if not api_key:
+            raise Exception("환경변수 'GEMINI_API_KEY'가 설정되지 않았습니다.")
+            
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
 
         payload = {
