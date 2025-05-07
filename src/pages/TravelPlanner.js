@@ -51,6 +51,7 @@ const TravelPlanner = () => {
   const [isLoadingPlan, setIsLoadingPlan] = useState(false);
   const [hotelSearchResults, setHotelSearchResults] = useState([]);
   const [selectedHotel, setSelectedHotel] = useState(null);
+  const [showMap, setShowMap] = useState(true);
 
   // 메인 영역의 AccommodationPlan 컴포넌트에 대한 ref
   const mainAccommodationPlanRef = useRef(null);
@@ -839,9 +840,17 @@ const TravelPlanner = () => {
                  {/* Schedule Details + Map */}
                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                     <Typography variant="h5">{currentPlan.title}</Typography>
-                    <Button variant="contained" startIcon={<SearchIcon />} onClick={() => setIsSearchOpen(true)}>장소 검색</Button>
+                    {/* 버튼 두 개를 한 줄에 배치: 지도 숨기기 → 장소 검색 순 */}
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Button variant="outlined" size="small" onClick={() => setShowMap(v => !v)}>
+                        {showMap ? '지도 숨기기' : '지도 보이기'}
+                      </Button>
+                      <Button variant="contained" startIcon={<SearchIcon />} onClick={() => setIsSearchOpen(true)}>
+                        장소 검색
+                      </Button>
+                    </Box>
                  </Box>
-                 <Box sx={{ flex: 1, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, overflow: 'hidden' }}>
+                 <Box sx={{ flex: 1, display: 'grid', gridTemplateColumns: showMap ? { xs: '1fr', md: '1fr 1fr' } : '1fr', gap: 2, overflow: 'hidden' }}>
                     {/* Schedule List */}
                     <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: 1, p: 2, overflow: 'auto' }}>
                        <Typography variant="h6" sx={{ mb: 2 }}>일정 목록</Typography>
@@ -909,9 +918,11 @@ const TravelPlanner = () => {
                        </DragDropContext>
                     </Box>
                     {/* Map */}
-                    <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: 1, overflow: 'hidden', height: '100%' }}>
-                       <MapboxComponent selectedPlace={null} travelPlans={travelPlans} selectedDay={selectedDay} showAllMarkers={showAllMarkers}/>
-                    </Box>
+                    {showMap && (
+                      <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: 1, overflow: 'hidden', height: '100%' }}>
+                        <MapboxComponent selectedPlace={null} travelPlans={travelPlans} selectedDay={selectedDay} showAllMarkers={showAllMarkers}/>
+                      </Box>
+                    )}
                  </Box>
                </Box>
              ) : ( // If no day selected in schedule tab

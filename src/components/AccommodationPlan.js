@@ -35,6 +35,7 @@ import axios from 'axios';
 import SearchPopup from './SearchPopup';
 import { Search as SearchIcon, Add as AddIcon, Sort as SortIcon, AttachMoney as AttachMoneyIcon, Star as StarIcon } from '@mui/icons-material';
 import HotelMap from './HotelMap';
+import { travelApi } from '../services/api';
 
 const modalStyle = {
   position: 'absolute',
@@ -51,8 +52,19 @@ const modalStyle = {
   borderRadius: 2,
 };
 
+const JPY_TO_KRW = 9.5;    // 1엔 = 9.5원
+const USD_TO_KRW = 1350;   // 1달러 = 1350원
+const CNY_TO_KRW = 185;    // 1위안 = 185원
+function convertToKRW(value, currency) {
+  if (currency === 'KRW') return value;
+  if (currency === 'JPY') return Math.round(value * JPY_TO_KRW);
+  if (currency === 'USD') return Math.round(value * USD_TO_KRW);
+  if (currency === 'CNY' || currency === 'RMB') return Math.round(value * CNY_TO_KRW);
+  return value;
+}
+
 const AccommodationPlan = forwardRef(({ 
-  showMap, 
+  showMap: showMapProp,
   isSearchTab = false, 
   onHotelSelect, 
   onSearchResults, 
@@ -76,6 +88,11 @@ const AccommodationPlan = forwardRef(({
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const initialized = useRef(false);
+  const [showMap, setShowMap] = useState(true);
+  const [addToPlanDialogOpen, setAddToPlanDialogOpen] = useState(false);
+  const [hotelToAdd, setHotelToAdd] = useState(null);
+  const [latestPlan, setLatestPlan] = useState(null);
+  const [daySelectList, setDaySelectList] = useState([]);
 
   const handleDateChange = (field, date) => {
     console.log(`${field} 날짜 변경:`, date);
@@ -90,13 +107,25 @@ const AccommodationPlan = forwardRef(({
   const handleAdultsChange = (event) => {
     const value = event.target.value;
     console.log('인원 수 변경:', value);
-    if (value && parseInt(value) > 0) {
+    
+    // 빈 문자열이거나 숫자인 경우 모두 허용
+    if (value === '' || /^\d+$/.test(value)) {
       const newFormData = {
         ...formData,
         adults: value
       };
       setFormData(newFormData);
       console.log('인원 수 변경 후 업데이트된 formData:', newFormData);
+      
+      // 기존 검색 결과가 있는 경우, URL만 업데이트
+      if (searchResults.length > 0 && value !== '') {
+        const updatedResults = searchResults.map(hotel => ({
+          ...hotel,
+          url: `https://www.booking.com/hotel.ko.html?hotel_id=${hotel.hotel_id}&checkin=${format(formData.checkIn, 'yyyy-MM-dd')}&checkout=${format(formData.checkOut, 'yyyy-MM-dd')}&group_adults=${value}&no_rooms=1&lang=ko`
+        }));
+        setSearchResults(updatedResults);
+        setSortedResults(sortResults(updatedResults, sortType));
+      }
     }
   };
 
@@ -227,17 +256,24 @@ const AccommodationPlan = forwardRef(({
         const processedResults = allResults.map(hotel => {
           let priceDisplay = '가격 정보 없음';
           let originalPrice = null;
-
+          let currency = hotel.composite_price_breakdown?.gross_amount?.currency || 'KRW';
+          let value = null;
           if (hotel.composite_price_breakdown?.gross_amount?.value) {
-            priceDisplay = Math.round(hotel.composite_price_breakdown.gross_amount.value).toLocaleString();
+            value = hotel.composite_price_breakdown.gross_amount.value;
           } else if (hotel.composite_price_breakdown?.all_inclusive_amount?.value) {
-            priceDisplay = Math.round(hotel.composite_price_breakdown.all_inclusive_amount.value).toLocaleString();
+            value = hotel.composite_price_breakdown.all_inclusive_amount.value;
           } else if (hotel.min_total_price) {
-            priceDisplay = Math.round(hotel.min_total_price).toLocaleString();
+            value = hotel.min_total_price;
           }
-
+          if (value !== null) {
+            value = convertToKRW(value, currency);
+            priceDisplay = `KRW ${value.toLocaleString()}`;
+          }
           if (hotel.composite_price_breakdown?.strikethrough_amount?.value) {
-            originalPrice = Math.round(hotel.composite_price_breakdown.strikethrough_amount.value).toLocaleString();
+            let originalValue = hotel.composite_price_breakdown.strikethrough_amount.value;
+            let originalCurrency = hotel.composite_price_breakdown.strikethrough_amount.currency || currency;
+            originalValue = convertToKRW(originalValue, originalCurrency);
+            originalPrice = `KRW ${originalValue.toLocaleString()}`;
           }
 
           const actualDistance = calculateDistance(
@@ -263,12 +299,12 @@ const AccommodationPlan = forwardRef(({
             main_photo_url: hotel.max_photo_url,
             review_score: hotel.review_score || 0,
             review_score_word: hotel.review_score_word || '',
-            price: priceDisplay !== '가격 정보 없음' ? `KRW ${priceDisplay}` : priceDisplay,
-            original_price: originalPrice ? `KRW ${originalPrice}` : null,
+            price: priceDisplay !== '가격 정보 없음' ? priceDisplay : priceDisplay,
+            original_price: originalPrice ? originalPrice : null,
             distance_to_center: distanceDisplay,
             latitude: hotel.latitude,
             longitude: hotel.longitude,
-            url: `https://www.booking.com/hotel.ko.html?hotel_id=${hotel.hotel_id}&checkin=${format(formData.checkIn, 'yyyy-MM-dd')}&checkout=${format(formData.checkOut, 'yyyy-MM-dd')}&group_adults=${formData.adults}&no_rooms=1&lang=ko`,
+            url: `https://www.booking.com/hotel.ko.html?hotel_id=${hotel.hotel_id}&checkin=${format(formData.checkIn, 'yyyy-MM-dd')}&checkout=${format(formData.checkOut, 'yyyy-MM-dd')}&group_adults=${formData.adults}&no_rooms=1&lang=ko&selected_currency=KRW`,
             actual_distance: actualDistance,
             accommodation_type: hotel.accommodation_type_name || '숙박시설',
             tax_info: hotel.tax_info || '',
@@ -359,77 +395,31 @@ const AccommodationPlan = forwardRef(({
 
   const handleBooking = (event, hotel) => {
     event.stopPropagation();
-    
-    console.log('현재 formData:', formData);
-    console.log('formData 타입:', {
-      checkIn: typeof formData.checkIn,
-      checkOut: typeof formData.checkOut,
-      adults: typeof formData.adults
-    });
-    
-    if (!formData.checkIn || !formData.checkOut || !formData.adults) {
-      console.error('필수 정보가 누락되었습니다:', formData);
-      return;
-    }
+    console.log('[예약] 현재 formData:', formData);
+    console.log('[예약] hotel 정보:', hotel);
 
-    const checkInDate = new Date(formData.checkIn);
-    const checkOutDate = new Date(formData.checkOut);
-    
+    // 체크인/체크아웃 날짜가 Date 객체가 아니면 변환
+    let checkInDate = formData.checkIn instanceof Date ? formData.checkIn : new Date(formData.checkIn);
+    let checkOutDate = formData.checkOut instanceof Date ? formData.checkOut : new Date(formData.checkOut);
+
     if (isNaN(checkInDate.getTime()) || isNaN(checkOutDate.getTime())) {
-      console.error('날짜 형식이 올바르지 않습니다:', {
-        checkIn: formData.checkIn,
-        checkOut: formData.checkOut
-      });
+      alert('날짜 형식이 올바르지 않습니다.');
       return;
     }
 
-    const adults = parseInt(formData.adults);
+    const adults = parseInt(formData.adults, 10);
     if (isNaN(adults) || adults < 1) {
-      console.error('인원 수가 올바르지 않습니다:', formData.adults);
+      alert('인원 수가 올바르지 않습니다.');
       return;
     }
 
-    const formattedCheckIn = format(checkInDate, 'yyyy-MM-dd');
-    const formattedCheckOut = format(checkOutDate, 'yyyy-MM-dd');
-    
-    console.log('검증된 예약 정보:', {
-      checkInDate: formattedCheckIn,
-      checkOutDate: formattedCheckOut,
-      adults: adults.toString(),
-      hotelName: hotel.hotel_name
-    });
+    const formattedCheckIn = checkInDate.toISOString().split('T')[0];
+    const formattedCheckOut = checkOutDate.toISOString().split('T')[0];
+    const hotelName = encodeURIComponent(hotel.hotel_name);
 
-    try {
-      const baseParams = {
-        checkin: formattedCheckIn,
-        checkout: formattedCheckOut,
-        group_adults: adults.toString(),
-        no_rooms: '1',
-        lang: 'ko',
-        selected_currency: 'KRW'
-      };
-
-      if (hotel.hotel_id) {
-        const url = `https://www.booking.com/hotel.ko.html?hotel_id=${hotel.hotel_id}&${new URLSearchParams(baseParams).toString()}`;
-        console.log('최종 Booking URL:', url);
-        window.open(url, '_blank');
-      } else {
-        const searchParams = {
-          ...baseParams,
-          ss: hotel.hotel_name,
-          latitude: hotel.latitude,
-          longitude: hotel.longitude,
-          radius: '5'
-        };
-        const url = `https://www.booking.com/searchresults.ko.html?${new URLSearchParams(searchParams).toString()}`;
-        console.log('최종 Search URL:', url);
-        window.open(url, '_blank');
-      }
-    } catch (error) {
-      console.error('URL 생성 오류:', error);
-      const fallbackUrl = `https://www.booking.com/searchresults.ko.html?ss=${encodeURIComponent(hotel.hotel_name)}&checkin=${formattedCheckIn}&checkout=${formattedCheckOut}&group_adults=${adults}&no_rooms=1&lang=ko`;
-      window.open(fallbackUrl, '_blank');
-    }
+    const bookingUrl = `https://www.booking.com/searchresults.ko.html?ss=${hotelName}&checkin=${formattedCheckIn}&checkout=${formattedCheckOut}&group_adults=${adults}&no_rooms=1&lang=ko`;
+    console.log('[예약] Booking.com 호텔명+날짜+인원 검색 URL:', bookingUrl);
+    window.open(bookingUrl, '_blank');
   };
 
   const handleOpenSearchPopup = () => {
@@ -442,6 +432,108 @@ const AccommodationPlan = forwardRef(({
     setIsDialogOpen(false);
   };
 
+  const handleAddToPlanClick = async () => {
+    try {
+      const data = await travelApi.loadPlan({ newest: true });
+      const plan = data?.plan?.[0];
+      if (!plan) {
+        alert('일정을 먼저 생성해주세요.');
+        return;
+      }
+
+      // itinerary robust 추출
+      let itinerary = null;
+      if (plan.itinerary && Array.isArray(plan.itinerary) && plan.itinerary.length > 0) {
+        itinerary = plan.itinerary;
+      } else if (plan.plan_data?.itinerary && Array.isArray(plan.plan_data.itinerary) && plan.plan_data.itinerary.length > 0) {
+        itinerary = plan.plan_data.itinerary;
+      } else if (plan.plan_data?.candidates && Array.isArray(plan.plan_data.candidates) && plan.plan_data.candidates.length > 0) {
+        const textContent = plan.plan_data.candidates[0]?.content?.parts?.[0]?.text;
+        if (textContent) {
+          const jsonMatch = textContent.match(/```json\n([\s\S]*?)\n```/);
+          if (jsonMatch && jsonMatch[1]) {
+            try {
+              const parsed = JSON.parse(jsonMatch[1]);
+              if (parsed.itinerary && Array.isArray(parsed.itinerary) && parsed.itinerary.length > 0) {
+                itinerary = parsed.itinerary;
+              }
+            } catch (e) {}
+          }
+        }
+      }
+
+      if (!itinerary || itinerary.length === 0) {
+        alert('일정을 먼저 생성해주세요.');
+        return;
+      }
+
+      setLatestPlan({ ...plan, itinerary });
+      setDaySelectList(itinerary.map((day, idx) => ({
+        dayKey: idx,
+        title: day.title || `${idx + 1}일차`
+      })));
+      setHotelToAdd(selectedHotel);
+      setAddToPlanDialogOpen(true);
+    } catch (e) {
+      alert('일정 정보를 불러오지 못했습니다.');
+    }
+  };
+
+  const handleSelectDay = async (dayKey) => {
+    if (!latestPlan) return;
+    const planId = latestPlan.planId;
+    const itinerary = [...latestPlan.itinerary];
+    const hotel = hotelToAdd;
+    const newSchedule = {
+      id: `hotel-${hotel.hotel_id}-${Date.now()}`,
+      name: hotel.hotel_name,
+      time: '체크인',
+      address: hotel.address,
+      category: '숙소',
+      duration: '1박',
+      notes: `가격: ${hotel.price}`,
+      lat: hotel.latitude,
+      lng: hotel.longitude
+    };
+    if (!itinerary[dayKey].schedules) itinerary[dayKey].schedules = [];
+    itinerary[dayKey].schedules.push(newSchedule);
+    await travelApi.updateTravelPlan(planId, { ...latestPlan, itinerary });
+    // 추가 후 최신 플랜 다시 불러오기
+    try {
+      const data = await travelApi.loadPlan({ newest: true });
+      const plan = data?.plan?.[0];
+      // robust itinerary 추출 (동일 로직 재사용)
+      let newItinerary = null;
+      if (plan.itinerary && Array.isArray(plan.itinerary) && plan.itinerary.length > 0) {
+        newItinerary = plan.itinerary;
+      } else if (plan.plan_data?.itinerary && Array.isArray(plan.plan_data.itinerary) && plan.plan_data.itinerary.length > 0) {
+        newItinerary = plan.plan_data.itinerary;
+      } else if (plan.plan_data?.candidates && Array.isArray(plan.plan_data.candidates) && plan.plan_data.candidates.length > 0) {
+        const textContent = plan.plan_data.candidates[0]?.content?.parts?.[0]?.text;
+        if (textContent) {
+          const jsonMatch = textContent.match(/```json\n([\s\S]*?)\n```/);
+          if (jsonMatch && jsonMatch[1]) {
+            try {
+              const parsed = JSON.parse(jsonMatch[1]);
+              if (parsed.itinerary && Array.isArray(parsed.itinerary) && parsed.itinerary.length > 0) {
+                newItinerary = parsed.itinerary;
+              }
+            } catch (e) {}
+          }
+        }
+      }
+      if (newItinerary && newItinerary.length > 0) {
+        setLatestPlan({ ...plan, itinerary: newItinerary });
+        setDaySelectList(newItinerary.map((day, idx) => ({
+          dayKey: idx,
+          title: day.title || `${idx + 1}일차`
+        })));
+      }
+    } catch (e) {}
+    setAddToPlanDialogOpen(false);
+    alert('일정에 추가되었습니다!');
+  };
+
   useImperativeHandle(ref, () => ({
     handlePlaceSelect,
     handleSearch,
@@ -450,8 +542,51 @@ const AccommodationPlan = forwardRef(({
     }
   }));
 
+  useEffect(() => {
+    // 컴포넌트 마운트 시 복원
+    const savedResults = localStorage.getItem('accommodationSearchResults');
+    const savedFormData = localStorage.getItem('accommodationFormData');
+    if (savedResults) {
+      setSearchResults(JSON.parse(savedResults));
+      setSortedResults(sortResults(JSON.parse(savedResults), sortType));
+    }
+    if (savedFormData) {
+      try {
+        const parsed = JSON.parse(savedFormData);
+        // checkIn/checkOut을 Date 객체로 변환, 유효하지 않으면 기본값
+        const checkIn = parsed.checkIn ? new Date(parsed.checkIn) : new Date();
+        const checkOut = parsed.checkOut ? new Date(parsed.checkOut) : new Date(new Date().setDate(new Date().getDate() + 1));
+        setFormData(prev => ({
+          ...prev,
+          ...parsed,
+          checkIn: isNaN(checkIn.getTime()) ? new Date() : checkIn,
+          checkOut: isNaN(checkOut.getTime()) ? new Date(new Date().setDate(new Date().getDate() + 1)) : checkOut,
+        }));
+      } catch (e) {}
+    }
+  }, []);
+
+  useEffect(() => {
+    // 검색 결과/조건이 바뀔 때마다 저장
+    if (searchResults.length > 0) {
+      localStorage.setItem('accommodationSearchResults', JSON.stringify(searchResults));
+    }
+  }, [searchResults]);
+
+  useEffect(() => {
+    if (formData) {
+      localStorage.setItem('accommodationFormData', JSON.stringify(formData));
+    }
+  }, [formData]);
+
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* 왼쪽(검색 폼 위) 지도 숨기기/보이기 버튼 제거 */}
+      {/* <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+        <Button variant="outlined" size="small" onClick={() => setShowMap(v => !v)}>
+          {showMap ? '지도 숨기기' : '지도 보이기'}
+        </Button>
+      </Box> */}
       {!displayInMain && (
         <Paper sx={{ p: 2, mb: 2 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -531,6 +666,12 @@ const AccommodationPlan = forwardRef(({
 
       {displayInMain && (
         <Box sx={{ flex: 1, overflow: 'auto' }}>
+          {/* 오른쪽(결과/지도 영역 상단)에만 지도 숨기기/보이기 버튼 */}
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+            <Button variant="outlined" size="small" onClick={() => setShowMap(v => !v)}>
+              {showMap ? '지도 숨기기' : '지도 보이기'}
+            </Button>
+          </Box>
           {loading && (
             <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
               <CircularProgress />
@@ -546,7 +687,7 @@ const AccommodationPlan = forwardRef(({
           {/* 검색 결과와 지도를 포함하는 컨테이너 */}
           <Box sx={{ 
             display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
+            gridTemplateColumns: showMap ? '1fr 1fr' : '1fr',
             gap: 2,
             mt: 2
           }}>
@@ -554,7 +695,7 @@ const AccommodationPlan = forwardRef(({
             <Box sx={{ 
               maxHeight: 'calc(100vh - 200px)',
               overflow: 'auto',
-              pr: 2
+              pr: showMap ? 2 : 0
             }}>
               {searchResults.length > 0 ? (
                 <>
@@ -662,6 +803,9 @@ const AccommodationPlan = forwardRef(({
                             >
                               {hotel.price}
                             </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                              실제 결제 금액은 세금/수수료, 환율 변동 등으로 Booking.com에서 달라질 수 있습니다.
+                            </Typography>
                             {hotel.tax_info && (
                               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                                 {hotel.tax_info}
@@ -679,24 +823,26 @@ const AccommodationPlan = forwardRef(({
               ) : null}
             </Box>
 
-            {/* 지도 영역 - 항상 표시 */}
-            <Box sx={{ 
-              height: 'calc(100vh - 200px)',
-              position: 'sticky',
-              top: 0,
-              borderRadius: '8px',
-              overflow: 'hidden',
-              boxShadow: 1
-            }}>
-              <HotelMap 
-                hotels={searchResults}
-                center={searchResults.length > 0 
-                  ? [parseFloat(searchResults[0].longitude), parseFloat(searchResults[0].latitude)] 
-                  : [126.9779692, 37.5662952] // 서울 시청 좌표 (기본값)
-                }
-                zoom={searchResults.length > 0 ? 12 : 10} // 검색 결과가 없을 때는 더 넓은 영역 표시
-              />
-            </Box>
+            {/* 지도 영역 */}
+            {showMap && (
+              <Box sx={{ 
+                height: 'calc(100vh - 200px)',
+                position: 'sticky',
+                top: 0,
+                borderRadius: '8px',
+                overflow: 'hidden',
+                boxShadow: 1
+              }}>
+                <HotelMap 
+                  hotels={searchResults}
+                  center={searchResults.length > 0 
+                    ? [parseFloat(searchResults[0].longitude), parseFloat(searchResults[0].latitude)] 
+                    : [126.9779692, 37.5662952] // 서울 시청 좌표 (기본값)
+                  }
+                  zoom={searchResults.length > 0 ? 12 : 10}
+                />
+              </Box>
+            )}
           </Box>
         </Box>
       )}
@@ -726,6 +872,13 @@ const AccommodationPlan = forwardRef(({
                   {selectedHotel.hotel_name}
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Button
+                    variant="outlined"
+                    onClick={handleAddToPlanClick}
+                    disabled={!selectedHotel}
+                  >
+                    일정에 추가하기
+                  </Button>
                   <Button
                     variant="contained"
                     color="primary"
@@ -772,6 +925,10 @@ const AccommodationPlan = forwardRef(({
                       1박 요금: {selectedHotel.price}
                     </Typography>
                   </Box>
+
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                    실제 결제 금액은 세금/수수료, 환율 변동 등으로 Booking.com에서 달라질 수 있습니다.
+                  </Typography>
 
                   <Divider sx={{ my: 2 }} />
 
@@ -830,6 +987,21 @@ const AccommodationPlan = forwardRef(({
         <DialogActions>
           <Button onClick={() => setIsDialogOpen(false)}>닫기</Button>
         </DialogActions>
+      </Dialog>
+
+      <Dialog open={addToPlanDialogOpen} onClose={() => setAddToPlanDialogOpen(false)}>
+        <DialogTitle>어느 일차에 추가할까요?</DialogTitle>
+        <DialogContent>
+          {daySelectList.length === 0 ? (
+            <Typography>일정이 없습니다.</Typography>
+          ) : (
+            daySelectList.map(({ dayKey, title }) => (
+              <Button key={dayKey} fullWidth sx={{ my: 1 }} onClick={() => handleSelectDay(dayKey)}>
+                {title}
+              </Button>
+            ))
+          )}
+        </DialogContent>
       </Dialog>
     </Box>
   );

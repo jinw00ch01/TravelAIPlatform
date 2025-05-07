@@ -48,6 +48,7 @@ function App() {
                 <Route path="/itinerary/:id" element={<ProtectedRoute><ViewItinerary /></ProtectedRoute>} />
                 <Route path="/cart" element={<ProtectedRoute><Cart /></ProtectedRoute>} />
                 <Route path="/mypage" element={<ProtectedRoute><MyPage /></ProtectedRoute>} />
+                <Route path="/hoteltest" element={<HotelSearchTest />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </main>
