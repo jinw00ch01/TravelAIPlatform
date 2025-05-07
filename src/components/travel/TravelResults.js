@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { format } from 'date-fns';
 
 function TravelResults({ results, searchQuery, onSaveItinerary }) {
   const [selectedResult, setSelectedResult] = useState(results?.[0] || null);
@@ -112,29 +113,33 @@ function TravelResults({ results, searchQuery, onSaveItinerary }) {
               <div className="mt-6">
                 <h4 className="text-sm font-medium text-gray-900 mb-2">일정 미리보기</h4>
                 <div className="border rounded-md overflow-hidden">
-                  {selectedResult.days && selectedResult.days.map((day, index) => (
-                    <div key={index} className="border-b last:border-b-0">
-                      <div className="p-3 bg-gray-50 border-b">
-                        <h5 className="font-medium">{index + 1}일차: {day.title || ''}</h5>
+                  {selectedResult.days && selectedResult.days.map((day, index) => {
+                    const date = new Date(selectedResult.startDate);
+                    date.setDate(date.getDate() + index);
+                    return (
+                      <div key={index} className="border-b last:border-b-0">
+                        <div className="p-3 bg-gray-50 border-b">
+                          <h5 className="font-medium">{format(date, 'M/d')}: {day.title || ''}</h5>
+                        </div>
+                        <div className="p-3">
+                          {day.activities && day.activities.length > 0 ? (
+                            day.activities.slice(0, 3).map((activity, actIndex) => (
+                              <div key={actIndex} className="mb-2 last:mb-0">
+                                <p className="text-sm">
+                                  <span className="font-medium">{activity.time || '시간 미정'}</span>: {activity.description}
+                                </p>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-sm text-gray-500">상세 일정이 없습니다.</p>
+                          )}
+                          {day.activities && day.activities.length > 3 && (
+                            <p className="text-xs text-gray-500 mt-2">...외 {day.activities.length - 3}개 활동</p>
+                          )}
+                        </div>
                       </div>
-                      <div className="p-3">
-                        {day.activities && day.activities.length > 0 ? (
-                          day.activities.slice(0, 3).map((activity, actIndex) => (
-                            <div key={actIndex} className="mb-2 last:mb-0">
-                              <p className="text-sm">
-                                <span className="font-medium">{activity.time || '시간 미정'}</span>: {activity.description}
-                              </p>
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-sm text-gray-500">상세 일정이 없습니다.</p>
-                        )}
-                        {day.activities && day.activities.length > 3 && (
-                          <p className="text-xs text-gray-500 mt-2">...외 {day.activities.length - 3}개 활동</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

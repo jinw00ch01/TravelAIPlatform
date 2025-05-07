@@ -443,7 +443,7 @@ const AccommodationPlan = forwardRef(({
     const days = Object.keys(travelPlans).length;
     setDaySelectList(Array.from({ length: days }, (_, idx) => ({
       dayKey: idx,
-      title: `${idx + 1}일차`
+      title: travelPlans[(idx + 1).toString()]?.title || `${idx + 1}일차`
     })));
     setHotelToAdd(selectedHotel);
     setAddToPlanDialogOpen(true);
@@ -452,9 +452,10 @@ const AccommodationPlan = forwardRef(({
   const handleSelectDay = (dayKey) => {
     if (!travelPlans || !setTravelPlans) return;
     const hotel = hotelToAdd;
+    // 숙소 이름으로 저장
     const newSchedule = {
       id: `hotel-${hotel.hotel_id}-${Date.now()}`,
-      name: hotel.hotel_name,
+      name: hotel.hotel_name, // 숙소 이름!
       time: '체크인',
       address: hotel.address,
       category: '숙소',
@@ -466,9 +467,9 @@ const AccommodationPlan = forwardRef(({
     };
     // dayKey는 0부터 시작, travelPlans의 키는 1,2,3...이므로 dayKey+1
     const dayNum = (dayKey + 1).toString();
+    if (!travelPlans[dayNum]) return;
+    if (!travelPlans[dayNum].schedules) travelPlans[dayNum].schedules = [];
     const newPlans = { ...travelPlans };
-    if (!newPlans[dayNum]) return;
-    if (!newPlans[dayNum].schedules) newPlans[dayNum].schedules = [];
     newPlans[dayNum].schedules = [...newPlans[dayNum].schedules, newSchedule];
     setTravelPlans(newPlans);
     setAddToPlanDialogOpen(false);
@@ -526,19 +527,13 @@ const AccommodationPlan = forwardRef(({
       const days = Object.keys(travelPlans).length;
       setDaySelectList(Array.from({ length: days }, (_, idx) => ({
         dayKey: idx,
-        title: `${idx + 1}일차`
+        title: travelPlans[(idx + 1).toString()]?.title || `${idx + 1}일차`
       })));
     }
   }, [travelPlans]);
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* 왼쪽(검색 폼 위) 지도 숨기기/보이기 버튼 제거 */}
-      {/* <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <Button variant="outlined" size="small" onClick={() => setShowMap(v => !v)}>
-          {showMap ? '지도 숨기기' : '지도 보이기'}
-        </Button>
-      </Box> */}
       {!displayInMain && (
         <Paper sx={{ p: 2, mb: 2 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -947,11 +942,23 @@ const AccommodationPlan = forwardRef(({
           {daySelectList.length === 0 ? (
             <Typography>일정이 없습니다.</Typography>
           ) : (
-            daySelectList.map(({ dayKey, title }) => (
-              <Button key={dayKey} fullWidth sx={{ my: 1 }} onClick={() => handleSelectDay(dayKey)}>
-                {title}
-              </Button>
-            ))
+            daySelectList.map(({ dayKey }) => {
+              // checkIn과 dayKey로 날짜 계산
+              const baseDate = formData.checkIn ? new Date(formData.checkIn) : new Date();
+              const date = new Date(baseDate);
+              date.setDate(baseDate.getDate() + dayKey);
+              const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
+              return (
+                <Button
+                  key={dayKey}
+                  fullWidth
+                  sx={{ my: 1 }}
+                  onClick={() => handleSelectDay(dayKey)}
+                >
+                  {dateStr}
+                </Button>
+              );
+            })
           )}
         </DialogContent>
       </Dialog>
