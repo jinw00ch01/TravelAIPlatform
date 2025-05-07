@@ -73,7 +73,9 @@ const AccommodationPlan = forwardRef(({
   onSearch,
   onOpenSearchPopup,
   formData,
-  setFormData
+  setFormData,
+  travelPlans,
+  setTravelPlans
 }, ref) => {
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -433,56 +435,22 @@ const AccommodationPlan = forwardRef(({
   };
 
   const handleAddToPlanClick = async () => {
-    try {
-      const data = await travelApi.loadPlan({ newest: true });
-      const plan = data?.plan?.[0];
-      if (!plan) {
-        alert('일정을 먼저 생성해주세요.');
-        return;
-      }
-
-      // itinerary robust 추출
-      let itinerary = null;
-      if (plan.itinerary && Array.isArray(plan.itinerary) && plan.itinerary.length > 0) {
-        itinerary = plan.itinerary;
-      } else if (plan.plan_data?.itinerary && Array.isArray(plan.plan_data.itinerary) && plan.plan_data.itinerary.length > 0) {
-        itinerary = plan.plan_data.itinerary;
-      } else if (plan.plan_data?.candidates && Array.isArray(plan.plan_data.candidates) && plan.plan_data.candidates.length > 0) {
-        const textContent = plan.plan_data.candidates[0]?.content?.parts?.[0]?.text;
-        if (textContent) {
-          const jsonMatch = textContent.match(/```json\n([\s\S]*?)\n```/);
-          if (jsonMatch && jsonMatch[1]) {
-            try {
-              const parsed = JSON.parse(jsonMatch[1]);
-              if (parsed.itinerary && Array.isArray(parsed.itinerary) && parsed.itinerary.length > 0) {
-                itinerary = parsed.itinerary;
-              }
-            } catch (e) {}
-          }
-        }
-      }
-
-      if (!itinerary || itinerary.length === 0) {
-        alert('일정을 먼저 생성해주세요.');
-        return;
-      }
-
-      setLatestPlan({ ...plan, itinerary });
-      setDaySelectList(itinerary.map((day, idx) => ({
-        dayKey: idx,
-        title: day.title || `${idx + 1}일차`
-      })));
-      setHotelToAdd(selectedHotel);
-      setAddToPlanDialogOpen(true);
-    } catch (e) {
-      alert('일정 정보를 불러오지 못했습니다.');
+    if (!travelPlans) {
+      alert('일정을 먼저 생성해주세요.');
+      return;
     }
+
+    const days = Object.keys(travelPlans).length;
+    setDaySelectList(Array.from({ length: days }, (_, idx) => ({
+      dayKey: idx,
+      title: `${idx + 1}일차`
+    })));
+    setHotelToAdd(selectedHotel);
+    setAddToPlanDialogOpen(true);
   };
 
-  const handleSelectDay = async (dayKey) => {
-    if (!latestPlan) return;
-    const planId = latestPlan.planId;
-    const itinerary = [...latestPlan.itinerary];
+  const handleSelectDay = (dayKey) => {
+    if (!travelPlans || !setTravelPlans) return;
     const hotel = hotelToAdd;
     const newSchedule = {
       id: `hotel-${hotel.hotel_id}-${Date.now()}`,
@@ -493,43 +461,16 @@ const AccommodationPlan = forwardRef(({
       duration: '1박',
       notes: `가격: ${hotel.price}`,
       lat: hotel.latitude,
-      lng: hotel.longitude
+      lng: hotel.longitude,
+      type: 'accommodation'
     };
-    if (!itinerary[dayKey].schedules) itinerary[dayKey].schedules = [];
-    itinerary[dayKey].schedules.push(newSchedule);
-    await travelApi.updateTravelPlan(planId, { ...latestPlan, itinerary });
-    // 추가 후 최신 플랜 다시 불러오기
-    try {
-      const data = await travelApi.loadPlan({ newest: true });
-      const plan = data?.plan?.[0];
-      // robust itinerary 추출 (동일 로직 재사용)
-      let newItinerary = null;
-      if (plan.itinerary && Array.isArray(plan.itinerary) && plan.itinerary.length > 0) {
-        newItinerary = plan.itinerary;
-      } else if (plan.plan_data?.itinerary && Array.isArray(plan.plan_data.itinerary) && plan.plan_data.itinerary.length > 0) {
-        newItinerary = plan.plan_data.itinerary;
-      } else if (plan.plan_data?.candidates && Array.isArray(plan.plan_data.candidates) && plan.plan_data.candidates.length > 0) {
-        const textContent = plan.plan_data.candidates[0]?.content?.parts?.[0]?.text;
-        if (textContent) {
-          const jsonMatch = textContent.match(/```json\n([\s\S]*?)\n```/);
-          if (jsonMatch && jsonMatch[1]) {
-            try {
-              const parsed = JSON.parse(jsonMatch[1]);
-              if (parsed.itinerary && Array.isArray(parsed.itinerary) && parsed.itinerary.length > 0) {
-                newItinerary = parsed.itinerary;
-              }
-            } catch (e) {}
-          }
-        }
-      }
-      if (newItinerary && newItinerary.length > 0) {
-        setLatestPlan({ ...plan, itinerary: newItinerary });
-        setDaySelectList(newItinerary.map((day, idx) => ({
-          dayKey: idx,
-          title: day.title || `${idx + 1}일차`
-        })));
-      }
-    } catch (e) {}
+    // dayKey는 0부터 시작, travelPlans의 키는 1,2,3...이므로 dayKey+1
+    const dayNum = (dayKey + 1).toString();
+    const newPlans = { ...travelPlans };
+    if (!newPlans[dayNum]) return;
+    if (!newPlans[dayNum].schedules) newPlans[dayNum].schedules = [];
+    newPlans[dayNum].schedules = [...newPlans[dayNum].schedules, newSchedule];
+    setTravelPlans(newPlans);
     setAddToPlanDialogOpen(false);
     alert('일정에 추가되었습니다!');
   };
@@ -578,6 +519,17 @@ const AccommodationPlan = forwardRef(({
       localStorage.setItem('accommodationFormData', JSON.stringify(formData));
     }
   }, [formData]);
+
+  useEffect(() => {
+    // travelPlans의 일수가 바뀌면 daySelectList도 최신화
+    if (travelPlans) {
+      const days = Object.keys(travelPlans).length;
+      setDaySelectList(Array.from({ length: days }, (_, idx) => ({
+        dayKey: idx,
+        title: `${idx + 1}일차`
+      })));
+    }
+  }, [travelPlans]);
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>

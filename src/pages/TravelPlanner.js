@@ -861,7 +861,7 @@ const TravelPlanner = () => {
                                  {currentPlan.schedules.map((schedule, index) => (
                                    <Draggable key={`schedule-${index}`} draggableId={`schedule-${index}`} index={index}>
                                      {(provided, snapshot) => (
-                                       <ListItem ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} sx={{ p: 2, bgcolor: snapshot.isDragging ? 'action.hover' : 'background.paper', borderRadius: 1, border: 1, borderColor: 'divider', '&:hover': { bgcolor: 'action.hover', }, }} secondaryAction={
+                                       <ListItem ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} sx={{ p: 2, bgcolor: schedule.type === 'accommodation' ? '#e3f2fd' : 'background.paper', borderRadius: 1, border: 1, borderColor: 'divider', '&:hover': { bgcolor: 'action.hover', }, }} secondaryAction={
                                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
                                            <IconButton
                                              edge="end"
@@ -934,7 +934,7 @@ const TravelPlanner = () => {
           sidebarTab === 'accommodation' ? (
              <Box sx={{ height: '100%', overflow: 'hidden' }}>
                 <Box sx={{ bgcolor: 'background.paper', p: 2, borderRadius: 1, boxShadow: 1, overflow: 'auto', height: '100%' }}>
-                     <AccommodationPlan displayInMain={true} ref={mainAccommodationPlanRef} formData={accommodationFormData} setFormData={setAccommodationFormData}/>
+                     <AccommodationPlan displayInMain={true} ref={mainAccommodationPlanRef} formData={accommodationFormData} setFormData={setAccommodationFormData} travelPlans={travelPlans} setTravelPlans={setTravelPlans}/>
                 </Box>
              </Box>
            ) : // End of accommodation tab condition
