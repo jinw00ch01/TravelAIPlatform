@@ -206,6 +206,51 @@ export const travelApi = {
     }
   },
 
+  // 여행 계획 저장 (SavePlanFunction)
+  savePlan: async (planData) => {
+    try {
+      console.log('여행 계획 저장 요청 시도 - URL:', `${API_URL}/api/travel/save`, 'Data:', planData);
+      
+      // 서버에 맞는 형식으로 데이터 변환
+      // SavePlanFunction에서 기대하는 형식: { title: "제목", data: { ... 일차별 데이터 ... } }
+      const serverData = {
+        title: planData.title,
+        data: planData.days.reduce((obj, day) => {
+          obj[day.day] = {
+            title: day.title,
+            schedules: day.schedules
+          };
+          return obj;
+        }, {})
+      };
+      
+      console.log('변환된 서버 데이터:', serverData);
+      
+      // apiClient를 사용하여 요청 (인터셉터에서 인증 헤더 자동 추가)
+      const response = await apiClient.post('/api/travel/save', serverData, {
+        timeout: 10000, // 타임아웃 설정 (10초)
+        retry: 2,       // 재시도 설정
+        retryDelay: 1000
+      });
+      
+      console.log('여행 계획 저장 성공:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('여행 계획 저장 실패:', error);
+      
+      // 오류 상세 로깅
+      if (error.response) {
+        console.error('저장 실패 - 서버 응답:', error.response.status, error.response.data);
+      } else if (error.request) {
+        console.error('저장 실패 - 응답 없음:', error.request);
+      } else {
+        console.error('저장 실패 - 요청 오류:', error.message);
+      }
+      
+      throw error;
+    }
+  },
+
   // 숙소 검색
   searchHotels: async (searchParams) => {
     try {

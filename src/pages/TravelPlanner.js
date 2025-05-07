@@ -60,6 +60,10 @@ const TravelPlanner = () => {
   const [isDateEditDialogOpen, setIsDateEditDialogOpen] = useState(false);
   const [editTitleMode, setEditTitleMode] = useState(false);
   const [tempTitle, setTempTitle] = useState('');
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
+  const [planTitle, setPlanTitle] = useState('');
+  const [planId, setPlanId] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // 메인 영역의 AccommodationPlan 컴포넌트에 대한 ref
   const mainAccommodationPlanRef = useRef(null);
@@ -687,8 +691,81 @@ const TravelPlanner = () => {
 
   // TravelPlanner 컴포넌트 내부에 저장 함수 추가
   const onSaveTravelPlans = () => {
-    // 실제 저장 로직(예: 서버로 전송, 로컬스토리지 저장 등)
-    alert('여행 계획이 저장되었습니다!');
+    // 저장 다이얼로그 열기
+    setPlanTitle(''); // 모달 열 때 입력 초기화
+    setIsSaveDialogOpen(true);
+  };
+
+  // 실제 저장 처리 함수 추가
+  const handleSaveConfirm = async () => {
+    if (!planTitle.trim()) {
+      alert('여행 계획의 제목을 입력해주세요.');
+      return;
+    }
+    
+    try {
+      setIsSaving(true); // 저장 중 상태 설정
+      
+      // 저장할 데이터 구성
+      const planData = {
+        title: planTitle,
+        days: Object.keys(travelPlans).map(day => ({
+          day: parseInt(day),
+          title: travelPlans[day].title,
+          schedules: travelPlans[day].schedules
+        })),
+        startDate: format(startDate, 'yyyy-MM-dd') // 시작일 포함
+      };
+      
+      console.log('[TravelPlanner] 여행 계획 저장 시도:', planData);
+      
+      // SavePlanFunction API 호출
+      try {
+        // travelApi.savePlan 함수 호출 (API Gateway의 /api/travel/save 엔드포인트 호출)
+        const response = await travelApi.savePlan(planData);
+        
+        if (response && response.success) {
+          // 응답에서 새로 생성된 ID를 상태에 저장
+          if (response.plan_id) {
+            setPlanId(response.plan_id);
+            console.log(`[TravelPlanner] 새 계획 ID 받음: ${response.plan_id}`);
+          }
+          
+          console.log('[TravelPlanner] 여행 계획 저장 성공:', response);
+          
+          // 로컬스토리지에도 저장 (백업 또는 오프라인 지원)
+          const storageData = {
+            ...planData,
+            planId: response.plan_id, // 서버에서 받은 ID 사용
+            lastSaved: new Date().toISOString()
+          };
+          localStorage.setItem('savedTravelPlan', JSON.stringify(storageData));
+          
+          alert(response.message || '여행 계획이 성공적으로 저장되었습니다!');
+        } else {
+          throw new Error(response.message || '서버 응답이 올바르지 않습니다.');
+        }
+      } catch (apiError) {
+        console.error('[TravelPlanner] 서버 저장 실패:', apiError);
+        
+        // API 실패 시에도 로컬 저장 시도
+        const storageData = {
+          ...planData,
+          planId, // 있는 경우에만 ID 포함
+          lastSaved: new Date().toISOString(),
+          isLocalOnly: true // 로컬에만 저장됨을 표시
+        };
+        localStorage.setItem('savedTravelPlan', JSON.stringify(storageData));
+        
+        alert('서버 저장에 실패했습니다. 계획은 기기에만 저장되었습니다.');
+      }
+    } catch (error) {
+      console.error('여행 계획 저장 실패:', error);
+      alert('여행 계획 저장 중 오류가 발생했습니다.');
+    } finally {
+      setIsSaving(false);
+      setIsSaveDialogOpen(false);
+    }
   };
 
   // startDate가 변경될 때 숙소 계획의 checkIn, checkOut도 동기화
@@ -1115,6 +1192,36 @@ const TravelPlanner = () => {
            </DialogContent>
            <DialogActions>
              <Button onClick={() => setIsDateEditDialogOpen(false)}>취소</Button>
+           </DialogActions>
+         </Dialog>
+
+         {/* 저장 다이얼로그 추가 */}
+         <Dialog open={isSaveDialogOpen} onClose={() => !isSaving && setIsSaveDialogOpen(false)}>
+           <DialogTitle>여행 계획 저장</DialogTitle>
+           <DialogContent>
+             <Box sx={{ pt: 2 }}>
+               <TextField
+                 autoFocus
+                 fullWidth
+                 label="여행 계획 제목"
+                 value={planTitle}
+                 onChange={e => setPlanTitle(e.target.value)}
+                 placeholder="예: 3박 4일 도쿄 여행"
+                 sx={{ mb: 2 }}
+                 disabled={isSaving}
+               />
+             </Box>
+           </DialogContent>
+           <DialogActions>
+             <Button onClick={() => setIsSaveDialogOpen(false)} disabled={isSaving}>취소</Button>
+             <Button 
+               onClick={handleSaveConfirm} 
+               variant="contained"
+               disabled={isSaving}
+               startIcon={isSaving ? <span className="loading-spinner" /> : null}
+             >
+               {isSaving ? '저장 중...' : '저장'}
+             </Button>
            </DialogActions>
          </Dialog>
       </Box>
