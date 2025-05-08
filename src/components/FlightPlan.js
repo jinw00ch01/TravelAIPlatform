@@ -84,11 +84,11 @@ const renderItineraryDetails = (itinerary, flightId, dictionaries, itineraryTitl
             {segment.operating?.carrierCode && segment.operating.carrierCode !== segment.carrierCode && 
               ` (운항: ${dictionaries?.carriers?.[segment.operating.carrierCode] || segment.operating.carrierCode})`}
           </Typography>
-          <Typnography variant="caption" display="block">
+          <Typography variant="caption" display="block">
             기종: {segment.aircraft?.code ? (dictionaries?.aircraft?.[segment.aircraft.code] || segment.aircraft.code) : '-'}
             , 소요시간: {formatDuration(segment.duration)}
             {segment.numberOfStops > 0 && `, 경유 ${segment.numberOfStops}회`}
-          </Typnography>
+          </Typography>
           {segment.stops && segment.stops.length > 0 && (
             <Box sx={{pl: 2, mt:0.5}}>
               {segment.stops.map((stop, stopIndex) => (
