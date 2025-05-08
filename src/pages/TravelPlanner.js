@@ -105,6 +105,9 @@ const TravelPlanner = () => {
   const [flightError, setFlightError] = useState(null);
   // --- End Lifted State ---
 
+  // --- Add flightDictionaries state ---
+  const [flightDictionaries, setFlightDictionaries] = useState(null);
+
   // currentPlan을 먼저 선언
   const currentPlan = travelPlans[selectedDay] || { title: '', schedules: [] };
 
@@ -590,6 +593,7 @@ const TravelPlanner = () => {
   const handleFlightSearch = useCallback(async () => {
     setFlightError(null);
     setFlightResults([]);
+    setFlightDictionaries(null); // 검색 시작 시 초기화
 
     const {
         selectedOrigin, selectedDestination, departureDate, returnDate,
@@ -636,13 +640,24 @@ const TravelPlanner = () => {
         };
 
         const response = await amadeusApi.searchFlights(paramsToApi);
-        if (response && response.data && Array.isArray(response.data)) {
+        if (response && response.data && Array.isArray(response.data) && response.dictionaries) {
              setFlightResults(response.data);
+             setFlightDictionaries(response.dictionaries);
+             
              if(response.data.length === 0) {
                  setFlightError('검색 조건에 맞는 항공편이 없습니다.');
              }
+        } else if (response && response.data && Array.isArray(response.data) && !response.dictionaries) {
+            // dictionaries가 없는 경우 (이전 구조 호환 또는 API 변경)
+            setFlightResults(response.data);
+            setFlightDictionaries(null); // dictionaries가 없음을 명시
+            console.warn("[TravelPlanner] Dictionaries not found in flight search response. Some details might be missing.");
+            if(response.data.length === 0) {
+                 setFlightError('검색 조건에 맞는 항공편이 없습니다.');
+            }
         } else {
             setFlightResults([]);
+            setFlightDictionaries(null);
             setFlightError('항공편 검색 결과가 없거나 형식이 올바르지 않습니다.');
             console.log("Unexpected flight search response:", response);
         }
@@ -650,6 +665,7 @@ const TravelPlanner = () => {
         console.error("Flight search error:", err);
         setFlightError(err.message || '항공편 검색 중 오류 발생');
         setFlightResults([]);
+        setFlightDictionaries(null);
     } finally {
         setIsLoadingFlights(false);
     }
@@ -952,6 +968,7 @@ const TravelPlanner = () => {
                   destinationCities={destinationCities}
                   handleCitySearch={handleCitySearch}
                   flights={flightResults}
+                  dictionaries={flightDictionaries}
                   isLoadingCities={isLoadingCities}
                   isLoadingFlights={isLoadingFlights}
                   error={flightError}
@@ -1148,7 +1165,19 @@ const TravelPlanner = () => {
              ) : // End of accommodation tab condition
              // sidebarTab === 'flight' (Implicitly)
              (
-               <FlightPlan fullWidth={true} flights={flightResults} isLoadingFlights={isLoadingFlights} error={flightError} searchParams={{}} setSearchParams={()=>{}} originCities={[]} destinationCities={[]} handleCitySearch={()=>{}} isLoadingCities={false} handleFlightSearch={()=>{}} />
+               <FlightPlan 
+                 fullWidth={true} 
+                 flights={flightResults} 
+                 dictionaries={flightDictionaries}
+                 isLoadingFlights={isLoadingFlights} 
+                 error={flightError} 
+                 searchParams={{}} 
+                 setSearchParams={()=>{}} 
+                 originCities={[]} 
+                 destinationCities={[]} 
+                 handleCitySearch={()=>{}} 
+                 isLoadingCities={false} 
+                 handleFlightSearch={()=>{}} />
              )
             } 
           </Box>
