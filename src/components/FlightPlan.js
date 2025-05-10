@@ -1,144 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   TextField, Button, CircularProgress, Autocomplete, Box, Typography, Paper,
-  MenuItem, Checkbox, FormControlLabel, Accordion, AccordionSummary, AccordionDetails, Divider
+  MenuItem, Checkbox, FormControlLabel, Divider,
+  Dialog, DialogTitle, DialogContent, DialogActions, IconButton
 } from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import CloseIcon from '@mui/icons-material/Close';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { ko } from 'date-fns/locale';
-import aeroDataBoxApi from '../utils/aeroDataBoxApi';
-
-const formatPrice = (priceString, currency = 'KRW') => {
-  const price = parseFloat(priceString);
-  if (isNaN(price)) {
-    return '-';
-  }
-  return new Intl.NumberFormat('ko-KR', {
-    style: 'currency',
-    currency: currency
-  }).format(price);
-};
-
-const formatDuration = (durationString) => {
-  if (!durationString) return '';
-  const match = durationString.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
-  if (!match) return durationString;
-  const hours = parseInt(match[1] || '0');
-  const minutes = parseInt(match[2] || '0');
-  let formatted = '';
-  if (hours > 0) formatted += `${hours}시간 `;
-  if (minutes > 0) formatted += `${minutes}분`;
-  return formatted.trim();
-};
-
-const airlineKoreanNames = {
-  "KE": "대한항공",
-  "OZ": "아시아나항공",
-  "7C": "제주항공",
-  "LJ": "진에어",
-  "TW": "티웨이항공",
-  "BX": "에어부산",
-  "RS": "에어서울",
-  "MU": "중국동방항공",
-};
-
-const renderFareDetails = (travelerPricings, dictionaries) => {
-  if (!travelerPricings || travelerPricings.length === 0) return null;
-  return travelerPricings.map((travelerPricing, tpIndex) => (
-    <Box key={`tp-${tpIndex}`} sx={{ mb: 1, borderBottom: '1px solid #eee', pb: 1 }}>
-      <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
-        승객 {travelerPricing.travelerId} ({travelerPricing.travelerType}) - 요금 옵션: {travelerPricing.fareOption}
-      </Typography>
-      {travelerPricing.fareDetailsBySegment.map((fareDetail, fdIndex) => (
-        <Box key={`fd-${tpIndex}-${fdIndex}`} sx={{ pl: 1 }}>
-          <Typography variant="caption" display="block">
-            - 구간 {fareDetail.segmentId}: {fareDetail.cabin} ({fareDetail.class}), 운임 기준: {fareDetail.fareBasis}
-            {fareDetail.brandedFare && `, 브랜드: ${fareDetail.brandedFare}`}
-          </Typography>
-          {fareDetail.includedCheckedBags && (
-            <Typography variant="caption" display="block" sx={{ pl: 2 }}>
-              포함 수하물: 
-              {fareDetail.includedCheckedBags.quantity ? ` ${fareDetail.includedCheckedBags.quantity}개` : ''}
-              {fareDetail.includedCheckedBags.weight ? ` (개당 ${fareDetail.includedCheckedBags.weight}${fareDetail.includedCheckedBags.weightUnit || 'KG'})` : ''}
-            </Typography>
-          )}
-        </Box>
-      ))}
-    </Box>
-  ));
-};
-
-const renderItineraryDetails = (itinerary, flightId, dictionaries, itineraryTitle, airportInfoCache, loadingAirportInfo) => {
-  if (!itinerary) return null;
-  
-  const getAirportDisplay = (iataCode) => {
-    if (loadingAirportInfo.has(iataCode)) {
-        return `${iataCode} (정보 로딩 중...)`;
-    }
-    const info = airportInfoCache[iataCode];
-    if (info) {
-        const fullName = info.koreanFullName || info.fullName || info.shortName || iataCode;
-        const municipalityName = info.koreanMunicipalityName || info.municipalityName || (info.location ? `${info.location.lat}, ${info.location.lon}` : '');
-        const cityCode = dictionaries?.locations?.[iataCode]?.cityCode || '';
-        return `${fullName} / ${iataCode} (${municipalityName}${cityCode && municipalityName !== cityCode ? ` / ${cityCode}` : ''})`;
-    } else {
-        const cityCode = dictionaries?.locations?.[iataCode]?.cityCode || iataCode;
-        return `${iataCode} (${cityCode})`;
-    }
-  };
-  
-  const getCarrierDisplay = (carrierCode) => {
-      const koreanName = airlineKoreanNames[carrierCode];
-      const englishName = dictionaries?.carriers?.[carrierCode] || carrierCode;
-      return koreanName ? `${koreanName} / ${englishName}` : englishName;
-  };
-
-  return (
-    <Box sx={{ mb: 2 }}>
-      {itineraryTitle && 
-        <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-          {itineraryTitle}
-        </Typography>
-      }
-      {itinerary.segments.map((segment, index) => (
-        <Box key={`segment-${flightId}-${segment.id || index}`} sx={{ mb: 1.5, pl:1, borderLeft: '2px solid #1976d2', ml:1 }}>
-          <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
-            구간 {index + 1}: {getAirportDisplay(segment.departure.iataCode)} → {getAirportDisplay(segment.arrival.iataCode)}
-          </Typography>
-          <Typography variant="caption" display="block">
-            출발: {new Date(segment.departure.at).toLocaleString('ko-KR', { year:'numeric', month:'short', day:'numeric', hour: '2-digit', minute: '2-digit', timeZoneName:'short' })} (터미널: {segment.departure.terminal || '-'})
-          </Typography>
-          <Typography variant="caption" display="block">
-            도착: {new Date(segment.arrival.at).toLocaleString('ko-KR', { year:'numeric', month:'short', day:'numeric', hour: '2-digit', minute: '2-digit', timeZoneName:'short' })} (터미널: {segment.arrival.terminal || '-'})
-          </Typography>
-          <Typography variant="caption" display="block">
-            항공편: {getCarrierDisplay(segment.carrierCode)} {segment.number}
-            {segment.operating?.carrierCode && segment.operating.carrierCode !== segment.carrierCode && 
-              ` (운항: ${getCarrierDisplay(segment.operating.carrierCode)})`}
-          </Typography>
-          <Typography variant="caption" display="block">
-            기종: {segment.aircraft?.code ? (dictionaries?.aircraft?.[segment.aircraft.code] || segment.aircraft.code) : '-'}
-            , 소요시간: {formatDuration(segment.duration)}
-            {segment.numberOfStops > 0 && `, 경유 ${segment.numberOfStops}회`}
-          </Typography>
-          {segment.stops && segment.stops.length > 0 && (
-            <Box sx={{pl: 2, mt:0.5}}>
-              {segment.stops.map((stop, stopIndex) => (
-                  <Typography variant="caption" display="block" key={`stop-${flightId}-${segment.id || index}-${stopIndex}`}>
-                    경유지 {stopIndex+1}: {getAirportDisplay(stop.iataCode)} - {formatDuration(stop.duration)} 체류
-                    <br/>
-                    도착: {new Date(stop.arrivalAt).toLocaleTimeString('ko-KR')} / 출발: {new Date(stop.departureAt).toLocaleTimeString('ko-KR')}
-                  </Typography>
-              ))}
-            </Box>
-          )}
-        </Box>
-      ))}
-    </Box>
-  );
-}
+import {
+  formatPrice,
+  formatDuration,
+  airlineKoreanNames,
+  renderFareDetails,
+  renderItineraryDetails
+} from '../utils/flightFormatters';
 
 const FlightPlan = ({
   fullWidth = false,
@@ -149,59 +27,32 @@ const FlightPlan = ({
   handleCitySearch,
   flights,
   dictionaries,
+  airportInfoCache,
+  loadingAirportInfo,
   isLoadingCities,
   isLoadingFlights,
   error,
-  handleFlightSearch
+  handleFlightSearch,
+  onAddFlightToSchedule
 }) => {
-  const [airportInfoCache, setAirportInfoCache] = useState({});
-  const [loadingAirportInfo, setLoadingAirportInfo] = useState(new Set());
+  const [selectedFlightDetails, setSelectedFlightDetails] = useState(null);
+  const [isFlightDetailOpen, setIsFlightDetailOpen] = useState(false);
 
-  useEffect(() => {
-    if (!flights || flights.length === 0) {
-        return; 
+  const handleFlightItemClick = (flight) => {
+    setSelectedFlightDetails(flight);
+    setIsFlightDetailOpen(true);
+  };
+
+  const handleCloseFlightDetail = () => {
+    setIsFlightDetailOpen(false);
+  };
+
+  const handleAddSelectedFlightToSchedule = () => {
+    if (selectedFlightDetails && onAddFlightToSchedule) {
+      onAddFlightToSchedule(selectedFlightDetails, dictionaries, airportInfoCache);
+      handleCloseFlightDetail();
     }
-
-    const uniqueIataCodes = new Set();
-    flights.forEach(flight => {
-        flight.itineraries.forEach(itinerary => {
-            itinerary.segments.forEach(segment => {
-                uniqueIataCodes.add(segment.departure.iataCode);
-                uniqueIataCodes.add(segment.arrival.iataCode);
-                if (segment.stops) {
-                    segment.stops.forEach(stop => uniqueIataCodes.add(stop.iataCode));
-                }
-            });
-        });
-    });
-
-    const codesToFetch = [...uniqueIataCodes].filter(code => !airportInfoCache[code] && !loadingAirportInfo.has(code));
-
-    if (codesToFetch.length > 0) {
-        setLoadingAirportInfo(prev => new Set([...prev, ...codesToFetch]));
-        
-        const fetchPromises = codesToFetch.map(iataCode => 
-            aeroDataBoxApi.getAirportInfoByIata(iataCode).then(info => {
-                if (info) {
-                    return { [iataCode]: info };
-                } else {
-                    return { [iataCode]: {} }; 
-                }
-            })
-        );
-
-        Promise.all(fetchPromises).then(results => {
-            const newCacheEntries = results.reduce((acc, current) => ({ ...acc, ...current }), {});
-            setAirportInfoCache(prevCache => ({ ...prevCache, ...newCacheEntries }));
-            setLoadingAirportInfo(prev => {
-                const next = new Set(prev);
-                codesToFetch.forEach(code => next.delete(code));
-                return next;
-            });
-        });
-    }
-
-  }, [flights]);
+  };
 
   const handleParamChange = (paramName, value) => {
     setSearchParams(prev => ({ ...prev, [paramName]: value }));
@@ -421,9 +272,7 @@ const FlightPlan = ({
           <Typography variant="h6" className="mb-2 px-2">검색 결과 ({flights.length}건)</Typography>
           {flights.map((flight) => {
             const firstItinerary = flight.itineraries[0];
-            const isRoundTrip = flight.itineraries.length > 1; 
-            const secondItinerary = isRoundTrip ? flight.itineraries[1] : null;
-
+            const isRoundTrip = flight.itineraries.length > 1;
             const departureItinSummary = firstItinerary.segments[0];
             const arrivalItinSummary = firstItinerary.segments[firstItinerary.segments.length - 1];
             
@@ -432,92 +281,123 @@ const FlightPlan = ({
                 const englishName = dictionaries?.carriers?.[carrierCode] || carrierCode;
                 return koreanName ? `${koreanName} / ${englishName}` : englishName;
             };
+            
+            const getAirportSummaryDisplay = (iataCode) => {
+                const info = airportInfoCache?.[iataCode];
+                if (info && Object.keys(info).length > 0 && !info.warning) {
+                    return info.koreanFullName || info.koreanName || info.name || iataCode;
+                }
+                return dictionaries?.locations?.[iataCode]?.name || iataCode;
+            };
 
             return (
               <Paper
                 key={flight.id}
                 elevation={1}
-                className="overflow-hidden rounded-md"
+                className="overflow-hidden rounded-md cursor-pointer hover:shadow-lg transition-shadow"
+                onClick={() => handleFlightItemClick(flight)}
+                sx={{ p: 2 }}
               >
-                <Accordion sx={{ boxShadow: 'none', '&:before': { display: 'none' }, '&.Mui-expanded': { margin: 0 } }}>
-                  <AccordionSummary
-                    expandIcon={<ExpandMoreIcon />}
-                    aria-controls={`panel${flight.id}-content`}
-                    id={`panel${flight.id}-header`}
-                    sx={{ '& .MuiAccordionSummary-content': { margin: '12px 0' } }}
-                  >
-                    <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-                       <Box className="flex flex-col md:flex-row justify-between items-start md:items-center w-full">
-                        <Box className="mb-2 md:mb-0">
-                          <Typography variant="body1" component="h3" className="font-semibold">
-                            {airportInfoCache[departureItinSummary.departure.iataCode]?.koreanFullName || airportInfoCache[departureItinSummary.departure.iataCode]?.shortName || departureItinSummary.departure.iataCode} 
+                <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                    <Box className="flex flex-col md:flex-row justify-between items-start md:items-center w-full">
+                    <Box className="mb-2 md:mb-0">
+                        <Typography variant="body1" component="h3" className="font-semibold">
+                            {getAirportSummaryDisplay(departureItinSummary.departure.iataCode)} 
                             → 
-                            {airportInfoCache[arrivalItinSummary.arrival.iataCode]?.koreanFullName || airportInfoCache[arrivalItinSummary.arrival.iataCode]?.shortName || arrivalItinSummary.arrival.iataCode}
+                            {getAirportSummaryDisplay(arrivalItinSummary.arrival.iataCode)}
                             <Typography variant="caption" sx={{ ml: 1 }}>
                                 ({firstItinerary.segments.length -1 === 0 ? '직항' : `${firstItinerary.segments.length - 1}회 경유`})
                                 {isRoundTrip && " (왕복)"}
                             </Typography>
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {new Date(departureItinSummary.departure.at).toLocaleString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                            {isRoundTrip && secondItinerary && 
-                                ` ~ ${new Date(secondItinerary.segments[secondItinerary.segments.length - 1].arrival.at).toLocaleString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric'})}`
-                            }
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            항공사: {getCarrierSummaryDisplay(flight.validatingAirlineCodes?.[0])}
-                            {departureItinSummary.operating?.carrierCode && departureItinSummary.operating.carrierCode !== departureItinSummary.carrierCode && 
-                                ` (운항: ${getCarrierSummaryDisplay(departureItinSummary.operating.carrierCode)})`}
-                          </Typography>
-                        </Box>
-                        <Box className="text-left md:text-right mt-2 md:mt-0">
-                          <Typography variant="h6" className="font-bold text-blue-600">
-                            {formatPrice(flight.price.grandTotal || flight.price.total, flight.price.currency)}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            (1인 총액)
-                          </Typography>
-                        </Box>
-                      </Box>
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                        {new Date(departureItinSummary.departure.at).toLocaleString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        {isRoundTrip && flight.itineraries[1] && 
+                            ` ~ ${new Date(flight.itineraries[1].segments[flight.itineraries[1].segments.length - 1].arrival.at).toLocaleString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric'})}`
+                        }
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                        항공사: {getCarrierSummaryDisplay(flight.validatingAirlineCodes?.[0])}
+                        {departureItinSummary.operating?.carrierCode && departureItinSummary.operating.carrierCode !== departureItinSummary.carrierCode && 
+                            ` (운항: ${getCarrierSummaryDisplay(departureItinSummary.operating.carrierCode)})`}
+                        </Typography>
                     </Box>
-                  </AccordionSummary>
-                  <AccordionDetails sx={{ borderTop: '1px solid #eee', pt: 2 }}>
-                    {renderItineraryDetails(firstItinerary, flight.id, dictionaries, isRoundTrip ? "가는 여정" : "여정 상세 정보", airportInfoCache, loadingAirportInfo)}
-                    
-                    {isRoundTrip && secondItinerary && (
-                      <>
-                        <Divider sx={{ my: 2 }} />
-                        {renderItineraryDetails(secondItinerary, flight.id, dictionaries, "오는 여정", airportInfoCache, loadingAirportInfo)}
-                      </>
-                    )}
-                    
-                    <Divider sx={{ my: 2 }} />
-                    <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', mt:2 }}>가격 및 요금 정보</Typography>
-                    <Typography variant="caption" display="block">총액 (1인): {formatPrice(flight.price.grandTotal || flight.price.total, flight.price.currency)}</Typography>
-                    <Typography variant="caption" display="block">기본 운임: {formatPrice(flight.price.base, flight.price.currency)}</Typography>
-                    {flight.price.fees && flight.price.fees.length > 0 && (
-                        <Typography variant="caption" display="block">수수료: 
-                            {flight.price.fees.map(fee => `${fee.type}: ${formatPrice(fee.amount, flight.price.currency)}`).join(', ')}
+                    <Box className="text-left md:text-right mt-2 md:mt-0">
+                        <Typography variant="h6" className="font-bold text-blue-600">
+                        {formatPrice(flight.price.grandTotal || flight.price.total, flight.price.currency)}
                         </Typography>
-                    )}
-                    {flight.price.taxes && flight.price.taxes.length > 0 && (
-                         <Typography variant="caption" display="block">세금: 
-                            {flight.price.taxes.map(tax => `${tax.code}: ${formatPrice(tax.amount, flight.price.currency)}`).join(', ')}
+                        <Typography variant="caption" color="text.secondary">
+                        (1인 총액)
                         </Typography>
-                    )}
-                    <Typography variant="caption" display="block">
-                        마지막 발권일: {flight.lastTicketingDate ? new Date(flight.lastTicketingDate).toLocaleDateString('ko-KR') : '-'}
-                        , 예약 가능 좌석: {flight.numberOfBookableSeats || '-'}석
-                    </Typography>
-
-                    {renderFareDetails(flight.travelerPricings, dictionaries)}
-
-                  </AccordionDetails>
-                </Accordion>
+                    </Box>
+                    </Box>
+                </Box>
               </Paper>
             )
           })}
         </Box>
+      )}
+      {selectedFlightDetails && (
+        <Dialog 
+            open={isFlightDetailOpen} 
+            onClose={handleCloseFlightDetail} 
+            fullWidth 
+            maxWidth="md"
+            scroll="paper"
+        >
+          <DialogTitle sx={{ m: 0, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            항공편 상세 정보
+            <IconButton aria-label="close" onClick={handleCloseFlightDetail} sx={{ position: 'absolute', right: 8, top: 8 }}>
+              <CloseIcon />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent dividers>
+            {selectedFlightDetails.itineraries.map((itinerary, index) => (
+                <React.Fragment key={`detail-itinerary-${index}`}>
+                    {index > 0 && <Divider sx={{ my:2 }} />}
+                    {renderItineraryDetails(
+                        itinerary, 
+                        selectedFlightDetails.id, 
+                        dictionaries, 
+                        selectedFlightDetails.itineraries.length > 1 ? (index === 0 ? "가는 여정" : "오는 여정") : "여정 상세 정보", 
+                        airportInfoCache,
+                        loadingAirportInfo || new Set()
+                    )}
+                </React.Fragment>
+            ))}
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', mt:2 }}>가격 및 요금 정보</Typography>
+            <Typography variant="caption" display="block">총액 (1인): {formatPrice(selectedFlightDetails.price.grandTotal || selectedFlightDetails.price.total, selectedFlightDetails.price.currency)}</Typography>
+            <Typography variant="caption" display="block">기본 운임: {formatPrice(selectedFlightDetails.price.base, selectedFlightDetails.price.currency)}</Typography>
+            {selectedFlightDetails.price.fees && selectedFlightDetails.price.fees.length > 0 && (
+                <Typography variant="caption" display="block">수수료: 
+                    {selectedFlightDetails.price.fees.map(fee => `${fee.type}: ${formatPrice(fee.amount, selectedFlightDetails.price.currency)}`).join(', ')}
+                </Typography>
+            )}
+            {selectedFlightDetails.price.taxes && selectedFlightDetails.price.taxes.length > 0 && (
+                    <Typography variant="caption" display="block">세금: 
+                    {selectedFlightDetails.price.taxes.map(tax => `${tax.code}: ${formatPrice(tax.amount, selectedFlightDetails.price.currency)}`).join(', ')}
+                </Typography>
+            )}
+            <Typography variant="caption" display="block">
+                마지막 발권일: {selectedFlightDetails.lastTicketingDate ? new Date(selectedFlightDetails.lastTicketingDate).toLocaleDateString('ko-KR') : '-'}
+                , 예약 가능 좌석: {selectedFlightDetails.numberOfBookableSeats || '-'}석
+            </Typography>
+            {renderFareDetails(selectedFlightDetails.travelerPricings, dictionaries)}
+          </DialogContent>
+          <DialogActions sx={{ justifyContent: 'space-between', p: '12px 24px' }}>
+            <Button 
+              onClick={handleAddSelectedFlightToSchedule} 
+              variant="contained" 
+              startIcon={<AddCircleOutlineIcon />} 
+              color="primary"
+              disabled={!onAddFlightToSchedule}
+            >
+              일정에 추가하기
+            </Button>
+            <Button onClick={handleCloseFlightDetail} color="inherit">닫기</Button>
+          </DialogActions>
+        </Dialog>
       )}
     </Box>
   );

@@ -3,6 +3,9 @@ import axios from 'axios';
 // API Gateway 엔드포인트 URL
 const AIRPORT_CITY_SEARCH_URL = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/amadeus/Airport_CitySearch';
 const FLIGHT_OFFERS_SEARCH_URL = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/amadeus/FlightOffersSearch';
+// GetAirportInfo Lambda의 URL (Lambda 함수 이름은 GetAirportInfo이지만, API Gateway 경로는 유지하거나 변경 가능)
+// 여기서는 기존 AeroDataBox용으로 사용하던 경로를 그대로 사용한다고 가정합니다. (필요시 변경)
+const GET_AIRPORT_DETAILS_URL = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/AeroDataBox/GetAirportInfo'; 
 
 /**
  * Amadeus 관련 API Gateway 엔드포인트를 호출하는 클래스
@@ -29,7 +32,7 @@ class AmadeusApi {
         },
       });
       console.log('[AmadeusApi] City/Airport search response:', response.data);
-      return response.data;
+      return response.data; // Lambda가 반환하는 객체 (data, dictionaries 등 포함 가능)
 
     } catch (error) {
       console.error('[AmadeusApi] Failed to search cities/airports via Gateway:', error.response?.data || error.message);
@@ -53,7 +56,7 @@ class AmadeusApi {
    * @param {string} [searchParams.currencyCode='KRW'] - 통화 코드
    * @param {number} [searchParams.maxPrice] - 최대 가격
    * @param {number} [searchParams.max=10] - 최대 결과 수
-   * @returns {Promise<object>} - Amadeus API의 flight-offers 응답 데이터
+   * @returns {Promise<object>} - Amadeus API의 flight-offers 응답 데이터 (Lambda가 반환하는 전체 객체)
    * @throws {Error} - API 호출 실패 시 오류 발생
    */
   async searchFlights(searchParams) {
@@ -72,7 +75,7 @@ class AmadeusApi {
       ...(searchParams.children && { children: searchParams.children }),
       ...(searchParams.infants && { infants: searchParams.infants }),
       ...(searchParams.travelClass && { travelClass: searchParams.travelClass }),
-      ...(searchParams.nonStop && { nonStop: searchParams.nonStop }), // boolean 값 그대로 전달
+      ...(searchParams.nonStop && { nonStop: searchParams.nonStop }), 
       currencyCode: searchParams.currencyCode || 'KRW',
       ...(searchParams.maxPrice && { maxPrice: searchParams.maxPrice }),
       max: searchParams.max || 10,
@@ -80,9 +83,10 @@ class AmadeusApi {
 
     try {
       console.log('[AmadeusApi] Searching flights via Gateway with params:', apiGatewayParams);
+      // FlightOffersSearch Lambda는 POST 요청을 받음
       const response = await axios.post(FLIGHT_OFFERS_SEARCH_URL, apiGatewayParams);
       console.log('[AmadeusApi] Flight search response:', response.data);
-      return response.data;
+      return response.data; // Lambda 응답 (data와 dictionaries 포함)
 
     } catch (error) {
       console.error('[AmadeusApi] Failed to search flights via Gateway:', error.response?.data || error.message);
@@ -90,6 +94,33 @@ class AmadeusApi {
       const errorMessage = detailedError?.title || detailedError?.message || '항공편 검색에 실패했습니다.';
       const errorDetail = detailedError?.detail ? ` (${detailedError.detail})` : '';
       throw new Error(errorMessage + errorDetail);
+    }
+  }
+
+  /**
+   * IATA 코드로 특정 공항의 상세 정보를 조회합니다. (API Gateway 호출)
+   * @param {string} iataCode - 조회할 공항의 3글자 IATA 코드
+   * @returns {Promise<object|null>} - Lambda (GetAirportInfo)가 반환하는 공항 상세 정보 (번역 포함) 또는 오류 시 null
+   */
+  async getAirportDetails(iataCode) {
+    if (!iataCode || iataCode.length !== 3) {
+      console.warn('[AmadeusApi] Invalid IATA code for getAirportDetails:', iataCode);
+      return null;
+    }
+
+    try {
+      console.log(`[AmadeusApi] Getting airport details via Gateway for ${iataCode}...`);
+      const response = await axios.get(GET_AIRPORT_DETAILS_URL, { // URL은 GetAirportInfo Lambda를 가리킴
+        params: {
+          iataCode: iataCode.toUpperCase()
+        }
+      });
+      console.log(`[AmadeusApi] Airport details response for ${iataCode}:`, response.data);
+      return response.data; // Lambda가 반환하는 객체 (Amadeus 정보 + 번역 정보)
+
+    } catch (error) {
+      console.error(`[AmadeusApi] Failed to get airport details for ${iataCode}:`, error.response?.data || error.message);
+      return null;
     }
   }
 }
