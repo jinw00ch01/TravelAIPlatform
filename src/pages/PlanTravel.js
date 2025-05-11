@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -6,10 +6,50 @@ import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { cn } from "../lib/utils";
-import { CalendarIcon, Minus, Plus, Plane, Hotel, MapPin, Loader2 } from "lucide-react";
+import { CalendarIcon, Minus, Plus, Plane, Hotel, MapPin, Loader2, X } from "lucide-react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { travelApi } from "../services/api";
+import amadeusApi from "../utils/amadeusApi";
+import FlightPlan from "../components/FlightPlan"; // FlightPlan 컴포넌트 import
+
+// Material UI 테마 프로바이더 추가
+import { ThemeProvider, createTheme, StyledEngineProvider } from "@mui/material/styles";
+import CssBaseline from "@mui/material/CssBaseline";
+
+// MUI 다크/라이트 테마 설정
+const muiTheme = createTheme({
+  palette: {
+    mode: 'light',
+    primary: {
+      main: '#3b82f6', // tailwind blue-500과 유사한 색상
+    },
+  },
+  // MUI 스타일에 tailwind 스타일보다 낮은 우선순위 부여
+  components: {
+    MuiAutocomplete: {
+      styleOverrides: {
+        root: {
+          width: '100%',
+        },
+      }
+    },
+    MuiTextField: {
+      styleOverrides: {
+        root: {
+          width: '100%',
+        }
+      }
+    },
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          textTransform: 'none',
+        }
+      }
+    }
+  }
+});
 
 export const PlanTravel = () => {
   const navigate = useNavigate();
@@ -22,12 +62,86 @@ export const PlanTravel = () => {
   const [childCount, setChildCount] = useState(0);
   const [showPeopleSelector, setShowPeopleSelector] = useState(false);
   
+  // 비행 계획 관련 팝업 상태
+  const [isFlightDialogOpen, setIsFlightDialogOpen] = useState(false);
+  
+  // 비행 계획 관련 상태
+  const [originSearch, setOriginSearch] = useState("");
+  const [destinationSearch, setDestinationSearch] = useState("");
+  const [originCities, setOriginCities] = useState([]);
+  const [destinationCities, setDestinationCities] = useState([]);
+  const [selectedOrigin, setSelectedOrigin] = useState(null);
+  const [selectedDestination, setSelectedDestination] = useState(null);
+  const [isLoadingCities, setIsLoadingCities] = useState(false);
+  const [isLoadingFlights, setIsLoadingFlights] = useState(false);
+  const [flightResults, setFlightResults] = useState([]);
+  const [flightError, setFlightError] = useState(null);
+  const [infantCount, setInfantCount] = useState(0);
+  const [travelClass, setTravelClass] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [nonStop, setNonStop] = useState(false);
+  
   // API 데이터 관련 상태 추가
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [popularDestinations, setPopularDestinations] = useState([]);
   const [airlines, setAirlines] = useState([]);
   const [hotels, setHotels] = useState([]);
   const [activeTab, setActiveTab] = useState('destinations'); // 'destinations', 'airlines', 'hotels'
+
+  // FlightPlan 컴포넌트에 전달할 검색 파라미터
+  const [flightSearchParams, setFlightSearchParams] = useState({
+    originSearch: "",
+    destinationSearch: "",
+    selectedOrigin: null,
+    selectedDestination: null,
+    departureDate: null,
+    returnDate: null,
+    adults: 1,
+    children: 0,
+    infants: 0,
+    travelClass: "",
+    currencyCode: "KRW",
+    maxPrice: "",
+    nonStop: false
+  });
+
+  // FlightPlan에서 사용할 상태들
+  const [airportInfoCache, setAirportInfoCache] = useState({});
+  const [dictionaries, setDictionaries] = useState({});
+  const [loadingAirportInfo, setLoadingAirportInfo] = useState(false);
+
+  // 다이얼로그가 열릴 때 초기값 설정
+  useEffect(() => {
+    if (isFlightDialogOpen) {
+      // 검색 상태 초기화
+      setOriginSearch("");
+      setDestinationSearch("");
+      setOriginCities([]);
+      setDestinationCities([]);
+      setSelectedOrigin(null);
+      setSelectedDestination(null);
+      setFlightResults([]);
+      setFlightError(null);
+      
+      // 기본값 설정 (현재 날짜 및 인원수만 유지)
+      setTravelClass("");
+      setMaxPrice("");
+      setNonStop(false);
+      
+      // 기존 날짜 초기화 코드는 유지
+      if (!startDate) {
+        const futureDate = new Date();
+        futureDate.setDate(futureDate.getDate() + 30); // 30일 후
+        setStartDate(futureDate);
+      }
+      
+      if (!endDate && startDate) {
+        const returnDate = new Date(startDate);
+        returnDate.setDate(returnDate.getDate() + 7); // 가는 날로부터 7일 후
+        setEndDate(returnDate);
+      }
+    }
+  }, [isFlightDialogOpen, startDate, endDate]);
 
   const processTextFile = async (file) => {
     return new Promise((resolve, reject) => {
@@ -204,6 +318,328 @@ export const PlanTravel = () => {
       console.error('Error loading API data:', error);
       setIsLoadingData(false);
     }
+  };
+
+  // 도시 검색 함수 (FlightPlan 컴포넌트에서 사용)
+  const handleCitySearch = async (value, type) => {
+    if (!value || value.length < 2) {
+      if (type === 'origin') setOriginCities([]);
+      else setDestinationCities([]);
+      return;
+    }
+
+    setIsLoadingCities(true);
+    setFlightError(null);
+    try {
+      console.log(`도시 검색 시작: ${value}, 타입: ${type}`);
+      
+      // API 호출
+      try {
+        const response = await amadeusApi.searchCities(value);
+        if (response && response.data && Array.isArray(response.data)) {
+          const apiOptions = response.data.map(location => ({
+            name: location.name,
+            iataCode: location.iataCode,
+            address: location.address?.cityName || '',
+            id: location.id || `${location.iataCode}-${location.name}`
+          }));
+          
+          // API 결과만 사용
+          if (type === 'origin') setOriginCities(apiOptions);
+          else setDestinationCities(apiOptions);
+        } else {
+          // API 응답이 없거나 형식이 맞지 않으면 빈 배열 반환
+          if (type === 'origin') setOriginCities([]);
+          else setDestinationCities([]);
+        }
+      } catch (err) {
+        console.error("API 도시 검색 오류:", err);
+        // API 오류 시 빈 배열 반환
+        if (type === 'origin') setOriginCities([]);
+        else setDestinationCities([]);
+      }
+    } catch (err) {
+      console.error("도시 검색 중 오류 발생:", err);
+      setFlightError(err.message || '도시 검색 중 오류 발생');
+    } finally {
+      setIsLoadingCities(false);
+    }
+  };
+
+  // 항공권 검색 함수 (FlightPlan 컴포넌트에서 사용)
+  const handleFlightSearch = async () => {
+    setFlightError(null);
+    setFlightResults([]);
+
+    // 필수 값 검증
+    if (!flightSearchParams.selectedOrigin) {
+      setFlightError('출발지를 선택해주세요.');
+      return;
+    }
+    if (!flightSearchParams.selectedDestination) {
+      setFlightError('도착지를 선택해주세요.');
+      return;
+    }
+    if (!flightSearchParams.departureDate) {
+      setFlightError('가는 날짜를 선택해주세요.');
+      return;
+    }
+
+    setIsLoadingFlights(true);
+    try {
+      console.log("항공편 검색 시작:", flightSearchParams);
+      
+      // 항공권 검색 요청 객체
+      const paramsToApi = {
+        originCode: flightSearchParams.selectedOrigin.iataCode,
+        destinationCode: flightSearchParams.selectedDestination.iataCode,
+        departureDate: format(flightSearchParams.departureDate, 'yyyy-MM-dd'),
+        returnDate: flightSearchParams.returnDate ? format(flightSearchParams.returnDate, 'yyyy-MM-dd') : null,
+        adults: flightSearchParams.adults,
+        children: flightSearchParams.children,
+        infants: flightSearchParams.infants || 0,
+        travelClass: flightSearchParams.travelClass || null,
+        currencyCode: flightSearchParams.currencyCode || 'KRW',
+        maxPrice: flightSearchParams.maxPrice || null,
+        nonStop: flightSearchParams.nonStop || false,
+        max: 20, // 검색 결과 수
+      };
+
+      console.log("API 요청 파라미터:", paramsToApi);
+
+      // 실제 API가 작동하지 않는 경우를 위한 샘플 데이터
+      const mockFlightData = [
+        {
+          type: "flight-offer",
+          id: "1",
+          source: "GDS",
+          instantTicketingRequired: false,
+          nonHomogeneous: false,
+          oneWay: false,
+          lastTicketingDate: "2023-11-30",
+          numberOfBookableSeats: 9,
+          itineraries: [
+            {
+              duration: "PT2H20M",
+              segments: [
+                {
+                  departure: {
+                    iataCode: flightSearchParams.selectedOrigin.iataCode,
+                    at: "2023-12-15T10:00:00"
+                  },
+                  arrival: {
+                    iataCode: flightSearchParams.selectedDestination.iataCode,
+                    at: "2023-12-15T12:20:00"
+                  },
+                  carrierCode: "KE",
+                  number: "701",
+                  aircraft: {
+                    code: "738"
+                  },
+                  operating: {
+                    carrierCode: "KE"
+                  },
+                  duration: "PT2H20M",
+                  id: "1",
+                  numberOfStops: 0
+                }
+              ]
+            }
+          ],
+          price: {
+            currency: "KRW",
+            total: "350000",
+            base: "300000",
+            fees: [
+              {
+                amount: "0",
+                type: "SUPPLIER"
+              },
+              {
+                amount: "0",
+                type: "TICKETING"
+              }
+            ],
+            grandTotal: "350000"
+          },
+          pricingOptions: {
+            fareType: ["PUBLISHED"],
+            includedCheckedBagsOnly: true
+          },
+          validatingAirlineCodes: ["KE"],
+          travelerPricings: [
+            {
+              travelerId: "1",
+              fareOption: "STANDARD",
+              travelerType: "ADULT",
+              price: {
+                currency: "KRW",
+                total: "350000",
+                base: "300000"
+              },
+              fareDetailsBySegment: [
+                {
+                  segmentId: "1",
+                  cabin: "ECONOMY",
+                  fareBasis: "YLXSP",
+                  class: "Y",
+                  includedCheckedBags: {
+                    quantity: 1
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          type: "flight-offer",
+          id: "2",
+          source: "GDS",
+          instantTicketingRequired: false,
+          nonHomogeneous: false,
+          oneWay: false,
+          lastTicketingDate: "2023-11-30",
+          numberOfBookableSeats: 9,
+          itineraries: [
+            {
+              duration: "PT2H30M",
+              segments: [
+                {
+                  departure: {
+                    iataCode: flightSearchParams.selectedOrigin.iataCode,
+                    at: "2023-12-15T14:00:00"
+                  },
+                  arrival: {
+                    iataCode: flightSearchParams.selectedDestination.iataCode,
+                    at: "2023-12-15T16:30:00"
+                  },
+                  carrierCode: "OZ",
+                  number: "225",
+                  aircraft: {
+                    code: "321"
+                  },
+                  operating: {
+                    carrierCode: "OZ"
+                  },
+                  duration: "PT2H30M",
+                  id: "2",
+                  numberOfStops: 0
+                }
+              ]
+            }
+          ],
+          price: {
+            currency: "KRW",
+            total: "320000",
+            base: "280000",
+            fees: [
+              {
+                amount: "0",
+                type: "SUPPLIER"
+              },
+              {
+                amount: "0",
+                type: "TICKETING"
+              }
+            ],
+            grandTotal: "320000"
+          },
+          pricingOptions: {
+            fareType: ["PUBLISHED"],
+            includedCheckedBagsOnly: true
+          },
+          validatingAirlineCodes: ["OZ"],
+          travelerPricings: [
+            {
+              travelerId: "1",
+              fareOption: "STANDARD",
+              travelerType: "ADULT",
+              price: {
+                currency: "KRW",
+                total: "320000",
+                base: "280000"
+              },
+              fareDetailsBySegment: [
+                {
+                  segmentId: "2",
+                  cabin: "ECONOMY",
+                  fareBasis: "YLXSP",
+                  class: "Y",
+                  includedCheckedBags: {
+                    quantity: 1
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ];
+
+      // API 사전 객체 데이터
+      const mockDictionaries = {
+        locations: {
+          [flightSearchParams.selectedOrigin.iataCode]: {
+            cityCode: flightSearchParams.selectedOrigin.iataCode.substring(0, 3),
+            countryCode: "KR"
+          },
+          [flightSearchParams.selectedDestination.iataCode]: {
+            cityCode: flightSearchParams.selectedDestination.iataCode.substring(0, 3),
+            countryCode: "JP"
+          }
+        },
+        aircraft: {
+          "738": "BOEING 737-800",
+          "321": "AIRBUS A321"
+        },
+        currencies: {
+          "KRW": "대한민국 원"
+        },
+        carriers: {
+          "KE": "대한항공",
+          "OZ": "아시아나항공"
+        }
+      };
+
+      try {
+        // 실제 API 호출
+        const response = await amadeusApi.searchFlights(paramsToApi);
+        
+        if (response && response.data && Array.isArray(response.data) && response.data.length > 0) {
+          console.log("API 응답 성공:", response);
+          setFlightResults(response.data);
+          setDictionaries(response.dictionaries || {});
+        } else {
+          // API 호출은 성공했지만 결과가 없거나 형식이 잘못된 경우 Mock 데이터 사용
+          console.log("API 응답에 데이터가 없어 샘플 데이터 사용");
+          setFlightResults(mockFlightData);
+          setDictionaries(mockDictionaries);
+        }
+      } catch (error) {
+        console.error("API 호출 실패:", error);
+        // API 호출 실패 시 Mock 데이터 사용
+        console.log("API 호출 실패로 샘플 데이터 사용");
+        setFlightResults(mockFlightData);
+        setDictionaries(mockDictionaries);
+      }
+    } catch (err) {
+      console.error("항공편 검색 중 오류 발생:", err);
+      setFlightError(err.message || '항공편 검색 중 오류가 발생했습니다.');
+      setFlightResults([]);
+    } finally {
+      setIsLoadingFlights(false);
+    }
+  };
+
+  // 선택한 항공편을 일정에 추가하는 함수
+  const handleAddFlightToSchedule = (flight, dictionaries, airportInfo) => {
+    navigate('/planner', { 
+      state: { 
+        flightData: flight,
+        dictionaries,
+        airportInfo
+      } 
+    });
+    setIsFlightDialogOpen(false);
   };
 
   // 컴포넌트 마운트 시 데이터 로드
@@ -387,6 +823,18 @@ export const PlanTravel = () => {
                   )}
                 </div>
               </div>
+              
+              {/* 비행기 모양 원형 버튼 추가 */}
+              <div className="flex justify-start mt-2">
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  className="rounded-full w-10 h-10 bg-blue-500 hover:bg-blue-600 border-none shadow-md"
+                  onClick={() => setIsFlightDialogOpen(true)}
+                >
+                  <Plane className="h-5 w-5 text-white" />
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -504,8 +952,485 @@ export const PlanTravel = () => {
           )}
         </div>
       </div>
+      
+      {/* FlightPlan 컴포넌트를 사용한 다이얼로그 */}
+      {isFlightDialogOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+            {/* 다이얼로그 헤더 */}
+            <div className="p-4 border-b flex justify-between items-center">
+              <h2 className="text-xl font-bold">항공편 검색</h2>
+              <Button 
+                variant="ghost" 
+                className="rounded-full p-1 hover:bg-gray-100" 
+                onClick={() => setIsFlightDialogOpen(false)}
+              >
+                <X className="h-6 w-6" />
+              </Button>
+            </div>
+            
+            {/* 다이얼로그 컨텐츠 - 좌우 분할 레이아웃 */}
+            <div className="flex-1 flex overflow-hidden">
+              {/* 왼쪽 패널: 검색 조건 (스크롤 가능) */}
+              <div className="w-1/3 border-r overflow-y-auto p-4 bg-gray-50">
+                <h3 className="text-lg font-semibold mb-4">검색 조건</h3>
+                
+                {/* 출발지 입력 */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">출발지 *</label>
+                  <div className="relative">
+                    <Input
+                      placeholder="도시 또는 공항 검색 (2글자 이상)"
+                      value={originSearch}
+                      onChange={(e) => {
+                        setOriginSearch(e.target.value);
+                        if (e.target.value.length >= 2) {
+                          handleCitySearch(e.target.value, 'origin');
+                        } else {
+                          setOriginCities([]); // 2글자 미만이면 검색 결과 초기화
+                        }
+                      }}
+                      className="w-full"
+                    />
+                    {originCities.length > 0 && (
+                      <div className="absolute left-0 right-0 top-full mt-1 z-10 bg-white border rounded-md shadow-lg max-h-60 overflow-auto">
+                        {originCities.map(city => (
+                          <div 
+                            key={city.id} 
+                            className="p-2 hover:bg-gray-100 cursor-pointer"
+                            onClick={() => {
+                              setSelectedOrigin(city);
+                              setOriginSearch(`${city.name} (${city.iataCode})`);
+                              setOriginCities([]);
+                            }}
+                          >
+                            {city.name} ({city.iataCode})
+                            {city.address && <div className="text-xs text-gray-500">{city.address}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                {/* 도착지 입력 */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">도착지 *</label>
+                  <div className="relative">
+                    <Input
+                      placeholder="도시 또는 공항 검색 (2글자 이상)"
+                      value={destinationSearch}
+                      onChange={(e) => {
+                        setDestinationSearch(e.target.value);
+                        if (e.target.value.length >= 2) {
+                          handleCitySearch(e.target.value, 'destination');
+                        } else {
+                          setDestinationCities([]); // 2글자 미만이면 검색 결과 초기화
+                        }
+                      }}
+                      className="w-full"
+                    />
+                    {destinationCities.length > 0 && (
+                      <div className="absolute left-0 right-0 top-full mt-1 z-10 bg-white border rounded-md shadow-lg max-h-60 overflow-auto">
+                        {destinationCities.map(city => (
+                          <div 
+                            key={city.id} 
+                            className="p-2 hover:bg-gray-100 cursor-pointer"
+                            onClick={() => {
+                              setSelectedDestination(city);
+                              setDestinationSearch(`${city.name} (${city.iataCode})`);
+                              setDestinationCities([]);
+                            }}
+                          >
+                            {city.name} ({city.iataCode})
+                            {city.address && <div className="text-xs text-gray-500">{city.address}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                {/* 날짜 선택 */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">가는 날 *</label>
+                  <DatePicker
+                    selected={startDate}
+                    onChange={(date) => setStartDate(date)}
+                    selectsStart
+                    startDate={startDate}
+                    endDate={endDate}
+                    dateFormat="yyyy/MM/dd"
+                    locale={ko}
+                    placeholderText="가는 날"
+                    customInput={<CustomInput />}
+                    className="w-full"
+                  />
+                </div>
+                
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">오는 날 (선택사항)</label>
+                  <DatePicker
+                    selected={endDate}
+                    onChange={(date) => setEndDate(date)}
+                    selectsEnd
+                    startDate={startDate}
+                    endDate={endDate}
+                    minDate={startDate}
+                    dateFormat="yyyy/MM/dd"
+                    locale={ko}
+                    placeholderText="오는 날"
+                    customInput={<CustomInput />}
+                    className="w-full"
+                  />
+                </div>
+                
+                {/* 인원 수 입력 */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">성인 (만 12세 이상) *</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="9"
+                    value={adultCount}
+                    onChange={(e) => setAdultCount(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-full"
+                  />
+                </div>
+                
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">어린이 (만 2-11세)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="9"
+                    value={childCount}
+                    onChange={(e) => setChildCount(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full"
+                  />
+                </div>
+                
+                {/* 유아 수 입력 필드 추가 */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">유아 (만 2세 미만)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="9"
+                    value={infantCount}
+                    onChange={(e) => setInfantCount(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full"
+                  />
+                </div>
+                
+                {/* 좌석 등급 선택 추가 */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">좌석 등급</label>
+                  <select 
+                    className="w-full h-10 px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    value={travelClass}
+                    onChange={(e) => setTravelClass(e.target.value)}
+                  >
+                    <option value="">모든 등급</option>
+                    <option value="ECONOMY">이코노미</option>
+                    <option value="PREMIUM_ECONOMY">프리미엄 이코노미</option>
+                    <option value="BUSINESS">비즈니스</option>
+                    <option value="FIRST">퍼스트</option>
+                  </select>
+                </div>
+                
+                {/* 가격 제한 필드 추가 */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium mb-1">최대 가격 (1인당)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    placeholder="예: 500000"
+                    value={maxPrice}
+                    onChange={(e) => setMaxPrice(e.target.value ? parseInt(e.target.value) : "")}
+                    className="w-full"
+                  />
+                </div>
+                
+                {/* 직항 필터 추가 */}
+                <div className="mb-4 flex items-center">
+                  <input
+                    type="checkbox"
+                    id="nonStop"
+                    checked={nonStop}
+                    onChange={(e) => setNonStop(e.target.checked)}
+                    className="mr-2"
+                  />
+                  <label htmlFor="nonStop" className="text-sm">직항만 검색</label>
+                </div>
+                
+                {/* 검색 버튼 */}
+                <Button 
+                  className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 mt-4"
+                  onClick={() => {
+                    // 검색 파라미터 설정
+                    const params = {
+                      selectedOrigin: selectedOrigin,
+                      selectedDestination: selectedDestination,
+                      departureDate: startDate,
+                      returnDate: endDate,
+                      adults: adultCount,
+                      children: childCount,
+                      infants: infantCount,
+                      travelClass: travelClass,
+                      nonStop: nonStop,
+                      currencyCode: 'KRW',
+                      maxPrice: maxPrice
+                    };
+                    
+                    // 플래너의 검색 함수와 비슷한 로직으로 검색 실행
+                    if (!params.selectedOrigin) {
+                      setFlightError('출발지를 선택해주세요.');
+                      return;
+                    }
+                    if (!params.selectedDestination) {
+                      setFlightError('도착지를 선택해주세요.');
+                      return;
+                    }
+                    if (!params.departureDate) {
+                      setFlightError('가는 날짜를 선택해주세요.');
+                      return;
+                    }
+                    
+                    // 추가 유효성 검사
+                    if (params.infants > params.adults) {
+                      setFlightError('유아 수는 성인 수를 초과할 수 없습니다.');
+                      return;
+                    }
+                    
+                    const totalPassengers = (parseInt(params.adults) || 0) + (parseInt(params.children) || 0);
+                    if (totalPassengers > 9) {
+                      setFlightError('총 탑승객(성인+어린이)은 9명을 초과할 수 없습니다.');
+                      return;
+                    }
+                    
+                    setIsLoadingFlights(true);
+                    setFlightResults([]);
+                    setFlightError(null);
+                    
+                    // API 요청 구성
+                    const paramsToApi = {
+                      originCode: params.selectedOrigin.iataCode,
+                      destinationCode: params.selectedDestination.iataCode,
+                      departureDate: format(params.departureDate, 'yyyy-MM-dd'),
+                      returnDate: params.returnDate ? format(params.returnDate, 'yyyy-MM-dd') : null,
+                      adults: params.adults,
+                      children: params.children > 0 ? params.children : undefined,
+                      infants: params.infants > 0 ? params.infants : undefined,
+                      travelClass: params.travelClass || undefined,
+                      nonStop: params.nonStop || undefined,
+                      currencyCode: 'KRW',
+                      maxPrice: params.maxPrice || undefined,
+                      max: 20
+                    };
+                    
+                    console.log("항공편 검색 파라미터:", paramsToApi);
+                    
+                    // 항공편 검색 API 호출
+                    amadeusApi.searchFlights(paramsToApi)
+                      .then(response => {
+                        if (response && response.data && Array.isArray(response.data)) {
+                          setFlightResults(response.data);
+                          setDictionaries(response.dictionaries || {});
+                          if (response.data.length === 0) {
+                            setFlightError('검색 조건에 맞는 항공편이 없습니다.');
+                          }
+                        } else {
+                          setFlightResults([]);
+                          setFlightError('항공편 검색 결과가 없거나 형식이 올바르지 않습니다.');
+                        }
+                      })
+                      .catch(err => {
+                        console.error("항공편 검색 오류:", err);
+                        setFlightError(err.message || '항공편 검색 중 오류가 발생했습니다.');
+                        setFlightResults([]);
+                      })
+                      .finally(() => {
+                        setIsLoadingFlights(false);
+                      });
+                  }}
+                  disabled={isLoadingFlights}
+                >
+                  {isLoadingFlights ? (
+                    <span className="flex items-center justify-center">
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      검색 중...
+                    </span>
+                  ) : "항공권 검색"}
+                </Button>
+                
+                {/* 오류 메시지 */}
+                {flightError && (
+                  <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">
+                    {flightError}
+                  </div>
+                )}
+              </div>
+              
+              {/* 오른쪽 패널: 검색 결과 (스크롤 가능) */}
+              <div className="w-2/3 overflow-y-auto p-4">
+                <h3 className="text-lg font-semibold mb-4">검색 결과</h3>
+                
+                {isLoadingFlights ? (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <Loader2 className="h-12 w-12 text-blue-500 animate-spin mb-4" />
+                    <p className="text-gray-500">항공편을 검색 중입니다...</p>
+                  </div>
+                ) : flightResults.length > 0 ? (
+                  <div className="space-y-4">
+                    {flightResults.map((flight, index) => {
+                      // 첫 번째 세그먼트 정보 가져오기
+                      const firstItinerary = flight.itineraries[0];
+                      const firstSegment = firstItinerary.segments[0];
+                      const lastSegment = firstItinerary.segments[firstItinerary.segments.length - 1];
+                      
+                      // 가격 포맷팅
+                      const price = parseInt(flight.price.grandTotal).toLocaleString();
+                      
+                      // 항공사 정보
+                      const carrierCode = firstSegment.carrierCode;
+                      const carrierName = dictionaries?.carriers?.[carrierCode] || carrierCode;
+                      
+                      // 소요 시간 포맷팅
+                      const duration = firstItinerary.duration
+                        .replace('PT', '')
+                        .replace('H', '시간 ')
+                        .replace('M', '분');
+                      
+                      // 경유 정보
+                      const stops = firstItinerary.segments.length - 1;
+                      const stopsText = stops === 0 ? '직항' : `${stops}회 경유`;
+                      
+                      return (
+                        <div key={index} className="bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow">
+                          <div className="flex justify-between items-center mb-2">
+                            <div className="text-lg font-bold">
+                              {firstSegment.departure.iataCode} → {lastSegment.arrival.iataCode}
+                            </div>
+                            <div className="text-lg font-bold text-blue-600">{price}원</div>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">
+                                  {new Date(firstSegment.departure.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                                <span className="text-gray-400">→</span>
+                                <span className="font-medium">
+                                  {new Date(lastSegment.arrival.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {carrierName} | {stopsText} | 총 소요시간: {duration}
+                              </div>
+                            </div>
+                            <Button 
+                              variant="outline" 
+                              className="border-blue-500 text-blue-500 hover:bg-blue-50"
+                              onClick={() => {
+                                // 항공편 선택하고 다이얼로그 닫기
+                                navigate('/planner', { 
+                                  state: { 
+                                    flightData: flight,
+                                    dictionaries: dictionaries
+                                  } 
+                                });
+                                setIsFlightDialogOpen(false);
+                              }}
+                            >
+                              선택
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                    <div className="mb-4">
+                      <Plane className="h-16 w-16 text-gray-300" />
+                    </div>
+                    <p>아직 항공편 검색 결과가 없습니다.</p>
+                    <p className="mt-2 text-sm">왼쪽에서 검색 조건을 입력하고 검색 버튼을 클릭하세요.</p>
+                    <div className="mt-6 p-4 bg-blue-50 rounded-md max-w-md text-sm text-blue-700">
+                      <p className="font-medium mb-2">검색 팁:</p>
+                      <ul className="list-disc pl-5 space-y-1">
+                        <li>도시나 공항 이름은 영문으로 입력하면 더 정확한 결과를 얻을 수 있습니다. (예: Seoul, Tokyo)</li>
+                        <li>도시 코드를 직접 입력할 수도 있습니다. (예: ICN, NRT)</li>
+                        <li>검색 조건을 너무 제한적으로 설정하면 결과가 없을 수 있습니다.</li>
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* MUI 스타일을 위한 전역 CSS */}
+      <style jsx global>{`
+        .mui-wrapper .MuiAutocomplete-root,
+        .mui-wrapper .MuiTextField-root,
+        .mui-wrapper .MuiFormControl-root {
+          width: 100%;
+          margin-bottom: 12px;
+        }
+        .mui-wrapper .MuiButton-root {
+          text-transform: none;
+        }
+        .mui-wrapper .MuiPaper-root {
+          width: 100%;
+        }
+        .mui-wrapper .MuiAutocomplete-option {
+          padding: 8px 12px;
+        }
+        .mui-wrapper .MuiAutocomplete-option strong {
+          font-weight: 600;
+        }
+        .mui-wrapper .MuiInputBase-root {
+          font-size: 14px;
+        }
+        .mui-wrapper .MuiTypography-root {
+          font-size: 14px;
+        }
+        .mui-wrapper .MuiInputLabel-root {
+          font-size: 14px;
+        }
+        .mui-wrapper .MuiAutocomplete-listbox {
+          max-height: 300px;
+        }
+        .mui-wrapper .MuiAutocomplete-paper {
+          max-height: 300px;
+          overflow-y: auto;
+        }
+        .mui-wrapper .MuiDialogContent-root {
+          padding: 16px;
+        }
+      `}</style>
     </div>
   );
 };
+
+// 날짜 선택기 커스텀 입력 컴포넌트
+const CustomInput = React.forwardRef(({ value, onClick, placeholder }, ref) => (
+  <Button
+    variant="outline"
+    className={cn(
+      "w-full sm:w-[200px] justify-center text-center font-normal bg-white",
+      !value && "text-gray-400"
+    )}
+    onClick={onClick}
+    ref={ref}
+  >
+    <CalendarIcon className="mr-2 h-4 w-4" />
+    {value || placeholder}
+  </Button>
+));
 
 export default PlanTravel;
