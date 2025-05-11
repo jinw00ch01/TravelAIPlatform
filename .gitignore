@@ -34,3 +34,6 @@ yarn-error.log*
 # IDE
 .vscode/
 .idea/
+
+# Individual Settings
+lambda_function.py

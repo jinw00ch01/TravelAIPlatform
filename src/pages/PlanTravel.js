@@ -1144,51 +1144,114 @@ export const PlanTravel = () => {
                 ) : flightResults.length > 0 ? (
                   <div className="space-y-4">
                     {flightResults.map((flight, index) => {
-                      // 첫 번째 세그먼트 정보 가져오기
-                      const firstItinerary = flight.itineraries[0];
-                      const firstSegment = firstItinerary.segments[0];
-                      const lastSegment = firstItinerary.segments[firstItinerary.segments.length - 1];
+                      // 왕복 항공편인지 확인 (itineraries 배열에 두 개 이상 항목이 있는 경우)
+                      const isRoundTrip = flight.itineraries.length > 1;
+                      
+                      // 가는 편 정보
+                      const outboundItinerary = flight.itineraries[0];
+                      const outboundFirstSegment = outboundItinerary.segments[0];
+                      const outboundLastSegment = outboundItinerary.segments[outboundItinerary.segments.length - 1];
                       
                       // 가격 포맷팅
                       const price = parseInt(flight.price.grandTotal).toLocaleString();
                       
-                      // 항공사 정보
-                      const carrierCode = firstSegment.carrierCode;
-                      const carrierName = dictionaries?.carriers?.[carrierCode] || carrierCode;
+                      // 가는 편 항공사 정보
+                      const outboundCarrierCode = outboundFirstSegment.carrierCode;
+                      const outboundCarrierName = dictionaries?.carriers?.[outboundCarrierCode] || outboundCarrierCode;
                       
-                      // 소요 시간 포맷팅
-                      const duration = firstItinerary.duration
+                      // 가는 편 소요 시간 포맷팅
+                      const outboundDuration = outboundItinerary.duration
                         .replace('PT', '')
                         .replace('H', '시간 ')
                         .replace('M', '분');
                       
-                      // 경유 정보
-                      const stops = firstItinerary.segments.length - 1;
-                      const stopsText = stops === 0 ? '직항' : `${stops}회 경유`;
+                      // 가는 편 경유 정보
+                      const outboundStops = outboundItinerary.segments.length - 1;
+                      const outboundStopsText = outboundStops === 0 ? '직항' : `${outboundStops}회 경유`;
+                      
+                      // 오는 편 정보 (있는 경우)
+                      let inboundInfo = null;
+                      if (isRoundTrip) {
+                        const inboundItinerary = flight.itineraries[1];
+                        const inboundFirstSegment = inboundItinerary.segments[0];
+                        const inboundLastSegment = inboundItinerary.segments[inboundItinerary.segments.length - 1];
+                        
+                        // 오는 편 항공사 정보
+                        const inboundCarrierCode = inboundFirstSegment.carrierCode;
+                        const inboundCarrierName = dictionaries?.carriers?.[inboundCarrierCode] || inboundCarrierCode;
+                        
+                        // 오는 편 소요 시간 포맷팅
+                        const inboundDuration = inboundItinerary.duration
+                          .replace('PT', '')
+                          .replace('H', '시간 ')
+                          .replace('M', '분');
+                        
+                        // 오는 편 경유 정보
+                        const inboundStops = inboundItinerary.segments.length - 1;
+                        const inboundStopsText = inboundStops === 0 ? '직항' : `${inboundStops}회 경유`;
+                        
+                        inboundInfo = {
+                          departureCode: inboundFirstSegment.departure.iataCode,
+                          arrivalCode: inboundLastSegment.arrival.iataCode,
+                          departureTime: new Date(inboundFirstSegment.departure.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+                          arrivalTime: new Date(inboundLastSegment.arrival.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+                          carrierName: inboundCarrierName,
+                          stopsText: inboundStopsText,
+                          duration: inboundDuration
+                        };
+                      }
                       
                       return (
                         <div key={index} className="bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow">
                           <div className="flex justify-between items-center mb-2">
                             <div className="text-lg font-bold">
-                              {firstSegment.departure.iataCode} → {lastSegment.arrival.iataCode}
+                              {isRoundTrip ? '왕복: ' : '편도: '}
+                              {outboundFirstSegment.departure.iataCode} → {outboundLastSegment.arrival.iataCode}
                             </div>
                             <div className="text-lg font-bold text-blue-600">{price}원</div>
                           </div>
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium">
-                                  {new Date(firstSegment.departure.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                                <span className="text-gray-400">→</span>
-                                <span className="font-medium">
-                                  {new Date(lastSegment.arrival.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                {carrierName} | {stopsText} | 총 소요시간: {duration}
+                          
+                          {/* 가는 편 정보 */}
+                          <div className="border-b pb-2 mb-2">
+                            <div className="text-sm font-medium text-gray-500 mb-1">가는 편</div>
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium">
+                                    {new Date(outboundFirstSegment.departure.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                  <span className="text-gray-400">→</span>
+                                  <span className="font-medium">
+                                    {new Date(outboundLastSegment.arrival.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {outboundCarrierName} | {outboundStopsText} | 총 소요시간: {outboundDuration}
+                                </div>
                               </div>
                             </div>
+                          </div>
+                          
+                          {/* 오는 편 정보 (있는 경우) */}
+                          {inboundInfo && (
+                            <div className="border-b pb-2 mb-2">
+                              <div className="text-sm font-medium text-gray-500 mb-1">오는 편</div>
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">{inboundInfo.departureTime}</span>
+                                    <span className="text-gray-400">→</span>
+                                    <span className="font-medium">{inboundInfo.arrivalTime}</span>
+                                  </div>
+                                  <div className="text-sm text-gray-500">
+                                    {inboundInfo.carrierName} | {inboundInfo.stopsText} | 총 소요시간: {inboundInfo.duration}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          
+                          <div className="flex justify-end mt-2">
                             <Button 
                               variant="outline" 
                               className="border-blue-500 text-blue-500 hover:bg-blue-50"
