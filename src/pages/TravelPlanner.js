@@ -132,6 +132,192 @@ const TravelPlanner = () => {
       const data = await travelApi.loadPlan(params);
       console.log('[TravelPlanner] travelApi.loadPlan 응답 데이터:', JSON.stringify(data, null, 2)); // 응답 데이터 상세 로깅
 
+      // 서버에서 이미 처리된 데이터가 있는 경우 (plannerData 필드)
+      if (data?.plannerData && Object.keys(data.plannerData).length > 0) {
+        console.log('[TravelPlanner] 서버에서 처리된 플래너 데이터 발견');
+        setTravelPlans(data.plannerData);
+        setDayOrder(Object.keys(data.plannerData));
+        setSelectedDay(Object.keys(data.plannerData)[0]);
+        
+        // 플랜 ID 설정
+        if (data.plan && data.plan[0] && data.plan[0].id) {
+          setPlanId(data.plan[0].id);
+          console.log(`[TravelPlanner] 플랜 ID 설정: ${data.plan[0].id}`);
+        }
+        
+        setIsLoadingPlan(false);
+        return; // 여기서 함수 종료
+      }
+
+      // 기존 로직: itinerary_schedules를 확인
+      if (data?.plan && Array.isArray(data.plan) && data.plan.length > 0 && data.plan[0].itinerary_schedules) {
+        console.log('[TravelPlanner] itinerary_schedules 데이터 발견');
+        const itinerarySchedules = data.plan[0].itinerary_schedules;
+        
+        // 항공편 정보 처리
+        const flightDetails = data.plan[0].flight_details || [];
+        console.log('[TravelPlanner] 항공편 정보 확인:', flightDetails);
+        
+        if (itinerarySchedules && Object.keys(itinerarySchedules).length > 0) {
+          const formattedPlans = {};
+          
+          Object.keys(itinerarySchedules).forEach(dayKey => {
+            const dayPlan = itinerarySchedules[dayKey];
+            const date = new Date(startDate);
+            date.setDate(date.getDate() + parseInt(dayKey) - 1);
+            const dateStr = formatDateFns(date, 'M/d');
+            
+            // 기존 제목에서 날짜 부분 제거
+            const detail = (dayPlan.title || '').replace(/^[0-9]{1,2}\/[0-9]{1,2}( |:)?/, '').trim();
+            const fullTitle = detail ? `${dateStr} ${detail}` : dateStr;
+            
+            // 일정 목록에 항공편 정보 병합
+            let schedules = Array.isArray(dayPlan.schedules) ? [...dayPlan.schedules] : [];
+            
+            // 항공편 정보 처리 - 일정과 병합
+            if (Array.isArray(flightDetails) && flightDetails.length > 0) {
+              // 항공편이 표시될 위치 결정 (보통 각 일차의 첫 번째 또는 마지막 일정)
+              const departureFlights = flightDetails.filter(flight => flight.type === 'Flight_Departure');
+              const returnFlights = flightDetails.filter(flight => flight.type === 'Flight_Return');
+              
+              // 첫날에 출발 항공편 추가
+              if (dayKey === '1' && departureFlights.length > 0) {
+                departureFlights.forEach(flight => {
+                  const flightSchedule = {
+                    id: `${dayKey}-flight-departure-${Math.random().toString(36).substring(7)}`,
+                    name: '출발 항공편',
+                    time: '08:00', // 기본값
+                    address: '공항',
+                    category: '항공편',
+                    type: 'Flight_Departure',
+                    duration: '1시간',
+                    notes: '',
+                    lat: null,
+                    lng: null,
+                    flightOfferDetails: {
+                      flightOfferData: flight.original_flight_offer || {},
+                      departureAirportInfo: flight.departure_airport_details || {},
+                      arrivalAirportInfo: flight.arrival_airport_details || {}
+                    }
+                  };
+                  
+                  // 항공편의 기본 정보 추출
+                  if (flight.original_flight_offer && flight.original_flight_offer.itineraries && 
+                      flight.original_flight_offer.itineraries.length > 0) {
+                    const firstSegment = flight.original_flight_offer.itineraries[0].segments[0];
+                    if (firstSegment) {
+                      flightSchedule.time = firstSegment.departure?.at ? 
+                        new Date(firstSegment.departure.at).toLocaleTimeString('ko-KR', { 
+                          hour: '2-digit', 
+                          minute: '2-digit', 
+                          hour12: false 
+                        }) : '08:00';
+                      
+                      if (firstSegment.departure?.iataCode && flight.departure_airport_details) {
+                        flightSchedule.address = `${firstSegment.departure.iataCode} 공항`;
+                      }
+                      
+                      // 항공편 정보에서 출발/도착 시간으로 기간 계산
+                      if (firstSegment.departure?.at && firstSegment.arrival?.at) {
+                        const departureTime = new Date(firstSegment.departure.at);
+                        const arrivalTime = new Date(firstSegment.arrival.at);
+                        const durationMs = arrivalTime - departureTime;
+                        const hours = Math.floor(durationMs / (1000 * 60 * 60));
+                        const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+                        flightSchedule.duration = `${hours}시간 ${minutes}분`;
+                      }
+                    }
+                  }
+                  
+                  // 일정 앞부분에 추가
+                  schedules.unshift(flightSchedule);
+                });
+              }
+              
+              // 마지막 날에 귀국 항공편 추가
+              const lastDayKey = Math.max(...Object.keys(itinerarySchedules).map(Number)).toString();
+              if (dayKey === lastDayKey && returnFlights.length > 0) {
+                returnFlights.forEach(flight => {
+                  const flightSchedule = {
+                    id: `${dayKey}-flight-return-${Math.random().toString(36).substring(7)}`,
+                    name: '귀국 항공편',
+                    time: '18:00', // 기본값
+                    address: '공항',
+                    category: '항공편',
+                    type: 'Flight_Return',
+                    duration: '1시간',
+                    notes: '',
+                    lat: null,
+                    lng: null,
+                    flightOfferDetails: {
+                      flightOfferData: flight.original_flight_offer || {},
+                      departureAirportInfo: flight.departure_airport_details || {},
+                      arrivalAirportInfo: flight.arrival_airport_details || {}
+                    }
+                  };
+                  
+                  // 항공편의 기본 정보 추출
+                  if (flight.original_flight_offer && flight.original_flight_offer.itineraries && 
+                      flight.original_flight_offer.itineraries.length > 0) {
+                    const itinerary = flight.original_flight_offer.itineraries[0];
+                    if (itinerary && itinerary.segments && itinerary.segments.length > 0) {
+                      const firstSegment = itinerary.segments[0];
+                      if (firstSegment) {
+                        flightSchedule.time = firstSegment.departure?.at ? 
+                          new Date(firstSegment.departure.at).toLocaleTimeString('ko-KR', { 
+                            hour: '2-digit', 
+                            minute: '2-digit', 
+                            hour12: false 
+                          }) : '18:00';
+                        
+                        if (firstSegment.departure?.iataCode && flight.departure_airport_details) {
+                          flightSchedule.address = `${firstSegment.departure.iataCode} 공항`;
+                        }
+                        
+                        // 항공편 정보에서 출발/도착 시간으로 기간 계산
+                        if (firstSegment.departure?.at && firstSegment.arrival?.at) {
+                          const departureTime = new Date(firstSegment.departure.at);
+                          const arrivalTime = new Date(firstSegment.arrival.at);
+                          const durationMs = arrivalTime - departureTime;
+                          const hours = Math.floor(durationMs / (1000 * 60 * 60));
+                          const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+                          flightSchedule.duration = `${hours}시간 ${minutes}분`;
+                        }
+                      }
+                    }
+                  }
+                  
+                  // 일정 뒷부분에 추가
+                  schedules.push(flightSchedule);
+                });
+              }
+            }
+            
+            formattedPlans[dayKey] = {
+              title: fullTitle,
+              schedules: schedules
+            };
+          });
+          
+          if (Object.keys(formattedPlans).length > 0) {
+            console.log('[TravelPlanner] itinerary_schedules 데이터 변환 완료:', formattedPlans);
+            setTravelPlans(formattedPlans);
+            setDayOrder(Object.keys(formattedPlans));
+            setSelectedDay(Object.keys(formattedPlans)[0]);
+            
+            // 플랜 ID 설정
+            if (data.plan[0].plan_id) {
+              setPlanId(data.plan[0].plan_id);
+              console.log(`[TravelPlanner] 플랜 ID 설정: ${data.plan[0].plan_id}`);
+            }
+            
+            setIsLoadingPlan(false);
+            return; // 여기서 함수 종료
+          }
+        }
+      }
+
+      // 이전 방식: AI generated data 파싱
       let itineraryData = null;
 
       // 1. data.plan[0].plan_data 에서 itinerary 추출 시도 (Standard JS Access)
@@ -149,11 +335,26 @@ const TravelPlanner = () => {
                 if (jsonMatch && jsonMatch[1]) {
                   console.log('[TravelPlanner] JSON 데이터 추출 성공 (data.plan[0].plan_data)');
                   const parsedData = JSON.parse(jsonMatch[1]);
+                  console.log('[TravelPlanner] 파싱된 JSON 데이터 구조:', parsedData);
                   if (parsedData.itinerary) {
                     console.log('[TravelPlanner] itinerary 데이터 확인 (data.plan[0].plan_data)');
                     itineraryData = parsedData.itinerary;
+                  } else if (parsedData.days) {
+                    console.log('[TravelPlanner] days 형식 데이터 발견');
+                    // days 형식 처리 (day_1, day_2, ...)
+                    if (Array.isArray(parsedData.days)) {
+                      console.log('[TravelPlanner] days 배열 직접 사용');
+                      itineraryData = parsedData.days;
+                    } else {
+                      itineraryData = processNewDaysFormat(parsedData.days);
+                    }
                   } else {
-                    console.log('[TravelPlanner] 파싱된 JSON에 itinerary 없음');
+                    console.log('[TravelPlanner] 파싱된 JSON에 itinerary/days 없음');
+                    // 전체 데이터를 그대로 처리해봄
+                    if (parsedData.title && Array.isArray(parsedData.days)) {
+                      console.log('[TravelPlanner] 최상위 구조에서 days 배열 발견');
+                      itineraryData = parsedData.days;
+                    }
                   }
                 } else {
                   console.log('[TravelPlanner] textContent에서 JSON 블록 못 찾음:', textContent); // Log content if match fails
@@ -183,9 +384,26 @@ const TravelPlanner = () => {
             if (jsonMatch && jsonMatch[1]) {
               console.log('[TravelPlanner] JSON 데이터 추출 성공 (data.candidates)');
               const parsedData = JSON.parse(jsonMatch[1]);
+              console.log('[TravelPlanner] 파싱된 JSON 데이터 구조 (DynamoDB):', parsedData);
               if (parsedData.itinerary) {
                 console.log('[TravelPlanner] itinerary 데이터 확인 (data.candidates)');
                 itineraryData = parsedData.itinerary;
+              } else if (parsedData.days) {
+                console.log('[TravelPlanner] days 형식 데이터 발견 (DynamoDB)');
+                // days 형식 처리 (day_1, day_2, ...)
+                if (Array.isArray(parsedData.days)) {
+                  console.log('[TravelPlanner] days 배열 직접 사용 (DynamoDB)');
+                  itineraryData = parsedData.days;
+                } else {
+                  itineraryData = processNewDaysFormat(parsedData.days);
+                }
+              } else {
+                console.log('[TravelPlanner] 파싱된 JSON에 itinerary/days 없음 (DynamoDB)');
+                // 전체 데이터를 그대로 처리해봄 
+                if (parsedData.title && Array.isArray(parsedData.days)) {
+                  console.log('[TravelPlanner] 최상위 구조에서 days 배열 발견 (DynamoDB)');
+                  itineraryData = parsedData.days;
+                }
               }
             }
           }
@@ -223,7 +441,23 @@ const TravelPlanner = () => {
           const detail = (dayPlan.title || '').replace(/^[0-9]{1,2}\/[0-9]{1,2}( |:)?/, '').trim();
           const fullTitle = detail ? `${dateStr} ${detail}` : dateStr;
           let schedules = [];
-          if (dayPlan.activities && Array.isArray(dayPlan.activities)) {
+          
+          if (dayPlan.schedules && Array.isArray(dayPlan.schedules)) {
+            // Gemini 형식 호환성 (최우선) 
+            console.log(`[TravelPlanner] ${dayNumber}일차 schedules 발견 (Gemini 형식)`);
+            schedules = dayPlan.schedules.map((schedule, idx) => ({
+              id: schedule.id || `${dayNumber}-${idx}`,
+              name: schedule.name || '',
+              time: schedule.time || '00:00',
+              address: schedule.address || '',
+              category: schedule.category || '',
+              duration: schedule.duration || '1시간',
+              notes: schedule.notes || '',
+              lat: schedule.lat || null,
+              lng: schedule.lng || null,
+              cost: schedule.cost || '',
+            }));
+          } else if (dayPlan.activities && Array.isArray(dayPlan.activities)) {
             console.log(`[TravelPlanner] ${dayNumber}일차 activities 발견`);
             schedules = dayPlan.activities.map((activity, idx) => ({
               id: `${dayNumber}-${idx}`,
@@ -236,10 +470,23 @@ const TravelPlanner = () => {
               lat: activity.latitude || (dayPlan.last_location?.latitude),
               lng: activity.longitude || (dayPlan.last_location?.longitude)
             }));
-          } else if (dayPlan.schedules && Array.isArray(dayPlan.schedules)) {
-            // 기존 형식 호환성
-            console.log(`[TravelPlanner] ${dayNumber}일차 schedules 발견 (호환성)`);
-            schedules = dayPlan.schedules;
+          } else if (dayPlan.places && Array.isArray(dayPlan.places)) {
+            console.log(`[TravelPlanner] ${dayNumber}일차 places 발견`);
+            schedules = dayPlan.places.map((place, idx) => ({
+              id: `${dayNumber}-${idx}`,
+              name: place.title || place.name,
+              time: place.time || '00:00',
+              address: place.location || place.name || '',
+              category: place.category || '',
+              duration: place.duration || '1시간',
+              notes: place.description || '',
+              lat: place.latitude || (dayPlan.hotel?.latitude) || null,
+              lng: place.longitude || (dayPlan.hotel?.longitude) || null
+            }));
+          } else if (Array.isArray(dayPlan)) {
+            // 레거시 호환성
+            console.log(`[TravelPlanner] ${dayNumber}일차 배열 형식 발견 (레거시)`);
+            schedules = dayPlan;
           }
           
           formattedPlans[dayNumber] = {
@@ -254,6 +501,12 @@ const TravelPlanner = () => {
           setTravelPlans(formattedPlans);
           setDayOrder(Object.keys(formattedPlans));
           setSelectedDay(Object.keys(formattedPlans)[0]);
+          
+          // 플랜 ID 설정
+          if (data.plan && data.plan[0] && data.plan[0].id) {
+            setPlanId(data.plan[0].id);
+            console.log(`[TravelPlanner] 플랜 ID 설정: ${data.plan[0].id}`);
+          }
         } else {
           console.log('[TravelPlanner] 변환된 계획 데이터가 없음');
           // 기본 상태 유지
@@ -287,6 +540,191 @@ const TravelPlanner = () => {
       setIsLoadingPlan(false);
       console.log('[TravelPlanner] loadTravelPlan 함수 종료');
     }
+  };
+  
+  // 새로운 days 형식 데이터 처리 함수 (day_1, day_2, ...)
+  const processNewDaysFormat = (daysData) => {
+    if (!daysData) return null;
+    
+    console.log('[TravelPlanner] processNewDaysFormat - 데이터 구조 확인:', daysData);
+    
+    // Gemini 형식: days 배열 형태인 경우 직접 반환
+    if (Array.isArray(daysData)) {
+      console.log('[TravelPlanner] Gemini 형식 - days 배열 형식 감지, 직접 사용');
+      return daysData;
+    }
+    
+    // Gemini 형식: 객체 안에 days 배열이 있는 경우
+    if (daysData.days && Array.isArray(daysData.days)) {
+      console.log('[TravelPlanner] Gemini 형식 - {title, days:[...]} 구조 감지, days 배열 직접 사용');
+      return daysData.days;
+    }
+    
+    const result = [];
+    
+    // 레거시 형식: day_1, day_2 형식의 객체
+    const dayKeys = Object.keys(daysData).filter(key => /^day_\d+$/.test(key)).sort((a, b) => {
+      const dayA = parseInt(a.split('_')[1]);
+      const dayB = parseInt(b.split('_')[1]);
+      return dayA - dayB;
+    });
+    
+    if (dayKeys.length > 0) {
+      console.log('[TravelPlanner] 레거시 형식 - day_숫자 키 발견:', dayKeys);
+      
+      dayKeys.forEach(dayKey => {
+        const day = parseInt(dayKey.split('_')[1]);
+        const dayData = daysData[dayKey];
+        
+        // 레거시 형식 day_숫자 객체를 days 배열 형식으로 변환
+        result.push({
+          day,
+          title: dayData.title || `${day}일차`,
+          date: dayData.date,
+          hotel: dayData.hotel,
+          places: dayData.places || [] // places 배열 유지
+        });
+      });
+    }
+    
+    console.log('[TravelPlanner] processNewDaysFormat 처리 결과:', result);
+    return result;
+  };
+  
+  // DynamoDB 형식 데이터를 JavaScript 객체로 변환
+  const convertFromDynamoDBFormat = (dynamoData) => {
+    if (!dynamoData) return {};
+    
+    const result = {};
+    
+    // 각 일차 데이터 처리
+    Object.keys(dynamoData).forEach(dayKey => {
+      if (dynamoData[dayKey] && dynamoData[dayKey].M) {
+        const dayData = dynamoData[dayKey].M;
+        
+        // 일차 제목
+        const title = dayData.title && dayData.title.S ? dayData.title.S : `${dayKey}일차`;
+        
+        // 스케줄 목록
+        let schedules = [];
+        if (dayData.schedules && dayData.schedules.L) {
+          schedules = dayData.schedules.L.map(scheduleItem => {
+            const schedule = scheduleItem.M;
+            const baseSchedule = {
+              id: schedule.id?.S || `${dayKey}-${Math.random().toString(36).substring(7)}`,
+              name: schedule.name?.S || '',
+              time: schedule.time?.S || '00:00',
+              address: schedule.address?.S || '',
+              category: schedule.category?.S || '',
+              duration: schedule.duration?.S || '1시간',
+              notes: schedule.notes?.S || '',
+              lat: schedule.lat?.N ? parseFloat(schedule.lat.N) : null,
+              lng: schedule.lng?.N ? parseFloat(schedule.lng.N) : null
+            };
+            
+            // 타입 정보가 있으면 추가
+            if (schedule.type && schedule.type.S) {
+              baseSchedule.type = schedule.type.S;
+            }
+            
+            // 호텔 상세 정보가 있으면 복원
+            if (schedule.hotelDetails && schedule.hotelDetails.M) {
+              const hotelDetails = schedule.hotelDetails.M;
+              baseSchedule.hotelDetails = {
+                hotelId: hotelDetails.hotelId?.S || '',
+                hotelName: hotelDetails.hotelName?.S || baseSchedule.name,
+                price: hotelDetails.price?.S || '',
+                rating: hotelDetails.rating?.N ? parseFloat(hotelDetails.rating.N) : 0,
+                reviewCount: hotelDetails.reviewCount?.N ? parseInt(hotelDetails.reviewCount.N) : 0,
+                amenities: hotelDetails.amenities?.L ? 
+                  hotelDetails.amenities.L.map(item => item.S) : 
+                  (hotelDetails.amenities?.S ? hotelDetails.amenities.S.split(', ') : []),
+                checkin: hotelDetails.checkin?.S || '',
+                checkout: hotelDetails.checkout?.S || '',
+                // 추가 호텔 정보 필드
+                imageUrl: hotelDetails.imageUrl?.S || '',
+                address: hotelDetails.address?.S || '',
+                description: hotelDetails.description?.S || ''
+              };
+            }
+            
+            // 항공편 상세 정보가 있으면 복원
+            if (schedule.flightOfferDetails && schedule.flightOfferDetails.M) {
+              const flightDetails = schedule.flightOfferDetails.M;
+              try {
+                baseSchedule.flightOfferDetails = {
+                  flightOfferData: flightDetails.flightOfferData?.S ? 
+                    JSON.parse(flightDetails.flightOfferData.S) : 
+                    (flightDetails.flightOfferData?.M ? extractDynamoDbObject(flightDetails.flightOfferData.M) : {}),
+                  departureAirportInfo: flightDetails.departureAirportInfo?.S ? 
+                    JSON.parse(flightDetails.departureAirportInfo.S) : 
+                    (flightDetails.departureAirportInfo?.M ? extractDynamoDbObject(flightDetails.departureAirportInfo.M) : {}),
+                  arrivalAirportInfo: flightDetails.arrivalAirportInfo?.S ? 
+                    JSON.parse(flightDetails.arrivalAirportInfo.S) : 
+                    (flightDetails.arrivalAirportInfo?.M ? extractDynamoDbObject(flightDetails.arrivalAirportInfo.M) : {})
+                };
+              } catch (error) {
+                console.error(`[TravelPlanner] 항공편 데이터 파싱 실패:`, error);
+                baseSchedule.flightOfferDetails = {
+                  flightOfferData: {},
+                  departureAirportInfo: {},
+                  arrivalAirportInfo: {}
+                };
+              }
+            }
+            
+            return baseSchedule;
+          });
+        }
+        
+        // 결과에 추가
+        result[dayKey] = {
+          title,
+          schedules
+        };
+      }
+    });
+    
+    return result;
+  };
+  
+  // DynamoDB 객체를 일반 JS 객체로 추출하는 헬퍼 함수
+  const extractDynamoDbObject = (dynamoObject) => {
+    if (!dynamoObject || typeof dynamoObject !== 'object') return {};
+    
+    const result = {};
+    
+    Object.keys(dynamoObject).forEach(key => {
+      const value = dynamoObject[key];
+      
+      if (value.S) {
+        // 문자열
+        result[key] = value.S;
+      } else if (value.N) {
+        // 숫자
+        result[key] = parseFloat(value.N);
+      } else if (value.BOOL !== undefined) {
+        // 불리언
+        result[key] = value.BOOL;
+      } else if (value.NULL) {
+        // null
+        result[key] = null;
+      } else if (value.L) {
+        // 배열
+        result[key] = value.L.map(item => {
+          if (item.S) return item.S;
+          if (item.N) return parseFloat(item.N);
+          if (item.M) return extractDynamoDbObject(item.M);
+          if (item.BOOL !== undefined) return item.BOOL;
+          return null;
+        });
+      } else if (value.M) {
+        // 객체
+        result[key] = extractDynamoDbObject(value.M);
+      }
+    });
+    
+    return result;
   };
 
   // 컴포넌트 마운트 시 최신 여행 계획 로드
@@ -734,13 +1172,68 @@ const TravelPlanner = () => {
     try {
       setIsSaving(true); // 저장 중 상태 설정
       
-      // 저장할 데이터 구성
+      // 저장할 데이터 구성 - 일반 JavaScript 객체 형식
+      // days 배열 구성: schedules에 호텔과 항공편 데이터도 포함
       const planData = {
         title: planTitle,
         days: Object.keys(travelPlans).map(day => ({
           day: parseInt(day),
           title: travelPlans[day].title,
-          schedules: travelPlans[day].schedules
+          schedules: travelPlans[day].schedules.map(schedule => {
+            // 기본 일정 데이터
+            const baseSchedule = {
+              id: schedule.id || `${day}-${Math.random().toString(36).substring(7)}`,
+              name: schedule.name || '',
+              time: schedule.time || '00:00',
+              address: schedule.address || '',
+              category: schedule.category || '',
+              duration: schedule.duration || '1시간',
+              notes: schedule.notes || '',
+              lat: schedule.lat || null,
+              lng: schedule.lng || null
+            };
+            
+            // 타입 정보가 있으면 추가
+            if (schedule.type) {
+              baseSchedule.type = schedule.type;
+            }
+            
+            // 호텔 상세 정보가 있으면 추가
+            if (schedule.hotelDetails) {
+              baseSchedule.hotelDetails = { ...schedule.hotelDetails };
+              
+              // 호텔 어매니티가 문자열인 경우 배열로 변환
+              if (typeof baseSchedule.hotelDetails.amenities === 'string') {
+                baseSchedule.hotelDetails.amenities = baseSchedule.hotelDetails.amenities.split(', ');
+              }
+              
+              // 숫자 필드 확인
+              if (baseSchedule.hotelDetails.rating && typeof baseSchedule.hotelDetails.rating === 'string') {
+                baseSchedule.hotelDetails.rating = parseFloat(baseSchedule.hotelDetails.rating);
+              }
+              if (baseSchedule.hotelDetails.reviewCount && typeof baseSchedule.hotelDetails.reviewCount === 'string') {
+                baseSchedule.hotelDetails.reviewCount = parseInt(baseSchedule.hotelDetails.reviewCount);
+              }
+            }
+            
+            // 항공편 상세 정보가 있으면 추가
+            if (schedule.flightOfferDetails) {
+              baseSchedule.flightOfferDetails = { ...schedule.flightOfferDetails };
+              
+              // 항공편 데이터가 문자열로 저장되어 있으면 파싱
+              ['flightOfferData', 'departureAirportInfo', 'arrivalAirportInfo'].forEach(field => {
+                if (typeof baseSchedule.flightOfferDetails[field] === 'string') {
+                  try {
+                    baseSchedule.flightOfferDetails[field] = JSON.parse(baseSchedule.flightOfferDetails[field]);
+                  } catch (e) {
+                    console.warn(`항공편 데이터 파싱 실패 (${field}):`, e);
+                  }
+                }
+              });
+            }
+            
+            return baseSchedule;
+          })
         })),
         startDate: formatDateFns(startDate, 'yyyy-MM-dd') // 시작일 포함
       };
@@ -763,7 +1256,7 @@ const TravelPlanner = () => {
           
           // 로컬스토리지에도 저장 (백업 또는 오프라인 지원)
           const storageData = {
-            ...planData,
+            planData: planData,
             planId: response.plan_id, // 서버에서 받은 ID 사용
             lastSaved: new Date().toISOString()
           };
@@ -778,7 +1271,7 @@ const TravelPlanner = () => {
         
         // API 실패 시에도 로컬 저장 시도
         const storageData = {
-          ...planData,
+          planData: planData,
           planId, // 있는 경우에만 ID 포함
           lastSaved: new Date().toISOString(),
           isLocalOnly: true // 로컬에만 저장됨을 표시

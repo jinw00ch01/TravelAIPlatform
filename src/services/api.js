@@ -138,16 +138,34 @@ export const travelApi = {
       
       // 서버에 맞는 형식으로 데이터 변환
       // SavePlanFunction에서 기대하는 형식: { title: "제목", data: { ... 일차별 데이터 ... } }
-      const serverData = {
-        title: planData.title,
-        data: planData.days.reduce((obj, day) => {
-          obj[day.day] = {
-            title: day.title,
-            schedules: day.schedules
-          };
-          return obj;
-        }, {})
-      };
+      let serverData;
+      
+      // planData가 이미 planData와 dynamoDbData로 구조화되어 있는 경우
+      if (planData.planData) {
+        const innerPlanData = planData.planData;
+        serverData = {
+          title: innerPlanData.title,
+          data: innerPlanData.days.reduce((obj, day) => {
+            obj[day.day] = {
+              title: day.title,
+              schedules: day.schedules
+            };
+            return obj;
+          }, {})
+        };
+      } else {
+        // 기존 형식 (단일 객체)
+        serverData = {
+          title: planData.title,
+          data: planData.days.reduce((obj, day) => {
+            obj[day.day] = {
+              title: day.title,
+              schedules: day.schedules
+            };
+            return obj;
+          }, {})
+        };
+      }
       
       console.log('변환된 서버 데이터:', serverData);
       
