@@ -37,3 +37,4 @@ yarn-error.log*
 
 # Individual Settings
 lambda_function.py
+load.mjs

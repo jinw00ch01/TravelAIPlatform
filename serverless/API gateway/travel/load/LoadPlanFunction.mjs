@@ -23,6 +23,45 @@ function decodeJwt(token) {
   }
 }
 
+// Gemini API 응답에서 JSON 데이터 추출
+function extractGeminiJsonData(planData) {
+  try {
+    // plan_data 객체가 있고 candidates 배열이 있는지 확인
+    if (planData && planData.candidates && Array.isArray(planData.candidates) && planData.candidates.length > 0) {
+      const candidate = planData.candidates[0];
+      
+      // content.parts 배열이 있는지 확인
+      if (candidate.content && candidate.content.parts && Array.isArray(candidate.content.parts) && candidate.content.parts.length > 0) {
+        const textContent = candidate.content.parts[0].text;
+        
+        if (textContent) {
+          // ```json ... ``` 형식에서 JSON 추출 시도
+          const jsonMatch = textContent.match(/```json\n([\s\S]*?)\n```/);
+          if (jsonMatch && jsonMatch[1]) {
+            return JSON.parse(jsonMatch[1]);
+          }
+          
+          // 직접 JSON 파싱 시도
+          try {
+            return JSON.parse(textContent);
+          } catch (e) {
+            console.log('직접 JSON 파싱 실패:', e);
+          }
+          
+          // 그냥 텍스트 반환
+          return { text: textContent };
+        }
+      }
+    }
+    
+    // 형식이 맞지 않으면 그냥 원본 반환
+    return planData;
+  } catch (error) {
+    console.error('Gemini 데이터 추출 오류:', error);
+    return planData;
+  }
+}
+
 export const handler = async (event) => {
   console.log("이벤트:", JSON.stringify(event));
 
@@ -82,12 +121,17 @@ export const handler = async (event) => {
         };
       }
 
+      // Gemini 응답 처리 및 데이터 변환
+      const planItem = result.Item;
+      const processedData = processItemData(planItem);
+
       return {
         statusCode: 200,
         headers: responseHeaders,
         body: JSON.stringify({
           message: '여행 계획을 성공적으로 불러왔습니다.',
-          plan: [result.Item]
+          plan: [processedData],
+          originalData: planItem
         })
       };
     } catch (err) {
@@ -129,12 +173,35 @@ export const handler = async (event) => {
         };
       }
 
+      // 검색된 항목에 대해 데이터 처리
+      const planItem = result.Items[0];
+      const processedData = processItemData(planItem);
+
+      // 항공편 정보 처리
+      const flightInfo = planItem.flight_info ? 
+                         (typeof planItem.flight_info === 'string' ? 
+                          JSON.parse(planItem.flight_info) : 
+                          planItem.flight_info) : 
+                         null;
+      
+      const isRoundTrip = planItem.is_round_trip === true;
+      
+      const returnFlightInfo = planItem.return_flight_info ? 
+                              (typeof planItem.return_flight_info === 'string' ? 
+                               JSON.parse(planItem.return_flight_info) : 
+                               planItem.return_flight_info) : 
+                              null;
+
       return {
         statusCode: 200,
         headers: responseHeaders,
         body: JSON.stringify({
           message: '가장 최근 여행 계획을 성공적으로 불러왔습니다.',
-          plan: result.Items
+          plan: [processedData],
+          flightInfo: flightInfo,
+          isRoundTrip: isRoundTrip,
+          returnFlightInfo: returnFlightInfo,
+          originalData: planItem
         })
       };
     } catch (err) {
@@ -161,3 +228,54 @@ export const handler = async (event) => {
     };
   }
 };
+
+// DynamoDB 항목을 클라이언트에서 사용할 수 있는 형식으로 처리
+function processItemData(item) {
+  // 클라이언트에 전달할 기본 항목 구조 생성
+  const processedItem = {
+    id: item.planId || item.id,
+    user_id: item.user_id,
+    title: item.name || '여행 계획'
+  };
+
+  // 1. itinerary_schedules 데이터가 있으면 그대로 사용
+  if (item.itinerary_schedules) {
+    processedItem.itinerary_schedules = item.itinerary_schedules;
+  }
+  
+  // 2. plan_data에서 데이터 추출 시도 (Gemini API 응답)
+  if (item.plan_data) {
+    try {
+      // Gemini API 응답에서 JSON 데이터 추출
+      const extractedData = extractGeminiJsonData(item.plan_data);
+      console.log('추출된 Gemini 데이터:', JSON.stringify(extractedData));
+      
+      // days 배열이 있으면 itinerary_schedules 형식으로 변환
+      if (extractedData.days && Array.isArray(extractedData.days)) {
+        if (!processedItem.itinerary_schedules) {
+          processedItem.itinerary_schedules = {};
+          
+          extractedData.days.forEach(day => {
+            const dayNumber = day.day || 1;
+            processedItem.itinerary_schedules[dayNumber.toString()] = {
+              title: day.title || `${dayNumber}일차`,
+              schedules: day.schedules || []
+            };
+          });
+        }
+        
+        // 원본 데이터 저장
+        processedItem.plan_data = item.plan_data;
+      }
+    } catch (error) {
+      console.error('plan_data 처리 중 오류:', error);
+    }
+  }
+  
+  // 3. flight_details 배열이 있으면 추가
+  if (item.flight_details && Array.isArray(item.flight_details)) {
+    processedItem.flight_details = item.flight_details;
+  }
+  
+  return processedItem;
+}
