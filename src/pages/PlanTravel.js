@@ -110,6 +110,9 @@ export const PlanTravel = () => {
   const [dictionaries, setDictionaries] = useState({});
   const [loadingAirportInfo, setLoadingAirportInfo] = useState(false);
 
+  // 선택한 항공편 정보 저장
+  const [selectedFlight, setSelectedFlight] = useState(null);
+
   // 다이얼로그가 열릴 때 초기값 설정
   useEffect(() => {
     if (isFlightDialogOpen) {
@@ -240,7 +243,32 @@ export const PlanTravel = () => {
         endDate: endDate ? format(endDate, 'yyyy-MM-dd', { locale: ko }) : null,
         adults: adultCount,
       };
-      console.log('[PlanTravel] AI 여행 계획 생성 요청:', planDetails);
+      
+      // 선택한 항공편 정보가 있으면 추가
+      if (selectedFlight) {
+        // 첫 번째 세그먼트 정보 가져오기
+        const firstItinerary = selectedFlight.itineraries[0];
+        const firstSegment = firstItinerary.segments[0];
+        const lastSegment = firstItinerary.segments[firstItinerary.segments.length - 1];
+        
+        // 항공편 정보 추가
+        planDetails.flightInfo = {
+          id: selectedFlight.id,
+          originCode: firstSegment.departure.iataCode,
+          destinationCode: lastSegment.arrival.iataCode,
+          departureDate: firstSegment.departure.at,
+          arrivalDate: lastSegment.arrival.at,
+          carrierCode: firstSegment.carrierCode,
+          price: selectedFlight.price.grandTotal,
+          currency: selectedFlight.price.currency,
+          duration: firstItinerary.duration,
+          stops: firstItinerary.segments.length - 1
+        };
+        
+        console.log('[PlanTravel] 선택한 항공편 정보를 포함하여 AI 여행 계획 생성 요청:', planDetails);
+      } else {
+        console.log('[PlanTravel] AI 여행 계획 생성 요청 (항공편 미선택):', planDetails);
+      }
 
       // travelApi.createTravelPlan 호출
       // 주의: api.js의 createTravelPlan 함수가 올바른 Python Lambda 엔드포인트를 호출하는지 확인 필요
@@ -250,11 +278,11 @@ export const PlanTravel = () => {
 
       // 성공 시 플래너 페이지로 이동 (생성된 데이터 전달)
       if (result && result.plan) {
-         navigate('/planner', { state: { planData: result.plan } });
+         navigate('/planner', { state: { planData: result.plan, flightData: selectedFlight } });
       } else {
          console.warn('[PlanTravel] 생성 응답에 plan 데이터가 없거나 유효하지 않음:', result);
          alert('AI 여행 계획 생성 응답 형식이 올바르지 않습니다. 수동 플래너로 이동합니다.');
-         navigate('/planner'); 
+         navigate('/planner', { state: { flightData: selectedFlight } }); 
       }
 
     } catch (error) {
@@ -1165,14 +1193,15 @@ export const PlanTravel = () => {
                               variant="outline" 
                               className="border-blue-500 text-blue-500 hover:bg-blue-50"
                               onClick={() => {
-                                // 항공편 선택하고 다이얼로그 닫기
-                                navigate('/planner', { 
-                                  state: { 
-                                    flightData: flight,
-                                    dictionaries: dictionaries
-                                  } 
-                                });
+                                // 선택한 항공편 정보 저장 및 콘솔 출력
+                                console.log("선택한 항공편 정보:", flight);
+                                setSelectedFlight(flight);
+                                
+                                // 다이얼로그 닫기
                                 setIsFlightDialogOpen(false);
+                                
+                                // 알림 표시
+                                alert(`항공편이 선택되었습니다. 가격: ${parseInt(flight.price.grandTotal).toLocaleString()}원`);
                               }}
                             >
                               선택
