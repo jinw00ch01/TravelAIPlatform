@@ -298,17 +298,10 @@ JSON 예시
             # 왕복 여부 플래그 추가
             save_item['is_round_trip'] = is_round_trip
             
-            # 왕복 항공 정보가 있으면 별도로 표시
+            # 왕복 항공 정보는 별도로 저장하지 않음 (flight_info에 모든 정보가 있음)
+            # flight_info 객체 안에 이미 가는 편과 오는 편 정보가 모두 포함되어 있음
             if is_round_trip:
-                return_info = {
-                    'originCode': flight_info.get('destinationCode'),
-                    'destinationCode': flight_info.get('originCode'),
-                    'departureDate': flight_info.get('returnDate'),
-                    'arrivalDate': flight_info.get('returnArrivalDate', '')
-                }
-                save_item['has_return_flight'] = True
-                save_item['return_flight_info'] = json.dumps(return_info)
-                print("왕복 정보 추가됨:", return_info)
+                print("왕복 항공편 정보가 flight_info에 모두 포함됨")
                 
         print("저장할 항목:", json.dumps(save_item, cls=DecimalEncoder))
         

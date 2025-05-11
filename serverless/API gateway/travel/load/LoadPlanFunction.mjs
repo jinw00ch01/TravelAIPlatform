@@ -177,20 +177,33 @@ export const handler = async (event) => {
       const planItem = result.Items[0];
       const processedData = processItemData(planItem);
 
-      // 항공편 정보 처리
-      const flightInfo = planItem.flight_info ? 
-                         (typeof planItem.flight_info === 'string' ? 
-                          JSON.parse(planItem.flight_info) : 
-                          planItem.flight_info) : 
-                         null;
-      
-      const isRoundTrip = planItem.is_round_trip === true;
-      
-      const returnFlightInfo = planItem.return_flight_info ? 
-                              (typeof planItem.return_flight_info === 'string' ? 
-                               JSON.parse(planItem.return_flight_info) : 
-                               planItem.return_flight_info) : 
-                              null;
+      // 항공편 정보 처리 - flight_info만 사용하도록 수정
+      let flightInfo = null;
+      let isRoundTrip = false;
+
+      // 1. flight_info 처리
+      if (planItem.flight_info) {
+        try {
+          // 문자열이면 객체로 파싱
+          flightInfo = typeof planItem.flight_info === 'string' 
+            ? JSON.parse(planItem.flight_info) 
+            : planItem.flight_info;
+          
+          // 왕복 여부 확인 (oneWay: false 또는 isRoundTrip: true 또는 itineraries 배열 길이 > 1)
+          isRoundTrip = planItem.is_round_trip === true ||
+                        flightInfo.oneWay === false ||
+                        flightInfo.isRoundTrip === true ||
+                        (flightInfo.itineraries && flightInfo.itineraries.length > 1);
+          
+          console.log('항공편 정보 처리 완료:', { 
+            항공사: flightInfo.validatingAirlineCodes, 
+            왕복여부: isRoundTrip 
+          });
+        } catch (error) {
+          console.error('항공편 정보 파싱 오류:', error);
+          flightInfo = null;
+        }
+      }
 
       return {
         statusCode: 200,
@@ -200,7 +213,6 @@ export const handler = async (event) => {
           plan: [processedData],
           flightInfo: flightInfo,
           isRoundTrip: isRoundTrip,
-          returnFlightInfo: returnFlightInfo,
           originalData: planItem
         })
       };
