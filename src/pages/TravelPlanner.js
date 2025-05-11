@@ -350,7 +350,7 @@ const TravelPlanner = () => {
         
         console.log('[TravelPlanner] 최종 항공편 정보 개수:', flightDetails.length);
         
-        // itinerary_schedules가 비어있는지 확인
+        // itinerary_schedules가 비어있지 확인
         const hasSchedules = itinerarySchedules && Object.keys(itinerarySchedules).length > 0;
         console.log('[TravelPlanner] itinerary_schedules 내용 여부:', hasSchedules);
         
@@ -370,37 +370,240 @@ const TravelPlanner = () => {
             // 일정 목록에 항공편 정보 병합
             let schedules = Array.isArray(dayPlan.schedules) ? [...dayPlan.schedules] : [];
             
-            // 항공편 정보 처리 - 일정과 병합
-            if (Array.isArray(flightDetails) && flightDetails.length > 0) {
-              // 항공편이 표시될 위치 결정 (보통 각 일차의 첫 번째 또는 마지막 일정)
+            // 각 일차에 해당하는 항공편 찾기
+            if (flightDetails && flightDetails.length > 0) {
+              console.log(`[TravelPlanner] ${dayKey}일차 항공편 데이터 처리`);
+              
+              // 출발/귀국 항공편 분류
               const departureFlights = flightDetails.filter(flight => flight.type === 'Flight_Departure');
               const returnFlights = flightDetails.filter(flight => flight.type === 'Flight_Return');
               
-              // 첫날에 출발 항공편 추가
-              if (dayKey === '1' && departureFlights.length > 0) {
+              // 출발 항공편은 첫 번째 날에 추가
+              if (parseInt(dayKey) === 1 && departureFlights.length > 0) {
                 departureFlights.forEach(flight => {
                   console.log('[TravelPlanner] 출발 항공편 데이터 처리 시작');
-                  console.log('[TravelPlanner] 출발 항공편 상세:', {
-                    type: flight.type,
-                    hasOriginalFlightOffer: !!flight.original_flight_offer,
-                    originalFlightOfferType: typeof flight.original_flight_offer
-                  });
                   
-                  if (typeof flight.original_flight_offer === 'string') {
-                    try {
-                      flight.original_flight_offer = JSON.parse(flight.original_flight_offer);
-                      console.log('[TravelPlanner] 문자열 flight.original_flight_offer를 객체로 변환 성공');
-                    } catch (error) {
-                      console.error('[TravelPlanner] flight.original_flight_offer 파싱 실패:', error);
+                  try {
+                    // 항공편 정보가 없는 경우 기본 값 제공
+                    if (!flight.original_flight_offer) {
+                      console.warn('[TravelPlanner] 항공편 정보 누락됨:', flight);
+                      return;
+                    }
+                    
+                    // 정상화된 항공편 데이터 생성
+                    const normalizedFlightData = JSON.parse(JSON.stringify(flight.original_flight_offer, (key, value) => {
+                      if (typeof value === 'number' && !Number.isFinite(value)) {
+                        return null;
+                      }
+                      return value;
+                    }));
+
+                    // 항공편 일정 생성
+                  const flightSchedule = {
+                      id: `flight-departure-${Date.now()}`,
+                      type: 'Flight_Departure',
+                      category: '항공편',
+                      flightOfferDetails: {
+                        flightOfferData: normalizedFlightData,
+                        departureAirportInfo: flight.departure_airport_details || {},
+                        arrivalAirportInfo: flight.arrival_airport_details || {}
+                      }
+                    };
+                    
+                    // 항공편 기본 정보 설정
+                    if (normalizedFlightData.itineraries && normalizedFlightData.itineraries.length > 0) {
+                      const itinerary = normalizedFlightData.itineraries[0];
+                      
+                      if (itinerary.segments && itinerary.segments.length > 0) {
+                        const firstSegment = itinerary.segments[0];
+                        const lastSegment = itinerary.segments[itinerary.segments.length - 1];
+                        
+                        // 기본 정보 채우기
+                        flightSchedule.name = `${firstSegment.departure?.iataCode || ''} → ${lastSegment.arrival?.iataCode || ''} 항공편`;
+                        
+                        // 항공편 도착 시간으로 시간 설정
+                        if (lastSegment.arrival?.at) {
+                          const arrivalTime = new Date(lastSegment.arrival.at);
+                          flightSchedule.time = arrivalTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+                        }
+                        
+                        // 도착 공항 정보로 주소 설정
+                        if (flight.arrival_airport_details) {
+                          flightSchedule.address = flight.arrival_airport_details.koreanFullName || 
+                                                  flight.arrival_airport_details.name || 
+                                                  lastSegment.arrival?.iataCode || '';
+                          flightSchedule.lat = flight.arrival_airport_details.geoCode?.latitude || null;
+                          flightSchedule.lng = flight.arrival_airport_details.geoCode?.longitude || null;
+                        }
+                        
+                        // 가격 정보를 노트에 추가
+                        const priceStr = normalizedFlightData.price?.total || normalizedFlightData.price?.grandTotal || '0';
+                        const currency = normalizedFlightData.price?.currency || 'KRW';
+                        flightSchedule.notes = `가격: ${parseFloat(priceStr).toLocaleString()} ${currency}`;
+                        
+                        // 비행 시간 계산
+                        if (firstSegment.departure?.at && firstSegment.arrival?.at) {
+                          const departureTime = new Date(firstSegment.departure.at);
+                          const arrivalTime = new Date(firstSegment.arrival.at);
+                          const durationMs = arrivalTime - departureTime;
+                          const hours = Math.floor(durationMs / (1000 * 60 * 60));
+                          const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+                          flightSchedule.duration = `${hours}시간 ${minutes}분`;
+                        }
+                      }
+                    }
+                    
+                    // 일정에 추가
+                    schedules.unshift(flightSchedule); // 첫 번째 위치에 추가
+                    console.log(`[TravelPlanner] 출발 항공편을 일정에 추가함 (${dayKey}일차)`, flightSchedule.name);
+                  } catch (error) {
+                    console.error('[TravelPlanner] 출발 항공편 처리 중 오류:', error);
+                  }
+                });
+              }
+            }
+            
+            // 마지막 날에 귀국 항공편 추가
+            const lastDayKey = Math.max(...Object.keys(itinerarySchedules).map(Number)).toString();
+            // returnFlights 변수를 미리 정의
+            const returnFlights = flightDetails.filter(flight => flight.type === 'Flight_Return');
+            
+            if (dayKey === lastDayKey && returnFlights.length > 0) {
+              returnFlights.forEach(flight => {
+                console.log('[TravelPlanner] 귀국 항공편 데이터 처리 시작 - 라인 마킹!');
+                
+                try {
+                  // 항공편 정보가 없는 경우 기본 값 제공
+                  if (!flight.original_flight_offer) {
+                    console.warn('[TravelPlanner] 귀국 항공편 정보 누락됨:', flight);
+                    return;
+                  }
+                  
+                  // 정상화된 항공편 데이터 생성
+                  const normalizedFlightData = JSON.parse(JSON.stringify(flight.original_flight_offer, (key, value) => {
+                    if (typeof value === 'number' && !Number.isFinite(value)) {
+                      return null;
+                    }
+                    return value;
+                  }));
+
+                  // 항공편 일정 생성
+                  const flightSchedule = {
+                    id: `flight-return-${Date.now()}`,
+                    type: 'Flight_Return',
+                    category: '항공편',
+                    flightOfferDetails: {
+                      flightOfferData: normalizedFlightData,
+                      departureAirportInfo: flight.departure_airport_details || {},
+                      arrivalAirportInfo: flight.arrival_airport_details || {}
+                    }
+                  };
+                  
+                  // 왕복 항공편인 경우 두 번째 itinerary 사용, 아니면 첫 번째 사용
+                  // Flight_Return 타입이고 itineraries 배열 길이가 2 이상인 경우 두 번째 itinerary 사용
+                  const itineraryIndex = flight.type === 'Flight_Return' && flight.original_flight_offer.itineraries.length > 1 ? 1 : 0;
+                  const itinerary = flight.original_flight_offer.itineraries[itineraryIndex];
+                  
+                  if (itinerary && itinerary.segments && itinerary.segments.length > 0) {
+                    const firstSegment = itinerary.segments[0];
+                    const lastSegment = itinerary.segments[itinerary.segments.length - 1];
+                    
+                    // 귀국편 기본 정보 구성
+                    flightSchedule.name = `${firstSegment.departure?.iataCode || ''} → ${lastSegment.arrival?.iataCode || ''} 항공편`;
+                    
+                    // 출발 시간으로 일정 시간 설정
+                    if (firstSegment.departure?.at) {
+                      const departureTime = new Date(firstSegment.departure.at);
+                      flightSchedule.time = departureTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+                    }
+                    
+                    // 출발 공항 정보로 주소 설정
+                    if (flight.departure_airport_details) {
+                      flightSchedule.address = flight.departure_airport_details.koreanFullName || 
+                                              flight.departure_airport_details.name || 
+                                              firstSegment.departure?.iataCode || '';
+                      flightSchedule.lat = flight.departure_airport_details.geoCode?.latitude || null;
+                      flightSchedule.lng = flight.departure_airport_details.geoCode?.longitude || null;
+                    }
+                    
+                    // 가격 정보를 노트에 추가
+                    const priceStr = normalizedFlightData.price?.total || normalizedFlightData.price?.grandTotal || '0';
+                    const currency = normalizedFlightData.price?.currency || 'KRW';
+                    flightSchedule.notes = `가격: ${parseFloat(priceStr).toLocaleString()} ${currency}`;
+                    
+                    // 비행 시간 계산
+                    if (firstSegment.departure?.at && lastSegment.arrival?.at) {
+                      const departureTime = new Date(firstSegment.departure.at);
+                      const arrivalTime = new Date(lastSegment.arrival.at);
+                      const durationMs = arrivalTime - departureTime;
+                      const hours = Math.floor(durationMs / (1000 * 60 * 60));
+                      const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+                      flightSchedule.duration = `${hours}시간 ${minutes}분`;
                     }
                   }
                   
+                  // 일정에 추가
+                  schedules.push(flightSchedule); // 마지막 위치에 추가
+                  console.log(`[TravelPlanner] 귀국 항공편을 일정에 추가함 (${dayKey}일차)`, flightSchedule.name);
+                } catch (error) {
+                  console.error('[TravelPlanner] 귀국 항공편 처리 중 오류:', error);
+                }
+              });
+            }
+            
+            formattedPlans[dayKey] = {
+              title: fullTitle,
+              schedules: schedules
+            };
+          });
+          
+          if (Object.keys(formattedPlans).length > 0) {
+            console.log('[TravelPlanner] itinerary_schedules 데이터 변환 완료:', formattedPlans);
+            setTravelPlans(formattedPlans);
+            setDayOrder(Object.keys(formattedPlans));
+            setSelectedDay(Object.keys(formattedPlans)[0]);
+            
+            // 플랜 ID 설정
+            if (data.plan[0].plan_id) {
+              setPlanId(data.plan[0].plan_id);
+              console.log(`[TravelPlanner] 플랜 ID 설정: ${data.plan[0].plan_id}`);
+            }
+            
+            setIsLoadingPlan(false);
+            return; // 여기서 함수 종료
+          }
+        } else {
+          // itinerary_schedules가 비어있지만 항공편 정보가 있는 경우
+          console.log('[TravelPlanner] itinerary_schedules가 비어있지만 항공편 정보가 있는 경우, 기본 일정 생성');
+          
+          // 기본 일정 생성 (최소 2일 - 출발일과 귀국일)
+          const formattedPlans = {};
+          const hasReturnFlight = flightDetails.some(flight => flight.type === 'Flight_Return');
+          const totalDays = hasReturnFlight ? 3 : 2;  // 편도면 2일, 왕복이면 3일 이상
+          
+          for (let i = 1; i <= Math.max(totalDays, 1); i++) {
+            const date = new Date(startDate);
+            date.setDate(date.getDate() + i - 1);
+            const dateStr = formatDateFns(date, 'M/d');
+            
+            // 기본 일정
+            let schedules = [];
+            
+            // 기본 일정 항목 제거 - 항공편만 유지
+            
+            // 첫째 날에 출발 항공편 추가
+            if (i === 1) {
+              const departureFlights = flightDetails.filter(flight => flight.type === 'Flight_Departure');
+              
+              if (departureFlights.length > 0) {
+                departureFlights.forEach(flight => {
+                  console.log('[TravelPlanner] 생성된 일정에 출발 항공편 추가');
                   try {
                     // 기본 일정 정보 생성
-                  const flightSchedule = {
-                    id: `${dayKey}-flight-departure-${Math.random().toString(36).substring(7)}`,
+                    const flightSchedule = {
+                      id: `${i}-flight-departure-${Math.random().toString(36).substring(7)}`,
                     name: '출발 항공편',
-                    time: '08:00', // 기본값
+                      time: '08:00',
                     address: '공항',
                     category: '항공편',
                     type: 'Flight_Departure',
@@ -456,41 +659,29 @@ const TravelPlanner = () => {
                       }
                     }
                     
-                    // 일정에 추가
-                    schedules.unshift(flightSchedule); // 첫 번째 위치에 추가
-                    console.log(`[TravelPlanner] 출발 항공편을 일정에 추가함 (${dayKey}일차)`, flightSchedule.name);
+                    // 일정 맨 앞에 추가
+                    schedules.push(flightSchedule);
+                    console.log(`[TravelPlanner] 첫날 일정에 출발 항공편 추가됨: ${flightSchedule.name}`);
                   } catch (error) {
                     console.error('[TravelPlanner] 출발 항공편 처리 중 오류:', error);
                   }
                 });
               }
+              }
               
               // 마지막 날에 귀국 항공편 추가
-              const lastDayKey = Math.max(...Object.keys(itinerarySchedules).map(Number)).toString();
-              if (dayKey === lastDayKey && returnFlights.length > 0) {
+            if ((hasReturnFlight && i === totalDays) || (!hasReturnFlight && flightDetails.some(flight => flight.type === 'Flight_Return'))) {
+              const returnFlights = flightDetails.filter(flight => flight.type === 'Flight_Return');
+              
+              if (returnFlights.length > 0) {
                 returnFlights.forEach(flight => {
-                  console.log('[TravelPlanner] 귀국 항공편 데이터 처리 시작 - 라인 마킹!');
-                  console.log('[TravelPlanner] 귀국 항공편 상세:', {
-                    type: flight.type,
-                    hasOriginalFlightOffer: !!flight.original_flight_offer,
-                    originalFlightOfferType: typeof flight.original_flight_offer
-                  });
-                  
-                  if (typeof flight.original_flight_offer === 'string') {
-                    try {
-                      flight.original_flight_offer = JSON.parse(flight.original_flight_offer);
-                      console.log('[TravelPlanner] 문자열 flight.original_flight_offer를 객체로 변환 성공');
-                    } catch (error) {
-                      console.error('[TravelPlanner] flight.original_flight_offer 파싱 실패:', error);
-                    }
-                  }
-                  
+                  console.log('[TravelPlanner] 생성된 일정에 귀국 항공편 추가');
                   try {
                     // 기본 일정 정보 생성
                   const flightSchedule = {
-                    id: `${dayKey}-flight-return-${Math.random().toString(36).substring(7)}`,
+                      id: `${i}-flight-return-${Math.random().toString(36).substring(7)}`,
                     name: '귀국 항공편',
-                    time: '18:00', // 기본값
+                      time: '18:00',
                     address: '공항',
                     category: '항공편',
                     type: 'Flight_Return',
@@ -509,13 +700,13 @@ const TravelPlanner = () => {
                     if (flight.original_flight_offer && 
                         flight.original_flight_offer.itineraries && 
                       flight.original_flight_offer.itineraries.length > 0) {
-                        
+                          
                       // 왕복 항공편인 경우 두 번째 itinerary 사용, 아니면 첫 번째 사용
                       // Flight_Return 타입이고 itineraries 배열 길이가 2 이상인 경우 두 번째 itinerary 사용
                       const itineraryIndex = flight.type === 'Flight_Return' && flight.original_flight_offer.itineraries.length > 1 ? 1 : 0;
                       const itinerary = flight.original_flight_offer.itineraries[itineraryIndex];
                       
-                      console.log('[TravelPlanner] 귀국 항공편 itinerary 선택:', { 
+                      console.log('[TravelPlanner] 생성된 일정의 귀국 항공편 itinerary 선택:', { 
                         총개수: flight.original_flight_offer.itineraries.length,
                         선택인덱스: itineraryIndex,
                         항공편타입: flight.type
@@ -559,213 +750,7 @@ const TravelPlanner = () => {
                     
                     // 일정에 추가
                     schedules.push(flightSchedule); // 마지막 위치에 추가
-                    console.log(`[TravelPlanner] 귀국 항공편을 일정에 추가함 (${dayKey}일차)`, flightSchedule.name);
-                  } catch (error) {
-                    console.error('[TravelPlanner] 귀국 항공편 처리 중 오류:', error);
-                  }
-                });
-              }
-            }
-            
-            formattedPlans[dayKey] = {
-              title: fullTitle,
-              schedules: schedules
-            };
-          });
-          
-          if (Object.keys(formattedPlans).length > 0) {
-            console.log('[TravelPlanner] itinerary_schedules 데이터 변환 완료:', formattedPlans);
-            setTravelPlans(formattedPlans);
-            setDayOrder(Object.keys(formattedPlans));
-            setSelectedDay(Object.keys(formattedPlans)[0]);
-            
-            // 플랜 ID 설정
-            if (data.plan[0].plan_id) {
-              setPlanId(data.plan[0].plan_id);
-              console.log(`[TravelPlanner] 플랜 ID 설정: ${data.plan[0].plan_id}`);
-            }
-            
-            setIsLoadingPlan(false);
-            return; // 여기서 함수 종료
-          }
-        } else {
-          // itinerary_schedules가 비어있지만 항공편 정보가 있는 경우
-          console.log('[TravelPlanner] itinerary_schedules가 비어있지만 항공편 정보가 있는 경우, 기본 일정 생성');
-          
-          // 기본 일정 생성 (최소 2일 - 출발일과 귀국일)
-          const formattedPlans = {};
-          const hasReturnFlight = flightDetails.some(flight => flight.type === 'Flight_Return');
-          const totalDays = hasReturnFlight ? 3 : 2;  // 편도면 2일, 왕복이면 3일 이상
-          
-          for (let i = 1; i <= Math.max(totalDays, 1); i++) {
-            const date = new Date(startDate);
-            date.setDate(date.getDate() + i - 1);
-            const dateStr = formatDateFns(date, 'M/d');
-            
-            // 기본 일정
-            let schedules = [];
-            
-            // 기본 일정 항목 제거 - 항공편만 유지
-            
-            // 첫째 날에 출발 항공편 추가
-            if (i === 1) {
-              const departureFlights = flightDetails.filter(flight => flight.type === 'Flight_Departure');
-              
-              if (departureFlights.length > 0) {
-                departureFlights.forEach(flight => {
-                  console.log('[TravelPlanner] 생성된 일정에 출발 항공편 추가');
-                  try {
-                    // 기본 일정 정보 생성
-                    const flightSchedule = {
-                      id: `${i}-flight-departure-${Math.random().toString(36).substring(7)}`,
-                      name: '출발 항공편',
-                      time: '08:00',
-                      address: '공항',
-                      category: '항공편',
-                      type: 'Flight_Departure',
-                      duration: '1시간',
-                      notes: '',
-                      lat: null,
-                      lng: null,
-                      flightOfferDetails: {
-                        flightOfferData: flight.original_flight_offer || {},
-                        departureAirportInfo: flight.departure_airport_details || {},
-                        arrivalAirportInfo: flight.arrival_airport_details || {}
-                      }
-                    };
-                    
-                    // 항공편 정보가 있으면 세부 정보 채우기
-                    if (flight.original_flight_offer && 
-                        flight.original_flight_offer.itineraries && 
-                        flight.original_flight_offer.itineraries.length > 0 && 
-                        flight.original_flight_offer.itineraries[0].segments && 
-                        flight.original_flight_offer.itineraries[0].segments.length > 0) {
-                      
-                      const firstSegment = flight.original_flight_offer.itineraries[0].segments[0];
-                      
-                      // 출발 시간 설정
-                      if (firstSegment.departure?.at) {
-                        const departureTime = new Date(firstSegment.departure.at);
-                        flightSchedule.time = departureTime.toLocaleTimeString('ko-KR', { 
-                          hour: '2-digit', 
-                          minute: '2-digit', 
-                          hour12: false 
-                        });
-                      }
-                      
-                      // 공항 정보 설정
-                      if (firstSegment.departure?.iataCode) {
-                        flightSchedule.address = `${firstSegment.departure.iataCode} 공항`;
-                        
-                        // 항공사 코드 있으면 추가
-                        if (firstSegment.carrierCode) {
-                          const carrierCode = firstSegment.carrierCode;
-                          flightSchedule.name = `${carrierCode} ${firstSegment.number || ''} (${firstSegment.departure.iataCode} → ${firstSegment.arrival.iataCode})`;
-                        }
-                      }
-                      
-                      // 비행 시간 계산
-                      if (firstSegment.departure?.at && firstSegment.arrival?.at) {
-                        const departureTime = new Date(firstSegment.departure.at);
-                        const arrivalTime = new Date(firstSegment.arrival.at);
-                        const durationMs = arrivalTime - departureTime;
-                        const hours = Math.floor(durationMs / (1000 * 60 * 60));
-                        const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
-                        flightSchedule.duration = `${hours}시간 ${minutes}분`;
-                      }
-                    }
-                    
-                    // 일정 맨 앞에 추가
-                    schedules.push(flightSchedule);
-                    console.log(`[TravelPlanner] 첫날 일정에 출발 항공편 추가됨: ${flightSchedule.name}`);
-                  } catch (error) {
-                    console.error('[TravelPlanner] 출발 항공편 처리 중 오류:', error);
-                  }
-                });
-              }
-            }
-            
-            // 마지막 날에 귀국 항공편 추가
-            if ((hasReturnFlight && i === totalDays) || (!hasReturnFlight && flightDetails.some(flight => flight.type === 'Flight_Return'))) {
-              const returnFlights = flightDetails.filter(flight => flight.type === 'Flight_Return');
-              
-              if (returnFlights.length > 0) {
-                returnFlights.forEach(flight => {
-                  console.log('[TravelPlanner] 생성된 일정에 귀국 항공편 추가');
-                  try {
-                    // 기본 일정 정보 생성
-                    const flightSchedule = {
-                      id: `${i}-flight-return-${Math.random().toString(36).substring(7)}`,
-                      name: '귀국 항공편',
-                      time: '18:00',
-                      address: '공항',
-                      category: '항공편',
-                      type: 'Flight_Return',
-                      duration: '1시간',
-                      notes: '',
-                      lat: null,
-                      lng: null,
-                      flightOfferDetails: {
-                        flightOfferData: flight.original_flight_offer || {},
-                        departureAirportInfo: flight.departure_airport_details || {},
-                        arrivalAirportInfo: flight.arrival_airport_details || {}
-                      }
-                    };
-                    
-                    // 항공편 정보가 있으면 세부 정보 채우기
-                    if (flight.original_flight_offer && 
-                        flight.original_flight_offer.itineraries && 
-                        flight.original_flight_offer.itineraries.length > 0) {
-                          
-                      // 왕복 항공편인 경우 두 번째 itinerary 사용, 아니면 첫 번째 사용
-                      const itineraryIndex = flight.type === 'Flight_Return' && flight.original_flight_offer.itineraries.length > 1 ? 1 : 0;
-                      const itinerary = flight.original_flight_offer.itineraries[itineraryIndex];
-                      
-                      console.log('[TravelPlanner] 생성된 일정의 귀국 항공편 itinerary 선택:', { 
-                        총개수: flight.original_flight_offer.itineraries.length,
-                        선택인덱스: itineraryIndex,
-                        항공편타입: flight.type
-                      });
-                      
-                      if (itinerary && itinerary.segments && itinerary.segments.length > 0) {
-                        const firstSegment = itinerary.segments[0];
-                        
-                        // 출발 시간 설정
-                        if (firstSegment.departure?.at) {
-                          const departureTime = new Date(firstSegment.departure.at);
-                          flightSchedule.time = departureTime.toLocaleTimeString('ko-KR', { 
-                            hour: '2-digit', 
-                            minute: '2-digit', 
-                            hour12: false 
-                          });
-                        }
-                        
-                        // 공항 정보 설정
-                        if (firstSegment.departure?.iataCode) {
-                          flightSchedule.address = `${firstSegment.departure.iataCode} 공항`;
-                          
-                          // 항공사 코드 있으면 추가
-                          if (firstSegment.carrierCode) {
-                            const carrierCode = firstSegment.carrierCode;
-                            flightSchedule.name = `${carrierCode} ${firstSegment.number || ''} (${firstSegment.departure.iataCode} → ${firstSegment.arrival.iataCode})`;
-                          }
-                        }
-                        
-                        // 비행 시간 계산
-                        if (firstSegment.departure?.at && firstSegment.arrival?.at) {
-                          const departureTime = new Date(firstSegment.departure.at);
-                          const arrivalTime = new Date(firstSegment.arrival.at);
-                          const durationMs = arrivalTime - departureTime;
-                          const hours = Math.floor(durationMs / (1000 * 60 * 60));
-                          const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
-                          flightSchedule.duration = `${hours}시간 ${minutes}분`;
-                        }
-                      }
-                    }
-                    
-                    // 일정에 추가
-                    schedules.push(flightSchedule);
-                    console.log(`[TravelPlanner] 마지막 날 일정에 귀국 항공편 추가됨: ${flightSchedule.name}`);
+                    console.log(`[TravelPlanner] 귀국 항공편을 일정에 추가함 (${i}일차)`, flightSchedule.name);
                   } catch (error) {
                     console.error('[TravelPlanner] 귀국 항공편 처리 중 오류:', error);
                   }
@@ -777,8 +762,8 @@ const TravelPlanner = () => {
             if (schedules.length > 0) {
               formattedPlans[i.toString()] = {
                 title: `${dateStr}`,
-                schedules: schedules
-              };
+              schedules: schedules
+            };
             }
           }
           
@@ -1699,20 +1684,34 @@ const TravelPlanner = () => {
               }
             }
             
-            // 항공편 상세 정보가 있으면 추가
+            // 항공편 상세 정보가 있으면 추가 (DynamoDB 형식 수정)
             if (schedule.flightOfferDetails) {
-              baseSchedule.flightOfferDetails = { ...schedule.flightOfferDetails };
+              // 기존 flightOfferDetails 객체 복제하지 않고 새로 구성
+              // 이렇게 하면 DynamoDB 변환 문제 방지
+              baseSchedule.flightOfferDetails = {
+                flightOfferData: typeof schedule.flightOfferDetails.flightOfferData === 'string' 
+                  ? JSON.parse(schedule.flightOfferDetails.flightOfferData)
+                  : schedule.flightOfferDetails.flightOfferData || {},
+                  
+                departureAirportInfo: typeof schedule.flightOfferDetails.departureAirportInfo === 'string'
+                  ? JSON.parse(schedule.flightOfferDetails.departureAirportInfo)
+                  : schedule.flightOfferDetails.departureAirportInfo || {},
+                  
+                arrivalAirportInfo: typeof schedule.flightOfferDetails.arrivalAirportInfo === 'string'
+                  ? JSON.parse(schedule.flightOfferDetails.arrivalAirportInfo)
+                  : schedule.flightOfferDetails.arrivalAirportInfo || {}
+              };
               
-              // 항공편 데이터가 문자열로 저장되어 있으면 파싱
-              ['flightOfferData', 'departureAirportInfo', 'arrivalAirportInfo'].forEach(field => {
-                if (typeof baseSchedule.flightOfferDetails[field] === 'string') {
-                  try {
-                    baseSchedule.flightOfferDetails[field] = JSON.parse(baseSchedule.flightOfferDetails[field]);
-                  } catch (e) {
-                    console.warn(`항공편 데이터 파싱 실패 (${field}):`, e);
+              // 중첩된 객체에서 NaN, Infinity 등을 제거하기 위한 정규화 과정
+              baseSchedule.flightOfferDetails = JSON.parse(
+                JSON.stringify(baseSchedule.flightOfferDetails, (key, value) => {
+                  // NaN, Infinity 등은 null로 변환
+                  if (typeof value === 'number' && !Number.isFinite(value)) {
+                    return null;
                   }
-                }
-              });
+                  return value;
+                })
+              );
             }
             
             return baseSchedule;
@@ -1898,6 +1897,18 @@ const TravelPlanner = () => {
     const outboundLastSegment = outboundItinerary.segments[outboundItinerary.segments.length - 1];
     const outboundArrivalAirportInfo = currentAirportCache?.[outboundLastSegment.arrival.iataCode];
     
+    // DynamoDB 저장 문제 해결을 위한 데이터 정규화
+    const normalizeDataForStorage = (data) => {
+      if (!data) return {};
+      return JSON.parse(JSON.stringify(data, (key, value) => {
+        // NaN, Infinity 등은 null로 변환
+        if (typeof value === 'number' && !Number.isFinite(value)) {
+          return null;
+        }
+        return value;
+      }));
+    };
+    
     // 새 출발 항공편 정보 생성
     const departureSchedule = {
       id: existingDepartureSchedule?.id || `flight-departure-${flightOffer.id}-${Date.now()}`,
@@ -1913,9 +1924,9 @@ const TravelPlanner = () => {
       lat: outboundArrivalAirportInfo?.geoCode?.latitude || dictionaries?.locations?.[outboundLastSegment.arrival.iataCode]?.geoCode?.latitude || null,
       lng: outboundArrivalAirportInfo?.geoCode?.longitude || dictionaries?.locations?.[outboundLastSegment.arrival.iataCode]?.geoCode?.longitude || null,
       flightOfferDetails: {
-        flightOfferData: flightOffer,
-        departureAirportInfo: currentAirportCache?.[outboundItinerary.segments[0].departure.iataCode],
-        arrivalAirportInfo: outboundArrivalAirportInfo,
+        flightOfferData: normalizeDataForStorage(flightOffer),
+        departureAirportInfo: normalizeDataForStorage(currentAirportCache?.[outboundItinerary.segments[0].departure.iataCode]),
+        arrivalAirportInfo: normalizeDataForStorage(outboundArrivalAirportInfo),
       }
     };
     
@@ -1966,9 +1977,9 @@ const TravelPlanner = () => {
         lat: inboundDepartureAirportInfo?.geoCode?.latitude || dictionaries?.locations?.[inboundFirstSegment.departure.iataCode]?.geoCode?.latitude || null,
         lng: inboundDepartureAirportInfo?.geoCode?.longitude || dictionaries?.locations?.[inboundFirstSegment.departure.iataCode]?.geoCode?.longitude || null,
         flightOfferDetails: {
-          flightOfferData: flightOffer,
-          departureAirportInfo: inboundDepartureAirportInfo,
-          arrivalAirportInfo: currentAirportCache?.[inboundLastSegment.arrival.iataCode],
+          flightOfferData: normalizeDataForStorage(flightOffer),
+          departureAirportInfo: normalizeDataForStorage(inboundDepartureAirportInfo),
+          arrivalAirportInfo: normalizeDataForStorage(currentAirportCache?.[inboundLastSegment.arrival.iataCode]),
         }
       };
       
@@ -2032,7 +2043,7 @@ const TravelPlanner = () => {
     }
     return null;
   }, []);
-  
+
   // 특정 일정이 속한 일차를 찾는 헬퍼 함수
   const findDayKeyForSchedule = useCallback((plans, scheduleId) => {
     for (const dayKey of Object.keys(plans)) {
