@@ -113,20 +113,28 @@ export const PlanTravel = () => {
   // 다이얼로그가 열릴 때 초기값 설정
   useEffect(() => {
     if (isFlightDialogOpen) {
-      // 검색 상태 초기화
-      setOriginSearch("");
-      setDestinationSearch("");
-      setOriginCities([]);
-      setDestinationCities([]);
-      setSelectedOrigin(null);
-      setSelectedDestination(null);
-      setFlightResults([]);
+      // 출발지/도착지는 이미 선택되어 있으면 초기화하지 않음
+      if (!selectedOrigin) {
+        setOriginSearch("");
+        setOriginCities([]);
+      }
+      
+      if (!selectedDestination) {
+        setDestinationSearch("");
+        setDestinationCities([]);
+      }
+      
+      // 검색 결과는 유지, 오류 메시지만 초기화
       setFlightError(null);
       
-      // 기본값 설정 (현재 날짜 및 인원수만 유지)
-      setTravelClass("");
-      setMaxPrice("");
-      setNonStop(false);
+      // 기본값 설정 (현재 날짜 및 인원수는 유지)
+      if (!travelClass) {
+        setTravelClass("");
+      }
+      
+      if (!maxPrice) {
+        setMaxPrice("");
+      }
       
       // 기존 날짜 초기화 코드는 유지
       if (!startDate) {
@@ -141,7 +149,7 @@ export const PlanTravel = () => {
         setEndDate(returnDate);
       }
     }
-  }, [isFlightDialogOpen, startDate, endDate]);
+  }, [isFlightDialogOpen, startDate, endDate, selectedOrigin, selectedDestination, travelClass, maxPrice]);
 
   const processTextFile = async (file) => {
     return new Promise((resolve, reject) => {
@@ -407,226 +415,47 @@ export const PlanTravel = () => {
 
       console.log("API 요청 파라미터:", paramsToApi);
 
-      // 실제 API가 작동하지 않는 경우를 위한 샘플 데이터
-      const mockFlightData = [
-        {
-          type: "flight-offer",
-          id: "1",
-          source: "GDS",
-          instantTicketingRequired: false,
-          nonHomogeneous: false,
-          oneWay: false,
-          lastTicketingDate: "2023-11-30",
-          numberOfBookableSeats: 9,
-          itineraries: [
-            {
-              duration: "PT2H20M",
-              segments: [
-                {
-                  departure: {
-                    iataCode: flightSearchParams.selectedOrigin.iataCode,
-                    at: "2023-12-15T10:00:00"
-                  },
-                  arrival: {
-                    iataCode: flightSearchParams.selectedDestination.iataCode,
-                    at: "2023-12-15T12:20:00"
-                  },
-                  carrierCode: "KE",
-                  number: "701",
-                  aircraft: {
-                    code: "738"
-                  },
-                  operating: {
-                    carrierCode: "KE"
-                  },
-                  duration: "PT2H20M",
-                  id: "1",
-                  numberOfStops: 0
-                }
-              ]
+      // 항공편 검색 API 호출
+      amadeusApi.searchFlights(paramsToApi)
+        .then(response => {
+          if (response && response.data && Array.isArray(response.data)) {
+            console.log("API 응답 성공:", response);
+            setFlightResults(response.data);
+            setDictionaries(response.dictionaries || {});
+            
+            // 결과가 없으면 가짜 데이터 표시
+            if (response.data.length === 0) {
+              console.log("검색 결과가 없어 가짜 데이터 사용");
+              // 가짜 항공편 데이터
+              const mockData = generateMockFlightData(paramsToApi);
+              setFlightResults(mockData.flights);
+              setDictionaries(mockData.dictionaries);
             }
-          ],
-          price: {
-            currency: "KRW",
-            total: "350000",
-            base: "300000",
-            fees: [
-              {
-                amount: "0",
-                type: "SUPPLIER"
-              },
-              {
-                amount: "0",
-                type: "TICKETING"
-              }
-            ],
-            grandTotal: "350000"
-          },
-          pricingOptions: {
-            fareType: ["PUBLISHED"],
-            includedCheckedBagsOnly: true
-          },
-          validatingAirlineCodes: ["KE"],
-          travelerPricings: [
-            {
-              travelerId: "1",
-              fareOption: "STANDARD",
-              travelerType: "ADULT",
-              price: {
-                currency: "KRW",
-                total: "350000",
-                base: "300000"
-              },
-              fareDetailsBySegment: [
-                {
-                  segmentId: "1",
-                  cabin: "ECONOMY",
-                  fareBasis: "YLXSP",
-                  class: "Y",
-                  includedCheckedBags: {
-                    quantity: 1
-                  }
-                }
-              ]
-            }
-          ]
-        },
-        {
-          type: "flight-offer",
-          id: "2",
-          source: "GDS",
-          instantTicketingRequired: false,
-          nonHomogeneous: false,
-          oneWay: false,
-          lastTicketingDate: "2023-11-30",
-          numberOfBookableSeats: 9,
-          itineraries: [
-            {
-              duration: "PT2H30M",
-              segments: [
-                {
-                  departure: {
-                    iataCode: flightSearchParams.selectedOrigin.iataCode,
-                    at: "2023-12-15T14:00:00"
-                  },
-                  arrival: {
-                    iataCode: flightSearchParams.selectedDestination.iataCode,
-                    at: "2023-12-15T16:30:00"
-                  },
-                  carrierCode: "OZ",
-                  number: "225",
-                  aircraft: {
-                    code: "321"
-                  },
-                  operating: {
-                    carrierCode: "OZ"
-                  },
-                  duration: "PT2H30M",
-                  id: "2",
-                  numberOfStops: 0
-                }
-              ]
-            }
-          ],
-          price: {
-            currency: "KRW",
-            total: "320000",
-            base: "280000",
-            fees: [
-              {
-                amount: "0",
-                type: "SUPPLIER"
-              },
-              {
-                amount: "0",
-                type: "TICKETING"
-              }
-            ],
-            grandTotal: "320000"
-          },
-          pricingOptions: {
-            fareType: ["PUBLISHED"],
-            includedCheckedBagsOnly: true
-          },
-          validatingAirlineCodes: ["OZ"],
-          travelerPricings: [
-            {
-              travelerId: "1",
-              fareOption: "STANDARD",
-              travelerType: "ADULT",
-              price: {
-                currency: "KRW",
-                total: "320000",
-                base: "280000"
-              },
-              fareDetailsBySegment: [
-                {
-                  segmentId: "2",
-                  cabin: "ECONOMY",
-                  fareBasis: "YLXSP",
-                  class: "Y",
-                  includedCheckedBags: {
-                    quantity: 1
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      ];
-
-      // API 사전 객체 데이터
-      const mockDictionaries = {
-        locations: {
-          [flightSearchParams.selectedOrigin.iataCode]: {
-            cityCode: flightSearchParams.selectedOrigin.iataCode.substring(0, 3),
-            countryCode: "KR"
-          },
-          [flightSearchParams.selectedDestination.iataCode]: {
-            cityCode: flightSearchParams.selectedDestination.iataCode.substring(0, 3),
-            countryCode: "JP"
+          } else {
+            console.log("API 응답 형식 오류:", response);
+            // API 호출은 성공했지만 결과가 없거나 형식이 잘못된 경우 가짜 데이터 사용
+            const mockData = generateMockFlightData(paramsToApi);
+            setFlightResults(mockData.flights);
+            setDictionaries(mockData.dictionaries);
           }
-        },
-        aircraft: {
-          "738": "BOEING 737-800",
-          "321": "AIRBUS A321"
-        },
-        currencies: {
-          "KRW": "대한민국 원"
-        },
-        carriers: {
-          "KE": "대한항공",
-          "OZ": "아시아나항공"
-        }
-      };
-
-      try {
-        // 실제 API 호출
-        const response = await amadeusApi.searchFlights(paramsToApi);
-        
-        if (response && response.data && Array.isArray(response.data) && response.data.length > 0) {
-          console.log("API 응답 성공:", response);
-          setFlightResults(response.data);
-          setDictionaries(response.dictionaries || {});
-        } else {
-          // API 호출은 성공했지만 결과가 없거나 형식이 잘못된 경우 Mock 데이터 사용
-          console.log("API 응답에 데이터가 없어 샘플 데이터 사용");
-          setFlightResults(mockFlightData);
-          setDictionaries(mockDictionaries);
-        }
-      } catch (error) {
-        console.error("API 호출 실패:", error);
-        // API 호출 실패 시 Mock 데이터 사용
-        console.log("API 호출 실패로 샘플 데이터 사용");
-        setFlightResults(mockFlightData);
-        setDictionaries(mockDictionaries);
-      }
+        })
+        .catch(err => {
+          console.error("항공편 검색 오류:", err);
+          setFlightError(err.message || '항공편 검색 중 오류가 발생했습니다.');
+          
+          // API 호출 실패 시 가짜 데이터 사용
+          console.log("API 호출 실패로 가짜 데이터 사용");
+          const mockData = generateMockFlightData(paramsToApi);
+          setFlightResults(mockData.flights);
+          setDictionaries(mockData.dictionaries);
+        })
+        .finally(() => {
+          setIsLoadingFlights(false);
+        });
     } catch (err) {
       console.error("항공편 검색 중 오류 발생:", err);
       setFlightError(err.message || '항공편 검색 중 오류가 발생했습니다.');
       setFlightResults([]);
-    } finally {
-      setIsLoadingFlights(false);
     }
   };
 
@@ -1183,6 +1012,9 @@ export const PlanTravel = () => {
                       maxPrice: maxPrice
                     };
                     
+                    // 현재 검색 파라미터 상태 업데이트
+                    setFlightSearchParams(params);
+                    
                     // 플래너의 검색 함수와 비슷한 로직으로 검색 실행
                     if (!params.selectedOrigin) {
                       setFlightError('출발지를 선택해주세요.');
@@ -1432,5 +1264,223 @@ const CustomInput = React.forwardRef(({ value, onClick, placeholder }, ref) => (
     {value || placeholder}
   </Button>
 ));
+
+// 가짜 항공편 데이터 생성 함수
+const generateMockFlightData = (params) => {
+  // 현재 시간 기준으로 출발, 도착 시간 생성
+  const departureDate = new Date();
+  departureDate.setHours(10, 0, 0);
+  
+  const arrivalDate = new Date(departureDate);
+  arrivalDate.setHours(12, 30, 0);
+  
+  // 출발지, 도착지 IATA 코드 사용
+  const originCode = params.originCode;
+  const destinationCode = params.destinationCode;
+  
+  // 항공사 정보
+  const carriers = {
+    "KE": "대한항공",
+    "OZ": "아시아나항공",
+    "7C": "제주항공",
+    "LJ": "진에어",
+    "TW": "티웨이항공"
+  };
+
+  // 가짜 항공편 생성
+  const mockFlights = [
+    {
+      type: "flight-offer",
+      id: "1",
+      source: "GDS",
+      instantTicketingRequired: false,
+      nonHomogeneous: false,
+      oneWay: false,
+      lastTicketingDate: "2023-12-30",
+      numberOfBookableSeats: 9,
+      itineraries: [
+        {
+          duration: "PT2H30M",
+          segments: [
+            {
+              departure: {
+                iataCode: originCode,
+                at: departureDate.toISOString()
+              },
+              arrival: {
+                iataCode: destinationCode,
+                at: arrivalDate.toISOString()
+              },
+              carrierCode: "KE",
+              number: "701",
+              aircraft: {
+                code: "738"
+              },
+              operating: {
+                carrierCode: "KE"
+              },
+              duration: "PT2H30M",
+              id: "1",
+              numberOfStops: 0
+            }
+          ]
+        }
+      ],
+      price: {
+        currency: "KRW",
+        total: "350000",
+        base: "300000",
+        fees: [
+          {
+            amount: "0",
+            type: "SUPPLIER"
+          },
+          {
+            amount: "0",
+            type: "TICKETING"
+          }
+        ],
+        grandTotal: "350000"
+      },
+      pricingOptions: {
+        fareType: ["PUBLISHED"],
+        includedCheckedBagsOnly: true
+      },
+      validatingAirlineCodes: ["KE"],
+      travelerPricings: [
+        {
+          travelerId: "1",
+          fareOption: "STANDARD",
+          travelerType: "ADULT",
+          price: {
+            currency: "KRW",
+            total: "350000",
+            base: "300000"
+          },
+          fareDetailsBySegment: [
+            {
+              segmentId: "1",
+              cabin: "ECONOMY",
+              fareBasis: "YLXSP",
+              class: "Y",
+              includedCheckedBags: {
+                quantity: 1
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      type: "flight-offer",
+      id: "2",
+      source: "GDS",
+      instantTicketingRequired: false,
+      nonHomogeneous: false,
+      oneWay: false,
+      lastTicketingDate: "2023-12-30",
+      numberOfBookableSeats: 9,
+      itineraries: [
+        {
+          duration: "PT2H20M",
+          segments: [
+            {
+              departure: {
+                iataCode: originCode,
+                at: new Date(departureDate.getTime() + 4 * 60 * 60 * 1000).toISOString() // 4시간 후 출발
+              },
+              arrival: {
+                iataCode: destinationCode,
+                at: new Date(arrivalDate.getTime() + 4 * 60 * 60 * 1000).toISOString() // 4시간 후 도착
+              },
+              carrierCode: "OZ",
+              number: "225",
+              aircraft: {
+                code: "321"
+              },
+              operating: {
+                carrierCode: "OZ"
+              },
+              duration: "PT2H20M",
+              id: "2",
+              numberOfStops: 0
+            }
+          ]
+        }
+      ],
+      price: {
+        currency: "KRW",
+        total: "320000",
+        base: "280000",
+        fees: [
+          {
+            amount: "0",
+            type: "SUPPLIER"
+          },
+          {
+            amount: "0",
+            type: "TICKETING"
+          }
+        ],
+        grandTotal: "320000"
+      },
+      pricingOptions: {
+        fareType: ["PUBLISHED"],
+        includedCheckedBagsOnly: true
+      },
+      validatingAirlineCodes: ["OZ"],
+      travelerPricings: [
+        {
+          travelerId: "1",
+          fareOption: "STANDARD",
+          travelerType: "ADULT",
+          price: {
+            currency: "KRW",
+            total: "320000",
+            base: "280000"
+          },
+          fareDetailsBySegment: [
+            {
+              segmentId: "2",
+              cabin: "ECONOMY",
+              fareBasis: "YLXSP",
+              class: "Y",
+              includedCheckedBags: {
+                quantity: 1
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ];
+
+  // 항공사 사전 데이터 생성
+  const mockDictionaries = {
+    locations: {
+      [originCode]: {
+        cityCode: originCode.substring(0, 3),
+        countryCode: "KR"
+      },
+      [destinationCode]: {
+        cityCode: destinationCode.substring(0, 3),
+        countryCode: "JP"
+      }
+    },
+    aircraft: {
+      "738": "BOEING 737-800",
+      "321": "AIRBUS A321"
+    },
+    currencies: {
+      "KRW": "대한민국 원"
+    },
+    carriers: {
+      "KE": "대한항공",
+      "OZ": "아시아나항공"
+    }
+  };
+
+  return { flights: mockFlights, dictionaries: mockDictionaries };
+};
 
 export default PlanTravel;
