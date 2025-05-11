@@ -28,7 +28,6 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format } from 'date-fns';
-import axios from 'axios';
 import SearchPopup from './SearchPopup';
 import { Search as SearchIcon, Add as AddIcon, Sort as SortIcon, AttachMoney as AttachMoneyIcon, Star as StarIcon } from '@mui/icons-material';
 import HotelMap from './HotelMap';
@@ -164,18 +163,15 @@ const AccommodationPlan = forwardRef(({
   };
 
   const handleSearch = async () => {
-    console.log('검색 시작 - 현재 formData:', formData);
-    
+    console.log('숙소 검색 시작 - 현재 formData:', formData);
     if (!formData.cityName) {
       setError('도시를 선택해주세요.');
       return;
     }
-
     if (!formData.checkIn || !formData.checkOut) {
       setError('체크인/체크아웃 날짜를 선택해주세요.');
       return;
     }
-
     if (!formData.adults || parseInt(formData.adults) < 1) {
       setError('인원 수를 입력해주세요.');
       return;
@@ -190,66 +186,41 @@ const AccommodationPlan = forwardRef(({
       setLoading(true);
       setError(null);
 
-      console.log('API 요청 파라미터:', {
+      // Lambda 함수로 전달할 파라미터 구성
+      const apiParams = {
         checkin_date: format(formData.checkIn, 'yyyy-MM-dd'),
         checkout_date: format(formData.checkOut, 'yyyy-MM-dd'),
-        adults_number: formData.adults,
-        latitude: formData.latitude,
-        longitude: formData.longitude
-      });
+        adults_number: formData.adults.toString(),
+        latitude: formData.latitude.toString(),
+        longitude: formData.longitude.toString(),
+        order_by: 'distance',
+        page_number: '0',
+        locale: 'ko',
+        filter_by_currency: 'KRW',
+      };
+
+      console.log('Lambda로 전달할 숙소 검색 파라미터:', apiParams);
+      
+      // travelApi.searchHotels 함수 호출 (Lambda 경유)
+      const responseData = await travelApi.searchHotels(apiParams);
+      console.log('Lambda로부터 받은 숙소 검색 응답:', responseData);
 
       let allResults = [];
-
-      for (let page = 0; page < 3; page++) {
-        const searchOptions = {
-          method: 'GET',
-          url: 'https://booking-com.p.rapidapi.com/v1/hotels/search-by-coordinates',
-          params: {
-            units: 'metric',
-            room_number: '1',
-            checkout_date: format(formData.checkOut, 'yyyy-MM-dd'),
-            filter_by_currency: 'KRW',
-            locale: 'ko',
-            checkin_date: format(formData.checkIn, 'yyyy-MM-dd'),
-            adults_number: formData.adults,
-            order_by: 'distance',
-            latitude: formData.latitude.toString(),
-            longitude: formData.longitude.toString(),
-            page_number: page.toString(),
-            page_size: '25',
-            categories_filter_ids: 'class::0,class::1,class::2,class::3,class::4,class::5,class::6,class::7,class::8,class::9',
-            filter_by_distance: '5000',
-            distance_unit: 'meters',
-            include_adjacency: 'false'
-          },
-          headers: {
-            'X-RapidAPI-Key': '346bed33f9msh20822bf5b127c39p1b4e9djsn5f1e4f599f40',
-            'X-RapidAPI-Host': 'booking-com.p.rapidapi.com'
-          }
-        };
-
-        console.log(`페이지 ${page + 1} 검색 요청`);
-        const response = await axios.request(searchOptions);
-        console.log(`페이지 ${page + 1} 검색 결과:`, response.data?.result?.length || 0, '개');
-        
-        if (response.data && response.data.result) {
-          const filteredResults = response.data.result.filter(hotel => {
-            const distance = parseFloat(hotel.distance_to_cc);
-            const actualDistance = calculateDistance(
-              formData.latitude,
-              formData.longitude,
-              parseFloat(hotel.latitude),
-              parseFloat(hotel.longitude)
-            );
-            return !isNaN(distance) && actualDistance <= 5;
-          });
-
-          console.log(`페이지 ${page + 1} 필터링된 결과:`, filteredResults.length, '개');
-          allResults = [...allResults, ...filteredResults];
-        }
+      if (responseData && responseData.result) {
+        allResults = responseData.result.filter(hotel => {
+          const actualDistance = calculateDistance(
+            formData.latitude,
+            formData.longitude,
+            parseFloat(hotel.latitude),
+            parseFloat(hotel.longitude)
+          );
+          return actualDistance <= 5;
+        });
+      } else {
+        console.warn('Lambda 응답에 result 필드가 없거나 유효하지 않습니다.', responseData);
       }
 
-      console.log('전체 검색 결과:', allResults.length, '개');
+      console.log('필터링된 전체 결과:', allResults.length, '개');
 
       if (allResults.length > 0) {
         const processedResults = allResults.map(hotel => {
@@ -288,11 +259,9 @@ const AccommodationPlan = forwardRef(({
               `${Math.round(actualDistance * 1000)}m` : 
               `${actualDistance.toFixed(1)}km`;
           }
-
           return {
             hotel_id: hotel.hotel_id,
             hotel_name: hotel.hotel_name_trans || hotel.hotel_name,
-            original_name: hotel.hotel_name,
             address: hotel.address || '',
             city: hotel.city || '',
             main_photo_url: hotel.max_photo_url,
@@ -307,14 +276,15 @@ const AccommodationPlan = forwardRef(({
             actual_distance: actualDistance,
             accommodation_type: hotel.accommodation_type_name || '숙박시설',
             tax_info: hotel.tax_info || '',
+            checkin_from: hotel.checkin?.from || '정보 없음',
+            checkin_until: hotel.checkin?.until || '정보 없음',
+            checkout_from: hotel.checkout?.from || '정보 없음',
+            checkout_until: hotel.checkout?.until || '정보 없음'
           };
         });
-
-        console.log('처리된 결과:', processedResults.length, '개');
         const processedAndSortedResults = sortByDistance(processedResults);
         setSearchResults(processedAndSortedResults);
         setSortedResults(sortResults(processedAndSortedResults, sortType));
-        
         if (onSearchResults) {
           onSearchResults(processedAndSortedResults);
         }
@@ -322,13 +292,10 @@ const AccommodationPlan = forwardRef(({
         setError(`${formData.cityName} 주변 5km 반경 내에 검색 결과를 찾을 수 없습니다.`);
         setSearchResults([]);
       }
-    } catch (err) {
-      console.error('검색 오류:', err);
-      setError(
-        err.response?.data?.message || 
-        err.message || 
-        '검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
-      );
+    } catch (errData) {
+      console.error('숙소 검색 API 호출 실패:', errData);
+      const message = errData?.error || errData?.message || '숙소 검색 중 알 수 없는 오류가 발생했습니다.';
+      setError(message);
       setSearchResults([]);
     } finally {
       setLoading(false);
@@ -550,7 +517,7 @@ const AccommodationPlan = forwardRef(({
                 slotProps={{ 
                   textField: { 
                     fullWidth: true,
-                    error: !formData.checkIn && error,
+                    error: !formData.checkIn && !!error,
                     helperText: !formData.checkIn && error ? '체크인 날짜를 선택해주세요' : ''
                   } 
                 }}
@@ -559,11 +526,11 @@ const AccommodationPlan = forwardRef(({
                 label="체크아웃"
                 value={formData.checkOut}
                 onChange={(date) => handleDateChange('checkOut', date)}
-                minDate={formData.checkIn ? new Date(formData.checkIn) : null}
+                minDate={formData.checkIn ? new Date(new Date(formData.checkIn).setDate(new Date(formData.checkIn).getDate() + 1)) : new Date(new Date().setDate(new Date().getDate() + 1))}
                 slotProps={{ 
                   textField: { 
                     fullWidth: true,
-                    error: !formData.checkOut && error,
+                    error: !formData.checkOut && !!error,
                     helperText: !formData.checkOut && error ? '체크아웃 날짜를 선택해주세요' : ''
                   } 
                 }}
@@ -583,7 +550,7 @@ const AccommodationPlan = forwardRef(({
                 min: 1, 
                 max: 10 
               }}
-              error={!formData.adults && error}
+              error={!formData.adults && !!error}
               helperText={!formData.adults && error ? '인원 수를 입력해주세요' : ''}
             />
 
@@ -600,7 +567,7 @@ const AccommodationPlan = forwardRef(({
       </Button>
 
       {error && (
-              <Typography color="error">
+              <Typography color="error" sx={{ mt: 1}}>
           {error}
               </Typography>
             )}
@@ -758,6 +725,12 @@ const AccommodationPlan = forwardRef(({
                             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                               중심지로부터 {hotel.distance_to_center}
                             </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                              체크인: {hotel.checkin_from} ~ {hotel.checkin_until}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              체크아웃: {hotel.checkout_from !== '정보 없음' ? `${hotel.checkout_from} ~ ` : ''}{hotel.checkout_until}
+                            </Typography>
                           </Box>
                         </Grid>
                       </Grid>
@@ -875,6 +848,14 @@ const AccommodationPlan = forwardRef(({
                   </Typography>
 
                   <Divider sx={{ my: 2 }} />
+
+                  <Typography variant="h6" gutterBottom>체크인 / 체크아웃</Typography>
+                  <Typography variant="body1" paragraph>
+                    체크인: {selectedHotel.checkin_from} ~ {selectedHotel.checkin_until}
+                  </Typography>
+                  <Typography variant="body1" paragraph>
+                    체크아웃: {selectedHotel.checkout_from !== '정보 없음' ? `${selectedHotel.checkout_from} ~ ` : ''}{selectedHotel.checkout_until}
+                  </Typography>
 
                   {selectedHotel.distance_to_center && (
                     <Typography variant="body1" paragraph>

@@ -4,6 +4,9 @@ import { fetchAuthSession } from 'aws-amplify/auth';
 // API_URL 환경 변수에서 가져오기 (문제가 해결될 때까지 임시로 직접 지정)
 const API_URL = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage';
 
+// Booking.com 호텔 검색 Lambda 함수를 위한 API Gateway 엔드포인트 URL
+const SEARCH_HOTELS_URL = `${API_URL}/api/Booking-com/SearchHotelsByCoordinates`;
+
 // axios 재시도 로직 구현
 axios.interceptors.response.use(null, async (error) => {
   // 원본 요청 설정 가져오기
@@ -173,14 +176,21 @@ export const travelApi = {
     }
   },
 
-  // 숙소 검색
+  // 숙소 검색 함수: POST 요청으로 변경
   searchHotels: async (searchParams) => {
     try {
-      const response = await apiClient.post('/api/travel/hotels', searchParams);
-      return response.data;
+      console.log('[API] 숙소 검색 요청 (Lambda POST):', searchParams);
+      // POST 요청으로 변경하고, searchParams를 요청 본문으로 전달
+      const response = await axios.post(SEARCH_HOTELS_URL, searchParams, {
+        // POST 요청 시 Content-Type은 기본적으로 application/json으로 설정됨
+        // Lambda에서 JSON.parse(event.body)를 사용하므로 별도 헤더 설정 불필요
+      });
+      console.log('[API] 숙소 검색 응답 (Lambda POST):', response.data);
+      return response.data; // Lambda는 Booking.com API 응답을 그대로 body에 넣어 반환
     } catch (error) {
-      console.error('숙소 검색 실패:', error);
-      throw error;
+      console.error('숙소 검색 실패 (Lambda POST):', error.response?.data || error.message);
+      const errorData = error.response?.data || { message: error.message || '알 수 없는 숙소 검색 오류' };
+      throw errorData;
     }
   }
 };
