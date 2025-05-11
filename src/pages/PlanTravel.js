@@ -246,24 +246,8 @@ export const PlanTravel = () => {
       
       // 선택한 항공편 정보가 있으면 추가
       if (selectedFlight) {
-        // 첫 번째 세그먼트 정보 가져오기
-        const firstItinerary = selectedFlight.itineraries[0];
-        const firstSegment = firstItinerary.segments[0];
-        const lastSegment = firstItinerary.segments[firstItinerary.segments.length - 1];
-        
-        // 항공편 정보 추가
-        planDetails.flightInfo = {
-          id: selectedFlight.id,
-          originCode: firstSegment.departure.iataCode,
-          destinationCode: lastSegment.arrival.iataCode,
-          departureDate: firstSegment.departure.at,
-          arrivalDate: lastSegment.arrival.at,
-          carrierCode: firstSegment.carrierCode,
-          price: selectedFlight.price.grandTotal,
-          currency: selectedFlight.price.currency,
-          duration: firstItinerary.duration,
-          stops: firstItinerary.segments.length - 1
-        };
+        // 원본 항공편 데이터를 그대로 사용
+        planDetails.flightInfo = selectedFlight;
         
         console.log('[PlanTravel] 선택한 항공편 정보를 포함하여 AI 여행 계획 생성 요청:', planDetails);
       } else {
