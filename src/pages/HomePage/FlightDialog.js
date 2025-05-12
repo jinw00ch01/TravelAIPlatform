@@ -45,6 +45,7 @@ const FlightDialog = ({
   onSelectFlight,
   initialAdultCount = 1,
   initialChildCount = 0,
+  initialInfantCount = 0,
   defaultStartDate = null,
   defaultEndDate = null,
 }) => {
@@ -62,7 +63,7 @@ const FlightDialog = ({
   const [endDate, setEndDate] = useState(defaultEndDate);
   const [adultCount, setAdultCount] = useState(initialAdultCount);
   const [childCount, setChildCount] = useState(initialChildCount);
-  const [infantCount, setInfantCount] = useState(0);
+  const [infantCount, setInfantCount] = useState(initialInfantCount);
 
   // 추가 조건
   const [travelClass, setTravelClass] = useState("");
@@ -96,9 +97,14 @@ const FlightDialog = ({
       if (defaultEndDate) {
         setEndDate(defaultEndDate);
       }
+
+      // 인원 수 동기화
+      setAdultCount(initialAdultCount);
+      setChildCount(initialChildCount);
+      setInfantCount(initialInfantCount);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, defaultStartDate, defaultEndDate]);
+  }, [isOpen, defaultStartDate, defaultEndDate, initialAdultCount, initialChildCount, initialInfantCount]);
 
   /* ----------------------------- API 호출 ----------------------------- */
   const handleCitySearch = async (value, type) => {

@@ -23,6 +23,7 @@ export const HomePage = () => {
   const [endDate, setEndDate] = useState(null);
   const [adultCount, setAdultCount] = useState(1);
   const [childCount, setChildCount] = useState(0);
+  const [infantCount, setInfantCount] = useState(0);
   const [showPeopleSelector, setShowPeopleSelector] = useState(false);
   
   // 비행 계획 관련 팝업 상태
@@ -197,6 +198,10 @@ export const HomePage = () => {
     setChildCount(prev => Math.max(0, prev + increment));
   };
 
+  const handleInfantCountChange = (increment) => {
+    setInfantCount(prev => Math.max(0, prev + increment));
+  };
+
   const CustomInput = React.forwardRef(({ value, onClick, placeholder }, ref) => (
     <Button
       variant="outline"
@@ -362,7 +367,7 @@ export const HomePage = () => {
                     className="w-full sm:w-auto justify-center font-normal bg-white h-[40px] px-4"
                     onClick={() => setShowPeopleSelector(!showPeopleSelector)}
                   >
-                    성인 {adultCount}명{childCount > 0 ? `, 어린이 ${childCount}명` : ''}
+                    성인 {adultCount}명{childCount > 0 ? `, 어린이 ${childCount}명` : ''}{infantCount > 0 ? `, 유아 ${infantCount}명` : ''}
                   </Button>
                   {showPeopleSelector && (
                     <Card className="absolute top-full right-0 mt-1 w-[250px] z-20 shadow-lg border bg-white">
@@ -381,6 +386,14 @@ export const HomePage = () => {
                             <Button variant="ghost" size="icon" onClick={() => handleChildCountChange(-1)}><Minus className="h-4 w-4" /></Button>
                             <span>{childCount}</span>
                             <Button variant="ghost" size="icon" onClick={() => handleChildCountChange(1)}><Plus className="h-4 w-4" /></Button>
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span>유아</span>
+                          <div className="flex items-center space-x-2">
+                            <Button variant="ghost" size="icon" onClick={() => handleInfantCountChange(-1)}><Minus className="h-4 w-4" /></Button>
+                            <span>{infantCount}</span>
+                            <Button variant="ghost" size="icon" onClick={() => handleInfantCountChange(1)}><Plus className="h-4 w-4" /></Button>
                           </div>
                         </div>
                       </CardContent>
@@ -531,6 +544,7 @@ export const HomePage = () => {
           }}
           initialAdultCount={adultCount}
           initialChildCount={childCount}
+          initialInfantCount={infantCount}
           defaultStartDate={startDate}
           defaultEndDate={endDate}
         />
