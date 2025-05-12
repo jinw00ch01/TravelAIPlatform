@@ -99,6 +99,7 @@ export const handler = async (event) => {
         console.log('Calling Booking.com API with options:', JSON.stringify(searchOptions, null, 2));
         const response = await axios.request(searchOptions);
         console.log('Booking.com API Response Status:', response.status);
+        console.log('Booking.com API Response Data (Full):', JSON.stringify(response.data, null, 2));
 
         return {
             statusCode: 200,
