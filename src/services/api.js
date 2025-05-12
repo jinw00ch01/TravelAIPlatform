@@ -253,6 +253,27 @@ export const travelApi = {
       console.error('숙소 검색 실패:', error);
       throw error;
     }
+  },
+
+  // 인기 여행지 조회
+  getPopularDestinations: async (params = { originCityCode: 'ICN', period: '2025-03', max: 10 }) => {
+    try {
+      const response = await apiClient.post('/api/amadeus/Flight_Most_Traveled_Destinations', params);
+      return response.data;
+    } catch (error) {
+      console.error('인기 여행지 조회 실패:', error);
+      throw error;
+    }
+  },
+};
+
+export const fetchFlightInspiration = async (params) => {
+  try {
+    const response = await apiClient.post('/api/amadeus/Flight_Inspiration_Search', params);
+    return response.data;
+  } catch (error) {
+    console.error('Flight Inspiration Search API 호출 에러:', error);
+    throw error;
   }
 };
 

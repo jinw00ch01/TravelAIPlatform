@@ -11,7 +11,100 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { travelApi } from "../services/api";
 import { createPortal } from "react-dom";
-import { fetchAirportFlights, searchFlights, searchAirports } from "../services/api";
+import { fetchAirportFlights, searchFlights, searchAirports, fetchFlightInspiration } from "../services/api";
+
+// 인기 여행지 데이터를 가져오는 함수 수정
+const fetchPopularDestinations = async () => {
+  try {
+    console.log('인기 여행지 데이터 요청 시작');
+    const response = await fetch('https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/amadeus/Flight_Most_Traveled_Destinations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        originCityCode: 'SEL',
+        period: '2023-07',
+        max: 10
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error('인기 여행지 데이터를 가져오는데 실패했습니다.');
+    }
+
+    const data = await response.json();
+    console.log('API 응답 데이터:', data);
+    return data;
+  } catch (error) {
+    console.error('인기 여행지 데이터 조회 실패:', error);
+    return [];
+  }
+};
+
+const cityCodeToName = {
+  LON: 'London',
+  TLV: 'Tel Aviv',
+  LAX: 'Los Angeles',
+  PAR: 'Paris',
+  ORL: 'Orlando',
+  CHI: 'Chicago',
+  YTO: 'Toronto',
+  FRA: 'Frankfurt',
+  MAD: 'Madrid'
+  // 필요시 추가
+};
+
+const cityCodeToIcon = {
+  Paris: 'emojione:flag-for-france',
+  BCN: 'emojione:flag-for-spain',      // 바르셀로나(스페인)
+  London: 'emojione:flag-for-united-kingdom',
+  TCI: 'emojione:flag-for-spain',      // 카나리아 제도(스페인)
+  LPA: 'emojione:flag-for-spain',      // 라스팔마스(스페인)
+  LIS: 'emojione:flag-for-portugal',   // 리스본(포르투갈)
+  PMI: 'emojione:flag-for-spain',      // 팔마 데 마요르카(스페인)
+  BIO: 'emojione:flag-for-spain',      // 빌바오(스페인)
+  AMS: 'emojione:flag-for-netherlands',// 암스테르담(네덜란드)
+  NYC: 'emojione:flag-for-united-states' // 뉴욕(미국)
+};
+
+const cityCodeToKorean = {
+  CJU: '제주도',
+  OSA: '오사카',
+  TYO: '도쿄',
+  ULN: '울란바토르',
+  BKK: '방콕',
+  PAR: '파리',
+  BCN: '바르셀로나',
+  DPS: '발리',
+  SPK: '삿포로',
+  FUK: '후쿠오카',
+  LAX: '로스앤젤레스',
+
+  // 필요시 추가
+};
+
+// 도시코드 → 국가명 매핑 테이블 추가
+const cityCodeToCountry = {
+  CJU: '대한민국',
+  OSA: '일본',
+  TYO: '일본',
+  ULN: '몽골',
+  BKK: '태국',
+  PAR: '프랑스',
+  BCN: '스페인',
+  DPS: '인도네시아',
+  SPK: '일본',
+  FUK: '일본',
+  LAX: '미국',
+  LON: '영국',
+  FRA: '독일',
+  MAD: '스페인',
+  LIS: '포르투갈',
+  AMS: '네덜란드',
+  NYC: '미국',
+  // 필요시 추가
+};
 
 export const PlanTravel = () => {
   const navigate = useNavigate();
@@ -30,17 +123,15 @@ export const PlanTravel = () => {
   // API 데이터 관련 상태 추가
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [popularDestinations, setPopularDestinations] = useState([]);
-  const [airlines, setAirlines] = useState([]);
   const [hotels, setHotels] = useState([]);
   const [activeTab, setActiveTab] = useState('destinations');
-  const [flights, setFlights] = useState([]);
-  const [isLoadingFlights, setIsLoadingFlights] = useState(false);
   const [flightData, setFlightData] = useState(null);
   const [isLoadingFlight, setIsLoadingFlight] = useState(false);
-  const [iataCode, setIataCode] = useState("");
   const [departureAirport, setDepartureAirport] = useState("");
   const [filteredFlights, setFilteredFlights] = useState([]);
   const [airlineLogos, setAirlineLogos] = useState({});
+  const [flightInspiration, setFlightInspiration] = useState([]);
+  const [isLoadingInspiration, setIsLoadingInspiration] = useState(false);
 
   // 예산 범위 옵션
   const budgetOptions = [
@@ -194,58 +285,44 @@ export const PlanTravel = () => {
     );
   };
 
-  // API 데이터 로딩 함수 (나중에 실제 API 호출로 대체)
-  const loadApiData = async () => {
-    setIsLoadingData(true);
-    try {
-      // 여기에 실제 API 호출 코드가 들어갈 예정
-      // 임시 데이터로 UI 미리 구현
-      setTimeout(() => {
-        setPopularDestinations([
-          
-          { id: 1, name: '도쿄', image: 'https://images.unsplash.com/photo-1498036882173-b41c28a8ba34?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60', description: '일본의 수도' },
-          { id: 2, name: '파리', image: 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60', description: '프랑스의 수도' },
-          { id: 3, name: '뉴욕', image: 'https://images.unsplash.com/photo-1538970272646-f61fabb3a8a2?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60', description: '미국의 대도시' },
-          { id: 4, name: '로마', image: 'https://images.unsplash.com/photo-1552832230-c0197dd311b5?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60', description: '이탈리아의 수도' },
-          { id: 5, name: '시드니', image: 'https://images.unsplash.com/photo-1506973035872-a4ec16b8e8d9?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60', description: '호주의 대도시' },
-        ]);
-        
-        setAirlines([]);
-        
-        setHotels([
-          { id: 1, name: '그랜드 호텔', location: '서울', rating: 4.7, price: '150,000원/박', image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60' },
-          { id: 2, name: '시티 호텔', location: '부산', rating: 4.5, price: '120,000원/박', image: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60' },
-          { id: 3, name: '리버사이드 호텔', location: '강릉', rating: 4.3, price: '180,000원/박', image: 'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60' },
-          { id: 4, name: '마운틴 뷰 호텔', location: '제주', rating: 4.6, price: '200,000원/박', image: 'https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60' },
-          { id: 5, name: '오션 호텔', location: '여수', rating: 4.2, price: '130,000원/박', image: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60' },
-        ]);
-        
-        setIsLoadingData(false);
-      }, 1500); // 1.5초 후 데이터 로드 (실제 API 호출 시 제거)
-    } catch (error) {
-      console.error('Error loading API data:', error);
-      setIsLoadingData(false);
-    }
-  };
-
-  // 더미 데이터로 항공사 정보 설정
-  useEffect(() => {
-    setAirlines([]); // 더미 데이터 제거
-  }, []);
-
-  // 여행지와 날짜가 선택되면 더미 항공편 정보 설정
-  useEffect(() => {
-    if (destination && startDate) {
-      setIsLoadingFlights(true);
-      setTimeout(() => {
-        setIsLoadingFlights(false);
-      }, 1000);
-    }
-  }, [destination, startDate]);
-
   // 컴포넌트 마운트 시 데이터 로드
   React.useEffect(() => {
-    loadApiData();
+    const loadData = async () => {
+      setIsLoadingData(true);
+      try {
+        // 인기 여행지 데이터 가져오기
+        const destinationsData = await fetchPopularDestinations();
+        console.log('받아온 여행지 데이터:', destinationsData);
+        
+        const dataArray = destinationsData.data;
+
+        if (dataArray && Array.isArray(dataArray)) {
+          const mappedDestinations = dataArray.map((dest, index) => {
+            const code = dest.destination || dest.name;
+            const cityName = cityCodeToKorean[code] || code;
+            return {
+              id: index + 1,
+              code, // 도시코드
+              name: cityName,
+              image: `/city-images/${code}.jpg`,
+              description: `${index + 1}위`
+            };
+          });
+          console.log('매핑된 여행지 데이터:', mappedDestinations);
+          setPopularDestinations(mappedDestinations);
+        } else {
+          console.log('유효한 여행지 데이터가 없습니다');
+          setPopularDestinations([]);
+        }
+      } catch (error) {
+        console.error('데이터 로딩 중 오류 발생:', error);
+        setPopularDestinations([]);
+      } finally {
+        setIsLoadingData(false);
+      }
+    };
+
+    loadData();
   }, []);
 
   // 여행 기간 계산 함수
@@ -460,6 +537,56 @@ export const PlanTravel = () => {
       });
     }
   }, [flightData, startDate, endDate, airlineLogos]);
+
+  // 여행지 추천 데이터 불러오기
+  useEffect(() => {
+    const loadInspiration = async () => {
+      setIsLoadingInspiration(true);
+      try {
+        console.log('여행지 추천 API 호출 시작');
+        const params = {
+          origin: 'SEL',
+          //departureDate: '2025-05-08,2025-05-12',
+          // duration: '7',
+          // maxPrice: 1000000,
+          // oneWay: false,
+          // currencyCode: 'KRW',
+          // viewBy: 'DESTINATION'
+        };
+        console.log('API 요청 파라미터:', params);
+        
+        const data = await fetchFlightInspiration(params);
+        console.log('API 응답 데이터:', data);
+        
+        if (data && data.data) {
+          console.log('처리된 여행지 추천 데이터:', data.data);
+          // 각 항목의 상세 정보 로깅
+          data.data.forEach((item, index) => {
+            console.log(`항목 ${index + 1} 상세 정보:`, {
+              destination: item.destination,
+              departureDate: item.departureDate,
+              returnDate: item.returnDate,
+              oneWay: item.oneWay,
+              price: item.price,
+              duration: item.duration,
+              returnPrice: item.returnPrice
+            });
+          });
+          setFlightInspiration(data.data || []);
+        } else {
+          console.warn('API 응답에 data 필드가 없습니다:', data);
+          setFlightInspiration([]);
+        }
+      } catch (error) {
+        console.error('여행지 추천 API 호출 중 오류 발생:', error);
+        setFlightInspiration([]);
+      } finally {
+        setIsLoadingInspiration(false);
+        console.log('여행지 추천 데이터 로딩 완료');
+      }
+    };
+    loadInspiration();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 flex justify-center">
@@ -730,28 +857,7 @@ export const PlanTravel = () => {
               </div>
             )}
 
-            {/* 검색 버튼 추가 */}
-            <div className="mt-6">
-              <Button
-                className="w-full bg-primary hover:bg-primary-dark text-white"
-                onClick={handleFlightSearch}
-                disabled={isLoadingFlight || !departureAirport || !startDate || !endDate}
-              >
-                {isLoadingFlight ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    검색 중...
-                  </>
-                ) : (
-                  '항공편 검색'
-                )}
-              </Button>
-              {(!departureAirport || !startDate || !endDate) && (
-                <p className="text-sm text-red-500 mt-2">
-                  출발 공항과 여행 기간을 모두 입력해주세요.
-                </p>
-              )}
-            </div>
+            
           </div>
 
           {/* 기존 텍스트 필드를 컨테이너 하단부로 이동 */}
@@ -829,11 +935,10 @@ export const PlanTravel = () => {
               인기 여행지
             </button>
             <button 
-              className={`px-6 py-3 font-medium ${activeTab === 'airlines' ? 'text-primary border-b-2 border-primary' : 'text-gray-500'}`}
-              onClick={() => setActiveTab('airlines')}
+              className={`px-6 py-3 font-medium ${activeTab === 'inspiration' ? 'text-primary border-b-2 border-primary' : 'text-gray-500'}`}
+              onClick={() => setActiveTab('inspiration')}
             >
-              <Plane className="inline-block mr-2" size={18} />
-              항공사 정보
+              ✈️ 여행지 추천
             </button>
             <button 
               className={`px-6 py-3 font-medium ${activeTab === 'hotels' ? 'text-primary border-b-2 border-primary' : 'text-gray-500'}`}
@@ -857,11 +962,12 @@ export const PlanTravel = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {popularDestinations.map((destination) => (
                 <Card key={destination.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                  <div className="h-48 overflow-hidden">
-                    <img 
-                      src={destination.image} 
-                      alt={destination.name} 
-                      className="w-full h-full object-cover"
+                  <div className="h-48 w-200 flex items-center justify-center bg-gray-100">
+                    <img
+                      src={`/city-images/${destination.code}.jpg`}
+                      alt={destination.name}
+                      className="max-w-full max-h-full object-contain"
+                      onError={e => { e.target.onerror = null; e.target.src = '/city-images/default.jpg'; }}
                     />
                   </div>
                   <CardContent className="p-4">
@@ -873,61 +979,75 @@ export const PlanTravel = () => {
             </div>
           )}
           
-          {/* 항공사 정보 섹션 */}
-          {!isLoadingData && activeTab === 'airlines' && (
-            <div className="grid grid-cols-1 gap-6">
-              {filteredFlights.length > 0 ? (
-                filteredFlights.map((flight) => {
-                  console.log('항공사 데이터:', flight.airline); // 디버깅용 로그 추가
-                  return (
-                    <Card key={flight.id} className="p-6 hover:shadow-lg transition-shadow">
-                      <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-6">
-                          <div className="w-[32px] h-[32px] bg-white rounded-lg flex items-center justify-center border border-gray-200 p-1">
-                            <img
-                              src={fetchAirlineLogo(flight.airline?.iataCode)}
-                              alt={flight.airline?.name}
-                              className="max-w-full max-h-full object-contain"
-                              onError={(e) => {
-                                console.log('이미지 로드 실패:', e.target.src); // 디버깅용 로그 추가
-                                e.target.onerror = null;
-                                e.target.src = '/default-airline-logo.png';
-                              }}
-                            />
-                          </div>
-                          <div className="text-lg font-medium text-gray-700">
-                            {flight.airline?.name}
-                          </div>
-                        </div>
-                        <div className="flex-1 flex justify-center items-center gap-4 px-6">
-                          <div className="text-center">
-                            <div className="text-2xl font-bold">{flight.departureTime}</div>
-                            <div className="text-sm text-gray-500">{flight.departureAirport}</div>
-                          </div>
-                          <div className="flex flex-col items-center px-4">
-                            <div className="w-32 h-[2px] bg-gray-300 relative">
-                              <div className="absolute -right-1 -top-[4px] w-2 h-2 rotate-45 border-t-2 border-r-2 border-gray-300"></div>
-                            </div>
-                            <span className="text-sm text-gray-500 mt-1">{flight.duration}</span>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-2xl font-bold">{flight.arrivalTime}</div>
-                            <div className="text-sm text-gray-500">{flight.arrivalAirport}</div>
-                          </div>
-                        </div>
-                        <div className="w-[120px] text-right">
-                          <div className="text-xl font-bold text-primary">₩ {flight.price.toLocaleString()}</div>
-                        </div>
-                      </div>
-                    </Card>
-                  );
-                })
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-gray-500">선택한 날짜에 해당하는 항공편이 없습니다.</p>
-                </div>
-              )}
-            </div>
+          {/* 여행지 추천 섹션 (탭) */}
+          {!isLoadingData && activeTab === 'inspiration' && (
+            isLoadingInspiration ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 text-primary animate-spin mb-2" />
+                <p className="text-gray-500">여행지 추천 정보를 불러오는 중입니다...</p>
+              </div>
+            ) : (
+              (() => {
+                // 국가별로 그룹핑
+                const groupedByCountry = flightInspiration.reduce((acc, item) => {
+                  const country = cityCodeToCountry[item.destination] || '기타';
+                  if (!acc[country]) acc[country] = [];
+                  acc[country].push(item);
+                  return acc;
+                }, {});
+                return Object.entries(groupedByCountry).map(([country, items]) => (
+                  <div key={country} className="mb-8">
+                    <h4 className="text-xl font-bold mb-4">{country}</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {items.map((item, idx) => {
+                        // 출발일과 귀국일 처리
+                        const departure = item.departureDate || '-';
+                        const returnDate = item.returnDate || '-';
+                        
+                        // 도시코드 한글 변환
+                        const cityName = cityCodeToKorean[item.destination] || item.destination;
+                        
+                        // 날짜 포맷팅 함수
+                        const formatDate = (dateStr) => {
+                          if (!dateStr || dateStr === '-') return '-';
+                          try {
+                            return format(new Date(dateStr), 'yyyy년 MM월 dd일');
+                          } catch (error) {
+                            console.error('날짜 포맷팅 오류:', error);
+                            return dateStr;
+                          }
+                        };
+
+                        // 여행 기간 계산 함수
+                        const getTripDuration = (start, end) => {
+                          if (!start || !end || start === '-' || end === '-') return '-';
+                          try {
+                            const days = differenceInDays(new Date(end), new Date(start));
+                            return days > 0 ? `${days}일` : '-일';
+                          } catch (error) {
+                            console.error('여행 기간 계산 오류:', error);
+                            return '-일';
+                          }
+                        };
+
+                        return (
+                          <Card key={idx} className="overflow-hidden hover:shadow-lg transition-shadow">
+                            <CardContent className="p-4">
+                              <h4 className="text-lg font-bold mb-2">{cityName}</h4>
+                              <p className="text-gray-600 mb-1">출발일: {formatDate(departure)}</p>
+                              <p className="text-gray-600 mb-1">귀국일: {formatDate(returnDate)}</p>
+                              <p className="text-gray-600 mb-1">최저가: {item.price?.total ? `${Number(item.price.total).toLocaleString()}원` : '-'}</p>
+                              <p className="text-gray-600 mb-1">여행 유형: {item.oneWay === false ? '왕복' : '편도'}</p>
+                              <p className="text-gray-600">여행 기간: {getTripDuration(departure, returnDate)}</p>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ));
+              })()
+            )
           )}
           
           {/* 호텔 정보 섹션 */}
