@@ -35,4 +35,6 @@ yarn-error.log*
 .vscode/
 .idea/
 
-
+# Individual Settings
+lambda_function.py
+load.mjs

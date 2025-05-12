@@ -4,10 +4,8 @@ import { fetchAuthSession } from 'aws-amplify/auth';
 // API_URL 환경 변수에서 가져오기
 const API_URL = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage';
 
-// Amadeus API 설정
-const AMADEUS_API_KEY = process.env.REACT_APP_AMADEUS_API_KEY;
-const AMADEUS_API_SECRET = process.env.REACT_APP_AMADEUS_API_SECRET;
-
+// Booking.com 호텔 검색 Lambda 함수를 위한 API Gateway 엔드포인트 URL
+const SEARCH_HOTELS_URL = `${API_URL}/api/Booking-com/SearchHotelsByCoordinates`;
 
 // axios 재시도 로직 구현
 axios.interceptors.response.use(null, async (error) => {
@@ -172,109 +170,107 @@ export const travelApi = {
     }
   },
   
-  // 이미지로 여행지 검색
-  searchByImage: async (imageFile, preferences) => {
+  // 여행 계획 저장 (SavePlanFunction)
+  savePlan: async (planData) => {
     try {
-      const formData = new FormData();
-      formData.append('image', imageFile);
+      console.log('여행 계획 저장 요청 시도 - URL:', `${API_URL}/api/travel/save`, 'Data:', planData);
       
-      if (preferences) {
-        formData.append('preferences', JSON.stringify(preferences));
+      // 서버에 맞는 형식으로 데이터 변환
+      // SavePlanFunction에서 기대하는 형식: { title: "제목", data: { ... 일차별 데이터 ... } }
+      let serverData;
+      
+      // planData가 이미 planData와 dynamoDbData로 구조화되어 있는 경우
+      if (planData.planData) {
+        const innerPlanData = planData.planData;
+        serverData = {
+          title: innerPlanData.title,
+          data: innerPlanData.days.reduce((obj, day) => {
+            obj[day.day] = {
+              title: day.title,
+              schedules: day.schedules
+            };
+            return obj;
+          }, {})
+        };
+      } else {
+        // 기존 형식 (단일 객체)
+        serverData = {
+          title: planData.title,
+          data: planData.days.reduce((obj, day) => {
+            obj[day.day] = {
+              title: day.title,
+              schedules: day.schedules
+            };
+            return obj;
+          }, {})
+        };
       }
       
-      const response = await apiClient.post('/api/travel/image-search', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+      console.log('변환된 서버 데이터:', serverData);
+      
+      // apiClient를 사용하여 요청 (인터셉터에서 인증 헤더 자동 추가)
+      const response = await apiClient.post('/api/travel/save', serverData, {
+        timeout: 10000, // 타임아웃 설정 (10초)
+        retry: 2,       // 재시도 설정
+        retryDelay: 1000
       });
       
+      console.log('여행 계획 저장 성공:', response.data);
       return response.data;
     } catch (error) {
-      throw error;
-    }
-  },
-  
-  // 여행 계획 상세 조회
-  getTravelPlan: async (planId) => {
-    try {
-      const response = await apiClient.get(`/api/travel/plan/${planId}`);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  },
-  
-  // 사용자의 여행 계획 목록 조회
-  getUserTravelPlans: async () => {
-    try {
-      const response = await apiClient.get('/api/travel/user-plans');
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  },
-  
-  // 여행 계획 공유
-  shareTravelPlan: async (planId, shareOptions) => {
-    try {
-      const response = await apiClient.post(`/api/travel/plan/${planId}/share`, shareOptions);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  },
-  
-  // 여행 계획 삭제
-  deleteTravelPlan: async (planId) => {
-    try {
-      const response = await apiClient.delete(`/api/travel/plan/${planId}`);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  },
-  
-  // 여행 계획 업데이트
-  updateTravelPlan: async (planId, updateData) => {
-    try {
-      const response = await apiClient.put(`/api/travel/plan/${planId}`, updateData);
-      return response.data;
-    } catch (error) {
+      console.error('여행 계획 저장 실패:', error);
+      
+      // 오류 상세 로깅
+      if (error.response) {
+        console.error('저장 실패 - 서버 응답:', error.response.status, error.response.data);
+      } else if (error.request) {
+        console.error('저장 실패 - 응답 없음:', error.request);
+      } else {
+        console.error('저장 실패 - 요청 오류:', error.message);
+      }
+      
       throw error;
     }
   },
 
-  // 숙소 검색
+  // 숙소 검색 함수: POST 요청으로 변경
   searchHotels: async (searchParams) => {
     try {
-      const response = await apiClient.post('/api/travel/hotels', searchParams);
-      return response.data;
+      console.log('[API] 숙소 검색 요청 (Lambda POST):', searchParams);
+      // POST 요청으로 변경하고, searchParams를 요청 본문으로 전달
+      const response = await axios.post(SEARCH_HOTELS_URL, searchParams, {
+        // POST 요청 시 Content-Type은 기본적으로 application/json으로 설정됨
+        // Lambda에서 JSON.parse(event.body)를 사용하므로 별도 헤더 설정 불필요
+      });
+      console.log('[API] 숙소 검색 응답 (Lambda POST):', response.data);
+      return response.data; // Lambda는 Booking.com API 응답을 그대로 body에 넣어 반환
     } catch (error) {
-      console.error('숙소 검색 실패:', error);
-      throw error;
-    }
-  },
+      console.error('숙소 검색 실패 (Lambda POST):', error.response?.data || error.message);
+      const errorData = error.response?.data || { message: error.message || '알 수 없는 숙소 검색 오류' };
+      throw errorData;},
 
-  // 인기 여행지 조회
-  getPopularDestinations: async (params = { originCityCode: 'ICN', period: '2025-03', max: 10 }) => {
-    try {
-      const response = await apiClient.post('/api/amadeus/Flight_Most_Traveled_Destinations', params);
-      return response.data;
-    } catch (error) {
-      console.error('인기 여행지 조회 실패:', error);
-      throw error;
+      // 인기 여행지 조회
+      getPopularDestinations: async (params = { originCityCode: 'ICN', period: '2025-03', max: 10 }) => {
+        try {
+          const response = await apiClient.post('/api/amadeus/Flight_Most_Traveled_Destinations', params);
+          return response.data;
+        } catch (error) {
+          console.error('인기 여행지 조회 실패:', error);
+          throw error;
+        }
+      },
+    };
+    
+    export const fetchFlightInspiration = async (params) => {
+      try {
+        const response = await apiClient.post('/api/amadeus/Flight_Inspiration_Search', params);
+        return response.data;
+      } catch (error) {
+        console.error('Flight Inspiration Search API 호출 에러:', error);
+        throw error;
     }
-  },
-};
-
-export const fetchFlightInspiration = async (params) => {
-  try {
-    const response = await apiClient.post('/api/amadeus/Flight_Inspiration_Search', params);
-    return response.data;
-  } catch (error) {
-    console.error('Flight Inspiration Search API 호출 에러:', error);
-    throw error;
   }
+
 };
 
 export default apiClient;

@@ -5,7 +5,7 @@ import { AuthProvider } from './components/auth/AuthContext';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import Dashboard from './pages/Dashboard';
-import PlanTravel from './pages/PlanTravel';
+import HomePage from './pages/HomePage';
 import ViewItinerary from './pages/ViewItinerary';
 import ItineraryManager from './pages/ItineraryManager';
 import Cart from './components/Cart';
@@ -36,18 +36,19 @@ function App() {
             <Navbar />
             <main className="flex-grow">
               <Routes>
-                <Route path="/" element={<PlanTravel />} />
+                <Route path="/" element={<HomePage />} />
                 <Route path="/signin" element={<SignIn />} />
                 <Route path="/signup" element={<SignUp />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
                 <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-                <Route path="/plan" element={<ProtectedRoute><PlanTravel /></ProtectedRoute>} />
+                <Route path="/plan" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
                 <Route path="/planner" element={<ProtectedRoute><TravelPlanner /></ProtectedRoute>} />
                 <Route path="/itinerary" element={<ProtectedRoute><ItineraryManager /></ProtectedRoute>} />
                 <Route path="/itinerary/:id" element={<ProtectedRoute><ViewItinerary /></ProtectedRoute>} />
                 <Route path="/cart" element={<ProtectedRoute><Cart /></ProtectedRoute>} />
                 <Route path="/mypage" element={<ProtectedRoute><MyPage /></ProtectedRoute>} />
+                <Route path="/hoteltest" element={<HotelSearchTest />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </main>

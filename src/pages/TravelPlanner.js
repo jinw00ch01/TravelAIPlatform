@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/auth/AuthContext';
 import { Box, Button, Typography, Paper, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, List, ListItem, ListItemText, TextField, Tabs, Tab } from '@mui/material';
@@ -13,6 +13,19 @@ import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import AccommodationPlan from '../components/AccommodationPlan';
 import FlightPlan from '../components/FlightPlan';
 import { travelApi } from '../services/api';
+import amadeusApi from '../utils/amadeusApi';
+import { format as formatDateFns } from 'date-fns';
+import { DatePicker } from '@mui/x-date-pickers';
+import { LocalizationProvider } from '@mui/x-date-pickers';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import CloseIcon from '@mui/icons-material/Close';
+import { Divider } from '@mui/material';
+import {
+    formatPrice,
+    formatDuration,
+    renderFareDetails,
+    renderItineraryDetails
+} from '../utils/flightFormatters';
 
 const StrictModeDroppable = ({ children, ...props }) => {
   const [enabled, setEnabled] = useState(false);
@@ -34,7 +47,7 @@ const TravelPlanner = () => {
   const { user } = useAuth();
   const [travelPlans, setTravelPlans] = useState({
     1: {
-      title: '1일차',
+      title: formatDateFns(new Date(), 'M/d'),
       schedules: []
     }
   });
@@ -47,11 +60,68 @@ const TravelPlanner = () => {
   const [dayOrder, setDayOrder] = useState(Object.keys(travelPlans));
   const [sidebarTab, setSidebarTab] = useState('schedule');
   const [isLoadingPlan, setIsLoadingPlan] = useState(false);
+  const [hotelSearchResults, setHotelSearchResults] = useState([]);
+  const [selectedHotel, setSelectedHotel] = useState(null);
+  const [showMap, setShowMap] = useState(true);
+  const [startDate, setStartDate] = useState(new Date());
+  const [isDateEditDialogOpen, setIsDateEditDialogOpen] = useState(false);
+  const [editTitleMode, setEditTitleMode] = useState(false);
+  const [tempTitle, setTempTitle] = useState('');
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
+  const [planTitle, setPlanTitle] = useState('');
+  const [planId, setPlanId] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [flightDictionaries, setFlightDictionaries] = useState(null);
+  const [selectedFlightForPlannerDialog, setSelectedFlightForPlannerDialog] = useState(null);
+  const [isPlannerFlightDetailOpen, setIsPlannerFlightDetailOpen] = useState(false);
 
   // 메인 영역의 AccommodationPlan 컴포넌트에 대한 ref
   const mainAccommodationPlanRef = useRef(null);
   // 사이드바의 AccommodationPlan 컴포넌트에 대한 ref (필요한 경우 사용)
   const sidebarAccommodationPlanRef = useRef(null);
+
+  // AccommodationPlan의 상태를 부모 컴포넌트로 이동
+  const [accommodationFormData, setAccommodationFormData] = useState({
+    cityName: '',
+    checkIn: new Date(),
+    checkOut: new Date(new Date().setDate(new Date().getDate() + 1)),
+    adults: '2',
+    latitude: null,
+    longitude: null
+  });
+
+  // --- Lifted State for FlightPlan ---
+  const [flightSearchParams, setFlightSearchParams] = useState({
+      originSearch: '',
+      destinationSearch: '',
+      selectedOrigin: null,
+      selectedDestination: null,
+      departureDate: null,
+      returnDate: null,
+      adults: 1,
+      children: 0,
+      infants: 0,
+      travelClass: '',
+      nonStop: false,
+      currencyCode: 'KRW',
+      maxPrice: '',
+      max: 10,
+  });
+  const [originCities, setOriginCities] = useState([]);
+  const [destinationCities, setDestinationCities] = useState([]);
+  const [flightResults, setFlightResults] = useState([]);
+  const [isLoadingCities, setIsLoadingCities] = useState(false);
+  const [isLoadingFlights, setIsLoadingFlights] = useState(false);
+  const [flightError, setFlightError] = useState(null);
+  // --- End Lifted State ---
+
+  // --- airportInfoCache 와 loadingAirportInfo 상태를 TravelPlanner로 이동 ---
+  const [airportInfoCache, setAirportInfoCache] = useState({});
+  const [loadingAirportInfo, setLoadingAirportInfo] = useState(new Set());
+  // --- 상태 이동 끝 ---
+
+  // currentPlan을 먼저 선언
+  const currentPlan = travelPlans[selectedDay] || { title: '', schedules: [] };
 
   // 여행 계획 로드 함수 - 외부에서 재사용할 수 있도록 분리
   const loadTravelPlan = async (params = { newest: true }) => {
@@ -62,6 +132,660 @@ const TravelPlanner = () => {
       const data = await travelApi.loadPlan(params);
       console.log('[TravelPlanner] travelApi.loadPlan 응답 데이터:', JSON.stringify(data, null, 2)); // 응답 데이터 상세 로깅
 
+      // 데이터 구조 자세히 확인을 위한 추가 로깅
+      console.log('[TravelPlanner] 데이터 구조 상세 분석:');
+      console.log('plan 배열 존재 여부:', !!data.plan && Array.isArray(data.plan));
+      if (data.plan && Array.isArray(data.plan) && data.plan.length > 0) {
+        console.log('plan[0] 구조 키:', Object.keys(data.plan[0]));
+        console.log('itinerary_schedules 존재 여부:', !!data.plan[0].itinerary_schedules);
+        console.log('itinerary_schedules 타입:', typeof data.plan[0].itinerary_schedules);
+        console.log('itinerary_schedules가 객체인 경우 키:', data.plan[0].itinerary_schedules ? Object.keys(data.plan[0].itinerary_schedules) : 'NA');
+        
+        // itinerary_schedules의 내용을 자세히 로깅
+        if (data.plan[0].itinerary_schedules && typeof data.plan[0].itinerary_schedules === 'object') {
+          console.log('각 일차별 일정 정보:');
+          Object.keys(data.plan[0].itinerary_schedules).forEach(dayKey => {
+            const daySchedules = data.plan[0].itinerary_schedules[dayKey];
+            console.log(`${dayKey}일차 타입:`, typeof daySchedules);
+            console.log(`${dayKey}일차 항목 수:`, daySchedules.schedules ? daySchedules.schedules.length : 'schedules 없음');
+          });
+        }
+      }
+
+      // 항공편 정보 디버깅을 위한 코드 추가
+      console.log('[TravelPlanner] 항공편 정보 확인:', { 
+        flightInfo: data.flightInfo ? '항공편 정보 있음' : '항공편 정보 없음',
+        isRoundTrip: data.isRoundTrip,
+        originalData: data.originalData ? '원본 데이터 있음' : '원본 데이터 없음'
+      });
+
+      // originalData에서 항공편 세부 정보 확인
+      if (data.originalData) {
+        // flight_details 배열이 있는지 확인
+        if (data.originalData.flight_details && Array.isArray(data.originalData.flight_details)) {
+          console.log('[TravelPlanner] flight_details 발견:', data.originalData.flight_details.length);
+          
+          // 출발 및 귀국 항공편 분류
+          const departureFlights = data.originalData.flight_details.filter(
+            flight => flight.type === 'Flight_Departure'
+          );
+          const returnFlights = data.originalData.flight_details.filter(
+            flight => flight.type === 'Flight_Return'
+          );
+          
+          console.log('[TravelPlanner] 출발 항공편 수:', departureFlights.length);
+          console.log('[TravelPlanner] 귀국 항공편 수:', returnFlights.length);
+          
+          // 데이터 구조 문제를 체크하기 위해 상세 로깅 추가
+          if (departureFlights.length > 0) {
+            console.log('[TravelPlanner] 첫 번째 출발 항공편 키:', Object.keys(departureFlights[0]));
+            if (departureFlights[0].original_flight_offer) {
+              console.log('[TravelPlanner] original_flight_offer 있음');
+            } else {
+              console.log('[TravelPlanner] original_flight_offer 없음!');
+            }
+          }
+          
+          if (returnFlights.length > 0) {
+            console.log('[TravelPlanner] 첫 번째 귀국 항공편 키:', Object.keys(returnFlights[0]));
+            if (returnFlights[0].original_flight_offer) {
+              console.log('[TravelPlanner] original_flight_offer 있음');
+            } else {
+              console.log('[TravelPlanner] original_flight_offer 없음!');
+            }
+          }
+        } else {
+          console.log('[TravelPlanner] flight_details 배열 없음');
+          
+          // flight_info에서 항공편 정보 확인
+          if (data.originalData.flight_info) {
+            console.log('[TravelPlanner] flight_info 필드 발견');
+            
+            // flight_info가 문자열이면 파싱
+            let flightInfo = data.originalData.flight_info;
+            if (typeof flightInfo === 'string') {
+              try {
+                flightInfo = JSON.parse(flightInfo);
+                console.log('[TravelPlanner] flight_info 문자열 파싱 성공');
+              } catch (e) {
+                console.error('[TravelPlanner] flight_info 파싱 실패:', e);
+              }
+            }
+            
+            // 왕복 여부 확인
+            const isRoundTrip = data.isRoundTrip || 
+                               flightInfo.isRoundTrip || 
+                               flightInfo.oneWay === false ||
+                               (flightInfo.itineraries && flightInfo.itineraries.length > 1);
+            
+            console.log('[TravelPlanner] 왕복 여부:', isRoundTrip);
+            
+            if (isRoundTrip && flightInfo.itineraries && flightInfo.itineraries.length > 1) {
+              console.log('[TravelPlanner] 왕복 항공편: itineraries 길이 =', flightInfo.itineraries.length);
+              
+              // flight_details 구조로 변환
+              const flightDetails = [
+                // 출발 항공편
+                {
+                  type: 'Flight_Departure',
+                  original_flight_offer: flightInfo
+                }
+              ];
+              
+              // 왕복 항공편(같은 flightInfo에서 두 번째 itinerary 사용)
+              if (isRoundTrip) {
+                flightDetails.push({
+                  type: 'Flight_Return',
+                  original_flight_offer: flightInfo
+                });
+              }
+              
+              // flight_details 형식으로 처리하기 위해 설정
+              data.originalData.flight_details = flightDetails;
+              console.log('[TravelPlanner] flight_details로 변환 완료:', flightDetails.length);
+            }
+          }
+        }
+      }
+
+      // 서버에서 이미 처리된 데이터가 있는 경우 (plannerData 필드)
+      if (data?.plannerData && Object.keys(data.plannerData).length > 0) {
+        console.log('[TravelPlanner] 서버에서 처리된 플래너 데이터 발견');
+        setTravelPlans(data.plannerData);
+        setDayOrder(Object.keys(data.plannerData));
+        setSelectedDay(Object.keys(data.plannerData)[0]);
+        
+        // 플랜 ID 설정
+        if (data.plan && data.plan[0] && data.plan[0].id) {
+          setPlanId(data.plan[0].id);
+          console.log(`[TravelPlanner] 플랜 ID 설정: ${data.plan[0].id}`);
+        }
+        
+        setIsLoadingPlan(false);
+        return; // 여기서 함수 종료
+      }
+
+      // 기존 로직: itinerary_schedules를 확인
+      if (data?.plan && Array.isArray(data.plan) && data.plan.length > 0 && data.plan[0].itinerary_schedules) {
+        console.log('[TravelPlanner] itinerary_schedules 데이터 발견');
+        const itinerarySchedules = data.plan[0].itinerary_schedules;
+        
+        // 항공편 정보 처리 - 로직 개선
+        let flightDetails = [];
+        
+        // 1. originalData에서 flight_details 확인 (가장 우선)
+        if (data.originalData?.flight_details && Array.isArray(data.originalData.flight_details) && data.originalData.flight_details.length > 0) {
+          console.log('[TravelPlanner] originalData에서 flight_details 배열 발견');
+          flightDetails = data.originalData.flight_details;
+        }
+        // 2. plan[0]에서 flight_details 확인
+        else if (data.plan[0].flight_details && Array.isArray(data.plan[0].flight_details) && data.plan[0].flight_details.length > 0) {
+          console.log('[TravelPlanner] plan[0]에서 flight_details 배열 발견');
+          flightDetails = data.plan[0].flight_details;
+        }
+        // 3. flightInfo를 사용하여 flight_details 구성
+        else if (data.flightInfo) {
+          console.log('[TravelPlanner] flightInfo에서 항공편 정보 구성');
+          
+          // JSON 문자열인 경우 객체로 파싱
+          let flightData = data.flightInfo;
+          
+          // 문자열이면 파싱 시도
+          if (typeof flightData === 'string') {
+            try {
+              console.log('[TravelPlanner] flightInfo 문자열을 객체로 파싱 시도');
+              flightData = JSON.parse(flightData);
+              console.log('[TravelPlanner] flightInfo 파싱 성공');
+            } catch (error) {
+              console.error('[TravelPlanner] flightInfo 파싱 오류:', error);
+              flightData = null;
+            }
+          }
+          
+          // 왕복 여부 확인
+          const isRoundTrip = data.isRoundTrip === true || 
+                             (flightData && (
+                               flightData.isRoundTrip === true || 
+                               flightData.oneWay === false || 
+                               (flightData.itineraries && flightData.itineraries.length > 1)
+                             ));
+          
+          console.log('[TravelPlanner] 왕복 여부 확인:', { 
+            data_isRoundTrip: data.isRoundTrip, 
+            flightData_isRoundTrip: flightData?.isRoundTrip,
+            flightData_oneWay: flightData?.oneWay,
+            flightData_has_multiple_itineraries: flightData?.itineraries?.length > 1,
+            final_isRoundTrip: isRoundTrip
+          });
+          
+          // 출발 항공편 정보가 있고 유효하면 추가
+          if (flightData && Object.keys(flightData).length > 0) {
+            console.log('[TravelPlanner] 항공편 정보 확인');
+            
+            // 항공편 정보에 itineraries 필드가 있는지 확인하여 항공편 데이터인지 검증
+            if (flightData.itineraries) {
+              // 출발 항공편 구성
+              flightDetails.push({
+                type: 'Flight_Departure',
+                original_flight_offer: flightData
+              });
+              console.log('[TravelPlanner] 출발 항공편 정보를 flight_details에 추가');
+              
+              // 왕복 항공권인 경우 동일한 객체에서 두 번째 itinerary를 귀국 항공편으로 사용
+              if (isRoundTrip) {
+                console.log('[TravelPlanner] 왕복 항공권으로 인식, 동일한 데이터에서 귀국 항공편 정보 추출');
+                
+                // 귀국 항공편 정보 구성 (동일한 객체 재사용하고 타입만 Flight_Return으로 설정)
+                flightDetails.push({
+                  type: 'Flight_Return',
+                  original_flight_offer: flightData // 전체 데이터를 그대로 사용, 화면에서 표시할 때 두 번째 itinerary 참조
+                });
+                console.log('[TravelPlanner] 귀국 항공편 정보(동일 객체에서)를 flight_details에 추가');
+              }
+            } else {
+              console.log('[TravelPlanner] 항공편 정보가 올바른 형식이 아닙니다:', flightData);
+            }
+          }
+        }
+        
+        console.log('[TravelPlanner] 최종 항공편 정보 개수:', flightDetails.length);
+        
+        // itinerary_schedules가 비어있지 확인
+        const hasSchedules = itinerarySchedules && Object.keys(itinerarySchedules).length > 0;
+        console.log('[TravelPlanner] itinerary_schedules 내용 여부:', hasSchedules);
+        
+        if (hasSchedules) {
+          const formattedPlans = {};
+          
+          Object.keys(itinerarySchedules).forEach(dayKey => {
+            const dayPlan = itinerarySchedules[dayKey];
+            const date = new Date(startDate);
+            date.setDate(date.getDate() + parseInt(dayKey) - 1);
+            const dateStr = formatDateFns(date, 'M/d');
+            
+            // 기존 제목에서 날짜 부분 제거
+            const detail = (dayPlan.title || '').replace(/^[0-9]{1,2}\/[0-9]{1,2}( |:)?/, '').trim();
+            const fullTitle = detail ? `${dateStr} ${detail}` : dateStr;
+            
+            // 일정 목록에 항공편 정보 병합
+            let schedules = Array.isArray(dayPlan.schedules) ? [...dayPlan.schedules] : [];
+            
+            // 각 일차에 해당하는 항공편 찾기
+            if (flightDetails && flightDetails.length > 0) {
+              console.log(`[TravelPlanner] ${dayKey}일차 항공편 데이터 처리`);
+              
+              // 출발/귀국 항공편 분류
+              const departureFlights = flightDetails.filter(flight => flight.type === 'Flight_Departure');
+              const returnFlights = flightDetails.filter(flight => flight.type === 'Flight_Return');
+              
+              // 출발 항공편은 첫 번째 날에 추가
+              if (parseInt(dayKey) === 1 && departureFlights.length > 0) {
+                departureFlights.forEach(flight => {
+                  console.log('[TravelPlanner] 출발 항공편 데이터 처리 시작');
+                  
+                  try {
+                    // 항공편 정보가 없는 경우 기본 값 제공
+                    if (!flight.original_flight_offer) {
+                      console.warn('[TravelPlanner] 항공편 정보 누락됨:', flight);
+                      return;
+                    }
+                    
+                    // 정상화된 항공편 데이터 생성
+                    const normalizedFlightData = JSON.parse(JSON.stringify(flight.original_flight_offer, (key, value) => {
+                      if (typeof value === 'number' && !Number.isFinite(value)) {
+                        return null;
+                      }
+                      return value;
+                    }));
+
+                    // 항공편 일정 생성
+                  const flightSchedule = {
+                      id: `flight-departure-${Date.now()}`,
+                      type: 'Flight_Departure',
+                      category: '항공편',
+                      flightOfferDetails: {
+                        flightOfferData: normalizedFlightData,
+                        departureAirportInfo: flight.departure_airport_details || {},
+                        arrivalAirportInfo: flight.arrival_airport_details || {}
+                      }
+                    };
+                    
+                    // 항공편 기본 정보 설정
+                    if (normalizedFlightData.itineraries && normalizedFlightData.itineraries.length > 0) {
+                      const itinerary = normalizedFlightData.itineraries[0];
+                      
+                      if (itinerary.segments && itinerary.segments.length > 0) {
+                        const firstSegment = itinerary.segments[0];
+                        const lastSegment = itinerary.segments[itinerary.segments.length - 1];
+                        
+                        // 기본 정보 채우기
+                        flightSchedule.name = `${firstSegment.departure?.iataCode || ''} → ${lastSegment.arrival?.iataCode || ''} 항공편`;
+                        
+                        // 항공편 도착 시간으로 시간 설정
+                        if (lastSegment.arrival?.at) {
+                          const arrivalTime = new Date(lastSegment.arrival.at);
+                          flightSchedule.time = arrivalTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+                        }
+                        
+                        // 도착 공항 정보로 주소 설정
+                        if (flight.arrival_airport_details) {
+                          flightSchedule.address = flight.arrival_airport_details.koreanFullName || 
+                                                  flight.arrival_airport_details.name || 
+                                                  lastSegment.arrival?.iataCode || '';
+                          flightSchedule.lat = flight.arrival_airport_details.geoCode?.latitude || null;
+                          flightSchedule.lng = flight.arrival_airport_details.geoCode?.longitude || null;
+                        }
+                        
+                        // 가격 정보를 노트에 추가
+                        const priceStr = normalizedFlightData.price?.total || normalizedFlightData.price?.grandTotal || '0';
+                        const currency = normalizedFlightData.price?.currency || 'KRW';
+                        flightSchedule.notes = `가격: ${parseFloat(priceStr).toLocaleString()} ${currency}`;
+                        
+                        // 비행 시간 계산
+                        if (firstSegment.departure?.at && firstSegment.arrival?.at) {
+                          const departureTime = new Date(firstSegment.departure.at);
+                          const arrivalTime = new Date(firstSegment.arrival.at);
+                          const durationMs = arrivalTime - departureTime;
+                          const hours = Math.floor(durationMs / (1000 * 60 * 60));
+                          const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+                          flightSchedule.duration = `${hours}시간 ${minutes}분`;
+                        }
+                      }
+                    }
+                    
+                    // 일정에 추가
+                    schedules.unshift(flightSchedule); // 첫 번째 위치에 추가
+                    console.log(`[TravelPlanner] 출발 항공편을 일정에 추가함 (${dayKey}일차)`, flightSchedule.name);
+                  } catch (error) {
+                    console.error('[TravelPlanner] 출발 항공편 처리 중 오류:', error);
+                  }
+                });
+              }
+            }
+            
+            // 마지막 날에 귀국 항공편 추가
+            const lastDayKey = Math.max(...Object.keys(itinerarySchedules).map(Number)).toString();
+            // returnFlights 변수를 미리 정의
+            const returnFlights = flightDetails.filter(flight => flight.type === 'Flight_Return');
+            
+            if (dayKey === lastDayKey && returnFlights.length > 0) {
+              returnFlights.forEach(flight => {
+                console.log('[TravelPlanner] 귀국 항공편 데이터 처리 시작 - 라인 마킹!');
+                
+                try {
+                  // 항공편 정보가 없는 경우 기본 값 제공
+                  if (!flight.original_flight_offer) {
+                    console.warn('[TravelPlanner] 귀국 항공편 정보 누락됨:', flight);
+                    return;
+                  }
+                  
+                  // 정상화된 항공편 데이터 생성
+                  const normalizedFlightData = JSON.parse(JSON.stringify(flight.original_flight_offer, (key, value) => {
+                    if (typeof value === 'number' && !Number.isFinite(value)) {
+                      return null;
+                    }
+                    return value;
+                  }));
+
+                  // 항공편 일정 생성
+                  const flightSchedule = {
+                    id: `flight-return-${Date.now()}`,
+                    type: 'Flight_Return',
+                    category: '항공편',
+                    flightOfferDetails: {
+                      flightOfferData: normalizedFlightData,
+                      departureAirportInfo: flight.departure_airport_details || {},
+                      arrivalAirportInfo: flight.arrival_airport_details || {}
+                    }
+                  };
+                  
+                  // 왕복 항공편인 경우 두 번째 itinerary 사용, 아니면 첫 번째 사용
+                  // Flight_Return 타입이고 itineraries 배열 길이가 2 이상인 경우 두 번째 itinerary 사용
+                  const itineraryIndex = flight.type === 'Flight_Return' && flight.original_flight_offer.itineraries.length > 1 ? 1 : 0;
+                  const itinerary = flight.original_flight_offer.itineraries[itineraryIndex];
+                  
+                  if (itinerary && itinerary.segments && itinerary.segments.length > 0) {
+                    const firstSegment = itinerary.segments[0];
+                    const lastSegment = itinerary.segments[itinerary.segments.length - 1];
+                    
+                    // 귀국편 기본 정보 구성
+                    flightSchedule.name = `${firstSegment.departure?.iataCode || ''} → ${lastSegment.arrival?.iataCode || ''} 항공편`;
+                    
+                    // 출발 시간으로 일정 시간 설정
+                    if (firstSegment.departure?.at) {
+                      const departureTime = new Date(firstSegment.departure.at);
+                      flightSchedule.time = departureTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+                    }
+                    
+                    // 출발 공항 정보로 주소 설정
+                    if (flight.departure_airport_details) {
+                      flightSchedule.address = flight.departure_airport_details.koreanFullName || 
+                                              flight.departure_airport_details.name || 
+                                              firstSegment.departure?.iataCode || '';
+                      flightSchedule.lat = flight.departure_airport_details.geoCode?.latitude || null;
+                      flightSchedule.lng = flight.departure_airport_details.geoCode?.longitude || null;
+                    }
+                    
+                    // 가격 정보를 노트에 추가
+                    const priceStr = normalizedFlightData.price?.total || normalizedFlightData.price?.grandTotal || '0';
+                    const currency = normalizedFlightData.price?.currency || 'KRW';
+                    flightSchedule.notes = `가격: ${parseFloat(priceStr).toLocaleString()} ${currency}`;
+                    
+                    // 비행 시간 계산
+                    if (firstSegment.departure?.at && lastSegment.arrival?.at) {
+                      const departureTime = new Date(firstSegment.departure.at);
+                      const arrivalTime = new Date(lastSegment.arrival.at);
+                      const durationMs = arrivalTime - departureTime;
+                      const hours = Math.floor(durationMs / (1000 * 60 * 60));
+                      const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+                      flightSchedule.duration = `${hours}시간 ${minutes}분`;
+                    }
+                  }
+                  
+                  // 일정에 추가
+                  schedules.push(flightSchedule); // 마지막 위치에 추가
+                  console.log(`[TravelPlanner] 귀국 항공편을 일정에 추가함 (${dayKey}일차)`, flightSchedule.name);
+                } catch (error) {
+                  console.error('[TravelPlanner] 귀국 항공편 처리 중 오류:', error);
+                }
+              });
+            }
+            
+            formattedPlans[dayKey] = {
+              title: fullTitle,
+              schedules: schedules
+            };
+          });
+          
+          if (Object.keys(formattedPlans).length > 0) {
+            console.log('[TravelPlanner] itinerary_schedules 데이터 변환 완료:', formattedPlans);
+            setTravelPlans(formattedPlans);
+            setDayOrder(Object.keys(formattedPlans));
+            setSelectedDay(Object.keys(formattedPlans)[0]);
+            
+            // 플랜 ID 설정
+            if (data.plan[0].plan_id) {
+              setPlanId(data.plan[0].plan_id);
+              console.log(`[TravelPlanner] 플랜 ID 설정: ${data.plan[0].plan_id}`);
+            }
+            
+            setIsLoadingPlan(false);
+            return; // 여기서 함수 종료
+          }
+        } else {
+          // itinerary_schedules가 비어있지만 항공편 정보가 있는 경우
+          console.log('[TravelPlanner] itinerary_schedules가 비어있지만 항공편 정보가 있는 경우, 기본 일정 생성');
+          
+          // 기본 일정 생성 (최소 2일 - 출발일과 귀국일)
+          const formattedPlans = {};
+          const hasReturnFlight = flightDetails.some(flight => flight.type === 'Flight_Return');
+          const totalDays = hasReturnFlight ? 3 : 2;  // 편도면 2일, 왕복이면 3일 이상
+          
+          for (let i = 1; i <= Math.max(totalDays, 1); i++) {
+            const date = new Date(startDate);
+            date.setDate(date.getDate() + i - 1);
+            const dateStr = formatDateFns(date, 'M/d');
+            
+            // 기본 일정
+            let schedules = [];
+            
+            // 기본 일정 항목 제거 - 항공편만 유지
+            
+            // 첫째 날에 출발 항공편 추가
+            if (i === 1) {
+              const departureFlights = flightDetails.filter(flight => flight.type === 'Flight_Departure');
+              
+              if (departureFlights.length > 0) {
+                departureFlights.forEach(flight => {
+                  console.log('[TravelPlanner] 생성된 일정에 출발 항공편 추가');
+                  try {
+                    // 기본 일정 정보 생성
+                    const flightSchedule = {
+                      id: `${i}-flight-departure-${Math.random().toString(36).substring(7)}`,
+                    name: '출발 항공편',
+                      time: '08:00',
+                    address: '공항',
+                    category: '항공편',
+                    type: 'Flight_Departure',
+                    duration: '1시간',
+                    notes: '',
+                    lat: null,
+                    lng: null,
+                    flightOfferDetails: {
+                      flightOfferData: flight.original_flight_offer || {},
+                      departureAirportInfo: flight.departure_airport_details || {},
+                      arrivalAirportInfo: flight.arrival_airport_details || {}
+                    }
+                  };
+                  
+                    // 항공편 정보가 있으면 세부 정보 채우기
+                    if (flight.original_flight_offer && 
+                        flight.original_flight_offer.itineraries && 
+                        flight.original_flight_offer.itineraries.length > 0 && 
+                        flight.original_flight_offer.itineraries[0].segments && 
+                        flight.original_flight_offer.itineraries[0].segments.length > 0) {
+                      
+                    const firstSegment = flight.original_flight_offer.itineraries[0].segments[0];
+                      
+                      // 출발 시간 설정
+                      if (firstSegment.departure?.at) {
+                        const departureTime = new Date(firstSegment.departure.at);
+                        flightSchedule.time = departureTime.toLocaleTimeString('ko-KR', { 
+                          hour: '2-digit', 
+                          minute: '2-digit', 
+                          hour12: false 
+                        });
+                      }
+                      
+                      // 공항 정보 설정
+                      if (firstSegment.departure?.iataCode) {
+                        flightSchedule.address = `${firstSegment.departure.iataCode} 공항`;
+                        
+                        // 항공사 코드 있으면 추가
+                        if (firstSegment.carrierCode) {
+                          const carrierCode = firstSegment.carrierCode;
+                          flightSchedule.name = `${carrierCode} ${firstSegment.number || ''} (${firstSegment.departure.iataCode} → ${firstSegment.arrival.iataCode})`;
+                        }
+                      }
+                      
+                      // 비행 시간 계산
+                      if (firstSegment.departure?.at && firstSegment.arrival?.at) {
+                        const departureTime = new Date(firstSegment.departure.at);
+                        const arrivalTime = new Date(firstSegment.arrival.at);
+                        const durationMs = arrivalTime - departureTime;
+                        const hours = Math.floor(durationMs / (1000 * 60 * 60));
+                        const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+                        flightSchedule.duration = `${hours}시간 ${minutes}분`;
+                      }
+                    }
+                    
+                    // 일정 맨 앞에 추가
+                    schedules.push(flightSchedule);
+                    console.log(`[TravelPlanner] 첫날 일정에 출발 항공편 추가됨: ${flightSchedule.name}`);
+                  } catch (error) {
+                    console.error('[TravelPlanner] 출발 항공편 처리 중 오류:', error);
+                  }
+                });
+              }
+              }
+              
+              // 마지막 날에 귀국 항공편 추가
+            if ((hasReturnFlight && i === totalDays) || (!hasReturnFlight && flightDetails.some(flight => flight.type === 'Flight_Return'))) {
+              const returnFlights = flightDetails.filter(flight => flight.type === 'Flight_Return');
+              
+              if (returnFlights.length > 0) {
+                returnFlights.forEach(flight => {
+                  console.log('[TravelPlanner] 생성된 일정에 귀국 항공편 추가');
+                  try {
+                    // 기본 일정 정보 생성
+                  const flightSchedule = {
+                      id: `${i}-flight-return-${Math.random().toString(36).substring(7)}`,
+                    name: '귀국 항공편',
+                      time: '18:00',
+                    address: '공항',
+                    category: '항공편',
+                    type: 'Flight_Return',
+                    duration: '1시간',
+                    notes: '',
+                    lat: null,
+                    lng: null,
+                    flightOfferDetails: {
+                      flightOfferData: flight.original_flight_offer || {},
+                      departureAirportInfo: flight.departure_airport_details || {},
+                      arrivalAirportInfo: flight.arrival_airport_details || {}
+                    }
+                  };
+                  
+                    // 항공편 정보가 있으면 세부 정보 채우기
+                    if (flight.original_flight_offer && 
+                        flight.original_flight_offer.itineraries && 
+                      flight.original_flight_offer.itineraries.length > 0) {
+                          
+                      // 왕복 항공편인 경우 두 번째 itinerary 사용, 아니면 첫 번째 사용
+                      // Flight_Return 타입이고 itineraries 배열 길이가 2 이상인 경우 두 번째 itinerary 사용
+                      const itineraryIndex = flight.type === 'Flight_Return' && flight.original_flight_offer.itineraries.length > 1 ? 1 : 0;
+                      const itinerary = flight.original_flight_offer.itineraries[itineraryIndex];
+                      
+                      console.log('[TravelPlanner] 생성된 일정의 귀국 항공편 itinerary 선택:', { 
+                        총개수: flight.original_flight_offer.itineraries.length,
+                        선택인덱스: itineraryIndex,
+                        항공편타입: flight.type
+                      });
+                      
+                    if (itinerary && itinerary.segments && itinerary.segments.length > 0) {
+                      const firstSegment = itinerary.segments[0];
+                        
+                        // 출발 시간 설정
+                        if (firstSegment.departure?.at) {
+                          const departureTime = new Date(firstSegment.departure.at);
+                          flightSchedule.time = departureTime.toLocaleTimeString('ko-KR', { 
+                            hour: '2-digit', 
+                            minute: '2-digit', 
+                            hour12: false 
+                          });
+                        }
+                        
+                        // 공항 정보 설정
+                        if (firstSegment.departure?.iataCode) {
+                          flightSchedule.address = `${firstSegment.departure.iataCode} 공항`;
+                          
+                          // 항공사 코드 있으면 추가
+                          if (firstSegment.carrierCode) {
+                            const carrierCode = firstSegment.carrierCode;
+                            flightSchedule.name = `${carrierCode} ${firstSegment.number || ''} (${firstSegment.departure.iataCode} → ${firstSegment.arrival.iataCode})`;
+                          }
+                        }
+                        
+                        // 비행 시간 계산
+                        if (firstSegment.departure?.at && firstSegment.arrival?.at) {
+                          const departureTime = new Date(firstSegment.departure.at);
+                          const arrivalTime = new Date(firstSegment.arrival.at);
+                          const durationMs = arrivalTime - departureTime;
+                          const hours = Math.floor(durationMs / (1000 * 60 * 60));
+                          const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+                          flightSchedule.duration = `${hours}시간 ${minutes}분`;
+                        }
+                      }
+                    }
+                    
+                    // 일정에 추가
+                    schedules.push(flightSchedule); // 마지막 위치에 추가
+                    console.log(`[TravelPlanner] 귀국 항공편을 일정에 추가함 (${i}일차)`, flightSchedule.name);
+                  } catch (error) {
+                    console.error('[TravelPlanner] 귀국 항공편 처리 중 오류:', error);
+                  }
+                });
+              }
+            }
+            
+            // 일정이 있는 날만 추가
+            if (schedules.length > 0) {
+              formattedPlans[i.toString()] = {
+                title: `${dateStr}`,
+              schedules: schedules
+            };
+            }
+          }
+          
+          if (Object.keys(formattedPlans).length > 0) {
+            console.log('[TravelPlanner] 기본 일정 생성 완료:', formattedPlans);
+            setTravelPlans(formattedPlans);
+            setDayOrder(Object.keys(formattedPlans));
+            setSelectedDay(Object.keys(formattedPlans)[0]);
+            
+            // 플랜 ID 설정
+            if (data.plan[0].plan_id) {
+              setPlanId(data.plan[0].plan_id);
+              console.log(`[TravelPlanner] 플랜 ID 설정: ${data.plan[0].plan_id}`);
+            }
+            
+            setIsLoadingPlan(false);
+            return; // 여기서 함수 종료
+          }
+        }
+      }
+
+      // 이전 방식: AI generated data 파싱
       let itineraryData = null;
 
       // 1. data.plan[0].plan_data 에서 itinerary 추출 시도 (Standard JS Access)
@@ -79,11 +803,26 @@ const TravelPlanner = () => {
                 if (jsonMatch && jsonMatch[1]) {
                   console.log('[TravelPlanner] JSON 데이터 추출 성공 (data.plan[0].plan_data)');
                   const parsedData = JSON.parse(jsonMatch[1]);
+                  console.log('[TravelPlanner] 파싱된 JSON 데이터 구조:', parsedData);
                   if (parsedData.itinerary) {
                     console.log('[TravelPlanner] itinerary 데이터 확인 (data.plan[0].plan_data)');
                     itineraryData = parsedData.itinerary;
+                  } else if (parsedData.days) {
+                    console.log('[TravelPlanner] days 형식 데이터 발견');
+                    // days 형식 처리 (day_1, day_2, ...)
+                    if (Array.isArray(parsedData.days)) {
+                      console.log('[TravelPlanner] days 배열 직접 사용');
+                      itineraryData = parsedData.days;
+                    } else {
+                      itineraryData = processNewDaysFormat(parsedData.days);
+                    }
                   } else {
-                    console.log('[TravelPlanner] 파싱된 JSON에 itinerary 없음');
+                    console.log('[TravelPlanner] 파싱된 JSON에 itinerary/days 없음');
+                    // 전체 데이터를 그대로 처리해봄
+                    if (parsedData.title && Array.isArray(parsedData.days)) {
+                      console.log('[TravelPlanner] 최상위 구조에서 days 배열 발견');
+                      itineraryData = parsedData.days;
+                    }
                   }
                 } else {
                   console.log('[TravelPlanner] textContent에서 JSON 블록 못 찾음:', textContent); // Log content if match fails
@@ -113,9 +852,26 @@ const TravelPlanner = () => {
             if (jsonMatch && jsonMatch[1]) {
               console.log('[TravelPlanner] JSON 데이터 추출 성공 (data.candidates)');
               const parsedData = JSON.parse(jsonMatch[1]);
+              console.log('[TravelPlanner] 파싱된 JSON 데이터 구조 (DynamoDB):', parsedData);
               if (parsedData.itinerary) {
                 console.log('[TravelPlanner] itinerary 데이터 확인 (data.candidates)');
                 itineraryData = parsedData.itinerary;
+              } else if (parsedData.days) {
+                console.log('[TravelPlanner] days 형식 데이터 발견 (DynamoDB)');
+                // days 형식 처리 (day_1, day_2, ...)
+                if (Array.isArray(parsedData.days)) {
+                  console.log('[TravelPlanner] days 배열 직접 사용 (DynamoDB)');
+                  itineraryData = parsedData.days;
+                } else {
+                  itineraryData = processNewDaysFormat(parsedData.days);
+                }
+              } else {
+                console.log('[TravelPlanner] 파싱된 JSON에 itinerary/days 없음 (DynamoDB)');
+                // 전체 데이터를 그대로 처리해봄 
+                if (parsedData.title && Array.isArray(parsedData.days)) {
+                  console.log('[TravelPlanner] 최상위 구조에서 days 배열 발견 (DynamoDB)');
+                  itineraryData = parsedData.days;
+                }
               }
             }
           }
@@ -145,10 +901,31 @@ const TravelPlanner = () => {
         
         itineraryData.forEach((dayPlan, index) => {
           const dayNumber = (dayPlan.day || index + 1).toString();
-          console.log(`[TravelPlanner] ${dayNumber}일차 데이터 처리 중...`, dayPlan);
-
+          // 날짜 계산
+          const date = new Date(startDate);
+          date.setDate(date.getDate() + index);
+          const dateStr = formatDateFns(date, 'M/d');
+          // 상세 제목(기존 title)에서 날짜 부분 제거
+          const detail = (dayPlan.title || '').replace(/^[0-9]{1,2}\/[0-9]{1,2}( |:)?/, '').trim();
+          const fullTitle = detail ? `${dateStr} ${detail}` : dateStr;
           let schedules = [];
-          if (dayPlan.activities && Array.isArray(dayPlan.activities)) {
+          
+          if (dayPlan.schedules && Array.isArray(dayPlan.schedules)) {
+            // Gemini 형식 호환성 (최우선) 
+            console.log(`[TravelPlanner] ${dayNumber}일차 schedules 발견 (Gemini 형식)`);
+            schedules = dayPlan.schedules.map((schedule, idx) => ({
+              id: schedule.id || `${dayNumber}-${idx}`,
+              name: schedule.name || '',
+              time: schedule.time || '00:00',
+              address: schedule.address || '',
+              category: schedule.category || '',
+              duration: schedule.duration || '1시간',
+              notes: schedule.notes || '',
+              lat: schedule.lat || null,
+              lng: schedule.lng || null,
+              cost: schedule.cost || '',
+            }));
+          } else if (dayPlan.activities && Array.isArray(dayPlan.activities)) {
             console.log(`[TravelPlanner] ${dayNumber}일차 activities 발견`);
             schedules = dayPlan.activities.map((activity, idx) => ({
               id: `${dayNumber}-${idx}`,
@@ -161,14 +938,27 @@ const TravelPlanner = () => {
               lat: activity.latitude || (dayPlan.last_location?.latitude),
               lng: activity.longitude || (dayPlan.last_location?.longitude)
             }));
-          } else if (dayPlan.schedules && Array.isArray(dayPlan.schedules)) {
-            // 기존 형식 호환성
-            console.log(`[TravelPlanner] ${dayNumber}일차 schedules 발견 (호환성)`);
-            schedules = dayPlan.schedules;
+          } else if (dayPlan.places && Array.isArray(dayPlan.places)) {
+            console.log(`[TravelPlanner] ${dayNumber}일차 places 발견`);
+            schedules = dayPlan.places.map((place, idx) => ({
+              id: `${dayNumber}-${idx}`,
+              name: place.title || place.name,
+              time: place.time || '00:00',
+              address: place.location || place.name || '',
+              category: place.category || '',
+              duration: place.duration || '1시간',
+              notes: place.description || '',
+              lat: place.latitude || (dayPlan.hotel?.latitude) || null,
+              lng: place.longitude || (dayPlan.hotel?.longitude) || null
+            }));
+          } else if (Array.isArray(dayPlan)) {
+            // 레거시 호환성
+            console.log(`[TravelPlanner] ${dayNumber}일차 배열 형식 발견 (레거시)`);
+            schedules = dayPlan;
           }
           
           formattedPlans[dayNumber] = {
-            title: dayPlan.title || `${dayNumber}일차`,
+            title: fullTitle,
             description: dayPlan.description || '',
             schedules: schedules
           };
@@ -179,6 +969,12 @@ const TravelPlanner = () => {
           setTravelPlans(formattedPlans);
           setDayOrder(Object.keys(formattedPlans));
           setSelectedDay(Object.keys(formattedPlans)[0]);
+          
+          // 플랜 ID 설정
+          if (data.plan && data.plan[0] && data.plan[0].id) {
+            setPlanId(data.plan[0].id);
+            console.log(`[TravelPlanner] 플랜 ID 설정: ${data.plan[0].id}`);
+          }
         } else {
           console.log('[TravelPlanner] 변환된 계획 데이터가 없음');
           // 기본 상태 유지
@@ -212,6 +1008,191 @@ const TravelPlanner = () => {
       setIsLoadingPlan(false);
       console.log('[TravelPlanner] loadTravelPlan 함수 종료');
     }
+  };
+  
+  // 새로운 days 형식 데이터 처리 함수 (day_1, day_2, ...)
+  const processNewDaysFormat = (daysData) => {
+    if (!daysData) return null;
+    
+    console.log('[TravelPlanner] processNewDaysFormat - 데이터 구조 확인:', daysData);
+    
+    // Gemini 형식: days 배열 형태인 경우 직접 반환
+    if (Array.isArray(daysData)) {
+      console.log('[TravelPlanner] Gemini 형식 - days 배열 형식 감지, 직접 사용');
+      return daysData;
+    }
+    
+    // Gemini 형식: 객체 안에 days 배열이 있는 경우
+    if (daysData.days && Array.isArray(daysData.days)) {
+      console.log('[TravelPlanner] Gemini 형식 - {title, days:[...]} 구조 감지, days 배열 직접 사용');
+      return daysData.days;
+    }
+    
+    const result = [];
+    
+    // 레거시 형식: day_1, day_2 형식의 객체
+    const dayKeys = Object.keys(daysData).filter(key => /^day_\d+$/.test(key)).sort((a, b) => {
+      const dayA = parseInt(a.split('_')[1]);
+      const dayB = parseInt(b.split('_')[1]);
+      return dayA - dayB;
+    });
+    
+    if (dayKeys.length > 0) {
+      console.log('[TravelPlanner] 레거시 형식 - day_숫자 키 발견:', dayKeys);
+      
+      dayKeys.forEach(dayKey => {
+        const day = parseInt(dayKey.split('_')[1]);
+        const dayData = daysData[dayKey];
+        
+        // 레거시 형식 day_숫자 객체를 days 배열 형식으로 변환
+        result.push({
+          day,
+          title: dayData.title || `${day}일차`,
+          date: dayData.date,
+          hotel: dayData.hotel,
+          places: dayData.places || [] // places 배열 유지
+        });
+      });
+    }
+    
+    console.log('[TravelPlanner] processNewDaysFormat 처리 결과:', result);
+    return result;
+  };
+  
+  // DynamoDB 형식 데이터를 JavaScript 객체로 변환
+  const convertFromDynamoDBFormat = (dynamoData) => {
+    if (!dynamoData) return {};
+    
+    const result = {};
+    
+    // 각 일차 데이터 처리
+    Object.keys(dynamoData).forEach(dayKey => {
+      if (dynamoData[dayKey] && dynamoData[dayKey].M) {
+        const dayData = dynamoData[dayKey].M;
+        
+        // 일차 제목
+        const title = dayData.title && dayData.title.S ? dayData.title.S : `${dayKey}일차`;
+        
+        // 스케줄 목록
+        let schedules = [];
+        if (dayData.schedules && dayData.schedules.L) {
+          schedules = dayData.schedules.L.map(scheduleItem => {
+            const schedule = scheduleItem.M;
+            const baseSchedule = {
+              id: schedule.id?.S || `${dayKey}-${Math.random().toString(36).substring(7)}`,
+              name: schedule.name?.S || '',
+              time: schedule.time?.S || '00:00',
+              address: schedule.address?.S || '',
+              category: schedule.category?.S || '',
+              duration: schedule.duration?.S || '1시간',
+              notes: schedule.notes?.S || '',
+              lat: schedule.lat?.N ? parseFloat(schedule.lat.N) : null,
+              lng: schedule.lng?.N ? parseFloat(schedule.lng.N) : null
+            };
+            
+            // 타입 정보가 있으면 추가
+            if (schedule.type && schedule.type.S) {
+              baseSchedule.type = schedule.type.S;
+            }
+            
+            // 호텔 상세 정보가 있으면 복원
+            if (schedule.hotelDetails && schedule.hotelDetails.M) {
+              const hotelDetails = schedule.hotelDetails.M;
+              baseSchedule.hotelDetails = {
+                hotelId: hotelDetails.hotelId?.S || '',
+                hotelName: hotelDetails.hotelName?.S || baseSchedule.name,
+                price: hotelDetails.price?.S || '',
+                rating: hotelDetails.rating?.N ? parseFloat(hotelDetails.rating.N) : 0,
+                reviewCount: hotelDetails.reviewCount?.N ? parseInt(hotelDetails.reviewCount.N) : 0,
+                amenities: hotelDetails.amenities?.L ? 
+                  hotelDetails.amenities.L.map(item => item.S) : 
+                  (hotelDetails.amenities?.S ? hotelDetails.amenities.S.split(', ') : []),
+                checkin: hotelDetails.checkin?.S || '',
+                checkout: hotelDetails.checkout?.S || '',
+                // 추가 호텔 정보 필드
+                imageUrl: hotelDetails.imageUrl?.S || '',
+                address: hotelDetails.address?.S || '',
+                description: hotelDetails.description?.S || ''
+              };
+            }
+            
+            // 항공편 상세 정보가 있으면 복원
+            if (schedule.flightOfferDetails && schedule.flightOfferDetails.M) {
+              const flightDetails = schedule.flightOfferDetails.M;
+              try {
+                baseSchedule.flightOfferDetails = {
+                  flightOfferData: flightDetails.flightOfferData?.S ? 
+                    JSON.parse(flightDetails.flightOfferData.S) : 
+                    (flightDetails.flightOfferData?.M ? extractDynamoDbObject(flightDetails.flightOfferData.M) : {}),
+                  departureAirportInfo: flightDetails.departureAirportInfo?.S ? 
+                    JSON.parse(flightDetails.departureAirportInfo.S) : 
+                    (flightDetails.departureAirportInfo?.M ? extractDynamoDbObject(flightDetails.departureAirportInfo.M) : {}),
+                  arrivalAirportInfo: flightDetails.arrivalAirportInfo?.S ? 
+                    JSON.parse(flightDetails.arrivalAirportInfo.S) : 
+                    (flightDetails.arrivalAirportInfo?.M ? extractDynamoDbObject(flightDetails.arrivalAirportInfo.M) : {})
+                };
+              } catch (error) {
+                console.error(`[TravelPlanner] 항공편 데이터 파싱 실패:`, error);
+                baseSchedule.flightOfferDetails = {
+                  flightOfferData: {},
+                  departureAirportInfo: {},
+                  arrivalAirportInfo: {}
+                };
+              }
+            }
+            
+            return baseSchedule;
+          });
+        }
+        
+        // 결과에 추가
+        result[dayKey] = {
+          title,
+          schedules
+        };
+      }
+    });
+    
+    return result;
+  };
+  
+  // DynamoDB 객체를 일반 JS 객체로 추출하는 헬퍼 함수
+  const extractDynamoDbObject = (dynamoObject) => {
+    if (!dynamoObject || typeof dynamoObject !== 'object') return {};
+    
+    const result = {};
+    
+    Object.keys(dynamoObject).forEach(key => {
+      const value = dynamoObject[key];
+      
+      if (value.S) {
+        // 문자열
+        result[key] = value.S;
+      } else if (value.N) {
+        // 숫자
+        result[key] = parseFloat(value.N);
+      } else if (value.BOOL !== undefined) {
+        // 불리언
+        result[key] = value.BOOL;
+      } else if (value.NULL) {
+        // null
+        result[key] = null;
+      } else if (value.L) {
+        // 배열
+        result[key] = value.L.map(item => {
+          if (item.S) return item.S;
+          if (item.N) return parseFloat(item.N);
+          if (item.M) return extractDynamoDbObject(item.M);
+          if (item.BOOL !== undefined) return item.BOOL;
+          return null;
+        });
+      } else if (value.M) {
+        // 객체
+        result[key] = extractDynamoDbObject(value.M);
+      }
+    });
+    
+    return result;
   };
 
   // 컴포넌트 마운트 시 최신 여행 계획 로드
@@ -268,7 +1249,9 @@ const TravelPlanner = () => {
   };
 
   const getDayTitle = (dayNumber) => {
-    return `${dayNumber}일차`;
+    const date = new Date(startDate);
+    date.setDate(date.getDate() + dayNumber - 1);
+    return formatDateFns(date, 'M/d');
   };
 
   const reorderDays = (plans) => {
@@ -290,7 +1273,7 @@ const TravelPlanner = () => {
     const newDayNumber = Math.max(...Object.keys(travelPlans).map(Number)) + 1;
     const newPlans = {
       ...travelPlans,
-          [newDayNumber]: {
+      [newDayNumber]: {
         title: getDayTitle(newDayNumber),
         schedules: []
       }
@@ -317,9 +1300,9 @@ const TravelPlanner = () => {
       const newDayNumber = index + 1;
       newPlans[newDayNumber] = {
         ...travelPlans[oldDay],
-        title: `${newDayNumber}일차`
-        };
-      });
+        title: getDayTitle(newDayNumber)
+      };
+    });
 
     // 새로운 dayOrder 생성
     const newDayOrder = Object.keys(newPlans);
@@ -422,14 +1405,21 @@ const TravelPlanner = () => {
     const [reorderedDay] = newDayOrder.splice(result.source.index, 1);
     newDayOrder.splice(result.destination.index, 0, reorderedDay);
 
-    // 새로운 순서로 여행 계획 재구성
+    // 새로운 순서대로 travelPlans 재정렬 (key와 title 모두 재정렬)
     const newTravelPlans = {};
-    newDayOrder.forEach((day) => {
-      newTravelPlans[day] = travelPlans[day];
+    newDayOrder.forEach((dayKey, index) => {
+      const date = new Date(startDate);
+      date.setDate(date.getDate() + index);
+      newTravelPlans[(index + 1).toString()] = {
+        ...travelPlans[dayKey],
+        title: formatDateFns(date, 'M/d')
+      };
     });
 
-    setDayOrder(newDayOrder);
+    setDayOrder(Object.keys(newTravelPlans));
     setTravelPlans(newTravelPlans);
+    // 이동한 날짜에 포커스
+    setSelectedDay(result.destination.index + 1);
   };
 
   // 사이드바에서 장소 선택 시 메인 영역으로 전달
@@ -453,441 +1443,1164 @@ const TravelPlanner = () => {
     }
   };
 
+  const handleHotelSearchResults = (results) => {
+    setHotelSearchResults(results);
+  };
+
+  const handleHotelSelect = (hotel) => {
+    setSelectedHotel(hotel);
+    // 선택된 호텔을 일정에 추가하는 로직
+    if (selectedDay) {
+      const newSchedule = {
+        id: `hotel-${hotel.hotel_id}`,
+        name: hotel.hotel_name,
+        time: '체크인',
+        address: hotel.address,
+        category: '숙소',
+        duration: '1박',
+        notes: `가격: ${hotel.price}`,
+        lat: hotel.latitude,
+        lng: hotel.longitude
+      };
+
+      setTravelPlans(prev => ({
+        ...prev,
+        [selectedDay]: {
+          ...prev[selectedDay],
+          schedules: [...(prev[selectedDay]?.schedules || []), newSchedule]
+        }
+      }));
+    }
+  };
+
+  // --- Flight Search Handlers ---
+  const handleCitySearch = useCallback(async (value, type) => {
+    if (!value || value.length < 2) {
+        if (type === 'origin') setOriginCities([]);
+        else setDestinationCities([]);
+        return;
+    };
+
+    setIsLoadingCities(true);
+    setFlightError(null);
+    try {
+        const response = await amadeusApi.searchCities(value);
+        if (response && response.data && Array.isArray(response.data)) {
+            const options = response.data.map(location => ({
+                name: location.name,
+                iataCode: location.iataCode,
+                address: location.address?.cityName || '',
+                id: location.id || `${location.iataCode}-${location.name}`
+            }));
+             if (type === 'origin') setOriginCities(options);
+             else setDestinationCities(options);
+        } else {
+             if (type === 'origin') setOriginCities([]);
+             else setDestinationCities([]);
+        }
+    } catch (err) {
+        console.error("City search error:", err);
+        setFlightError(err.message || '도시 검색 중 오류 발생');
+        if (type === 'origin') setOriginCities([]);
+        else setDestinationCities([]);
+    } finally {
+        setIsLoadingCities(false);
+    }
+  }, []);
+
+  const handleFlightSearch = useCallback(async () => {
+    setFlightError(null);
+    setFlightResults([]);
+    setFlightDictionaries(null); // 검색 시작 시 초기화
+
+    const {
+        selectedOrigin, selectedDestination, departureDate, returnDate,
+        adults, children, infants, travelClass,
+        nonStop, currencyCode, maxPrice, max
+     } = flightSearchParams;
+
+    // Updated Validation with clearer messages
+    let missingFields = [];
+    if (!selectedOrigin) missingFields.push('출발지');
+    if (!selectedDestination) missingFields.push('도착지');
+    if (!departureDate) missingFields.push('가는 날짜');
+    if (!adults || adults < 1) missingFields.push('성인 수(1명 이상)');
+
+    if (missingFields.length > 0) {
+        setFlightError(`${missingFields.join(', ')} 항목을 입력해주세요.`);
+        return;
+    }
+    if (infants > adults) {
+        setFlightError('유아 수는 성인 수를 초과할 수 없습니다.');
+        return;
+    }
+     const totalPassengers = (parseInt(adults, 10) || 0) + (parseInt(children, 10) || 0);
+     if (totalPassengers > 9) {
+          setFlightError('총 탑승객(성인+소아)은 9명을 초과할 수 없습니다.');
+          return;
+     }
+
+    setIsLoadingFlights(true);
+    try {
+        const paramsToApi = {
+             originCode: selectedOrigin.iataCode,
+             destinationCode: selectedDestination.iataCode,
+             departureDate: departureDate.toISOString().split('T')[0],
+             returnDate: returnDate ? returnDate.toISOString().split('T')[0] : null,
+             adults: parseInt(adults, 10),
+             ...(children > 0 && { children: parseInt(children, 10) }),
+             ...(infants > 0 && { infants: parseInt(infants, 10) }),
+             ...(travelClass && { travelClass }),
+             ...(nonStop && { nonStop }),
+             currencyCode: currencyCode || 'KRW',
+             ...(maxPrice && { maxPrice: parseInt(maxPrice, 10) }),
+             max: max || 10,
+        };
+
+        const response = await amadeusApi.searchFlights(paramsToApi);
+        if (response && response.data && Array.isArray(response.data) && response.dictionaries) {
+             setFlightResults(response.data);
+             setFlightDictionaries(response.dictionaries);
+             
+             if(response.data.length === 0) {
+                 setFlightError('검색 조건에 맞는 항공편이 없습니다.');
+             }
+        } else if (response && response.data && Array.isArray(response.data) && !response.dictionaries) {
+            // dictionaries가 없는 경우 (이전 구조 호환 또는 API 변경)
+            setFlightResults(response.data);
+            setFlightDictionaries(null); // dictionaries가 없음을 명시
+            console.warn("[TravelPlanner] Dictionaries not found in flight search response. Some details might be missing.");
+            if(response.data.length === 0) {
+                 setFlightError('검색 조건에 맞는 항공편이 없습니다.');
+            }
+        } else {
+            setFlightResults([]);
+            setFlightDictionaries(null);
+            setFlightError('항공편 검색 결과가 없거나 형식이 올바르지 않습니다.');
+            console.log("Unexpected flight search response:", response);
+        }
+    } catch (err) {
+        console.error("Flight search error:", err);
+        setFlightError(err.message || '항공편 검색 중 오류 발생');
+        setFlightResults([]);
+        setFlightDictionaries(null);
+    } finally {
+        setIsLoadingFlights(false);
+    }
+  }, [flightSearchParams]);
+
+  // --- End Flight Search Handlers ---
+
+  // 날짜 수정 다이얼로그 열기
+  const handleOpenDateEditDialog = () => {
+    setIsDateEditDialogOpen(true);
+  };
+
+  // 날짜 수정 처리
+  const handleDateChange = (newDate) => {
+    setStartDate(newDate);
+    // 모든 일정의 날짜 업데이트
+    const newPlans = {};
+    Object.keys(travelPlans).forEach((day, index) => {
+      const date = new Date(newDate);
+      date.setDate(date.getDate() + index);
+      const oldTitle = travelPlans[day].title || '';
+      // 날짜(예: 5/10)로 시작하는 부분만 바꾸고, 상세 제목은 유지
+      const detail = oldTitle.replace(/^[0-9]{1,2}\/[0-9]{1,2}( |:)?/, '').trim();
+      const newTitle = detail ? `${formatDateFns(date, 'M/d')} ${detail}`.trim() : formatDateFns(date, 'M/d');
+      newPlans[day] = {
+        ...travelPlans[day],
+        title: newTitle
+      };
+    });
+    setTravelPlans(newPlans);
+    setIsDateEditDialogOpen(false);
+  };
+
+  useEffect(() => {
+    if (currentPlan && currentPlan.title) {
+      setTempTitle(currentPlan.title);
+    }
+  }, [selectedDay, currentPlan.title]);
+
+  // TravelPlanner 컴포넌트 내부에 저장 함수 추가
+  const onSaveTravelPlans = () => {
+    // 저장 다이얼로그 열기
+    setPlanTitle(''); // 모달 열 때 입력 초기화
+    setIsSaveDialogOpen(true);
+  };
+
+  // 실제 저장 처리 함수 추가
+  const handleSaveConfirm = async () => {
+    if (!planTitle.trim()) {
+      alert('여행 계획의 제목을 입력해주세요.');
+      return;
+    }
+    
+    try {
+      setIsSaving(true); // 저장 중 상태 설정
+      
+      // 저장할 데이터 구성 - 일반 JavaScript 객체 형식
+      // days 배열 구성: schedules에 호텔과 항공편 데이터도 포함
+      const planData = {
+        title: planTitle,
+        days: Object.keys(travelPlans).map(day => ({
+          day: parseInt(day),
+          title: travelPlans[day].title,
+          schedules: travelPlans[day].schedules.map(schedule => {
+            // 기본 일정 데이터
+            const baseSchedule = {
+              id: schedule.id || `${day}-${Math.random().toString(36).substring(7)}`,
+              name: schedule.name || '',
+              time: schedule.time || '00:00',
+              address: schedule.address || '',
+              category: schedule.category || '',
+              duration: schedule.duration || '1시간',
+              notes: schedule.notes || '',
+              lat: schedule.lat || null,
+              lng: schedule.lng || null
+            };
+            
+            // 타입 정보가 있으면 추가
+            if (schedule.type) {
+              baseSchedule.type = schedule.type;
+            }
+            
+            // 호텔 상세 정보가 있으면 추가
+            if (schedule.hotelDetails) {
+              baseSchedule.hotelDetails = { ...schedule.hotelDetails };
+              
+              // 호텔 어매니티가 문자열인 경우 배열로 변환
+              if (typeof baseSchedule.hotelDetails.amenities === 'string') {
+                baseSchedule.hotelDetails.amenities = baseSchedule.hotelDetails.amenities.split(', ');
+              }
+              
+              // 숫자 필드 확인
+              if (baseSchedule.hotelDetails.rating && typeof baseSchedule.hotelDetails.rating === 'string') {
+                baseSchedule.hotelDetails.rating = parseFloat(baseSchedule.hotelDetails.rating);
+              }
+              if (baseSchedule.hotelDetails.reviewCount && typeof baseSchedule.hotelDetails.reviewCount === 'string') {
+                baseSchedule.hotelDetails.reviewCount = parseInt(baseSchedule.hotelDetails.reviewCount);
+              }
+            }
+            
+            // 항공편 상세 정보가 있으면 추가 (DynamoDB 형식 수정)
+            if (schedule.flightOfferDetails) {
+              // 기존 flightOfferDetails 객체 복제하지 않고 새로 구성
+              // 이렇게 하면 DynamoDB 변환 문제 방지
+              baseSchedule.flightOfferDetails = {
+                flightOfferData: typeof schedule.flightOfferDetails.flightOfferData === 'string' 
+                  ? JSON.parse(schedule.flightOfferDetails.flightOfferData)
+                  : schedule.flightOfferDetails.flightOfferData || {},
+                  
+                departureAirportInfo: typeof schedule.flightOfferDetails.departureAirportInfo === 'string'
+                  ? JSON.parse(schedule.flightOfferDetails.departureAirportInfo)
+                  : schedule.flightOfferDetails.departureAirportInfo || {},
+                  
+                arrivalAirportInfo: typeof schedule.flightOfferDetails.arrivalAirportInfo === 'string'
+                  ? JSON.parse(schedule.flightOfferDetails.arrivalAirportInfo)
+                  : schedule.flightOfferDetails.arrivalAirportInfo || {}
+              };
+              
+              // 중첩된 객체에서 NaN, Infinity 등을 제거하기 위한 정규화 과정
+              baseSchedule.flightOfferDetails = JSON.parse(
+                JSON.stringify(baseSchedule.flightOfferDetails, (key, value) => {
+                  // NaN, Infinity 등은 null로 변환
+                  if (typeof value === 'number' && !Number.isFinite(value)) {
+                    return null;
+                  }
+                  return value;
+                })
+              );
+            }
+            
+            return baseSchedule;
+          })
+        })),
+        startDate: formatDateFns(startDate, 'yyyy-MM-dd') // 시작일 포함
+      };
+      
+      console.log('[TravelPlanner] 여행 계획 저장 시도:', planData);
+      
+      // SavePlanFunction API 호출
+      try {
+        // travelApi.savePlan 함수 호출 (API Gateway의 /api/travel/save 엔드포인트 호출)
+        const response = await travelApi.savePlan(planData);
+        
+        if (response && response.success) {
+          // 응답에서 새로 생성된 ID를 상태에 저장
+          if (response.plan_id) {
+            setPlanId(response.plan_id);
+            console.log(`[TravelPlanner] 새 계획 ID 받음: ${response.plan_id}`);
+          }
+          
+          console.log('[TravelPlanner] 여행 계획 저장 성공:', response);
+          
+          // 로컬스토리지에도 저장 (백업 또는 오프라인 지원)
+          const storageData = {
+            planData: planData,
+            planId: response.plan_id, // 서버에서 받은 ID 사용
+            lastSaved: new Date().toISOString()
+          };
+          localStorage.setItem('savedTravelPlan', JSON.stringify(storageData));
+          
+          alert(response.message || '여행 계획이 성공적으로 저장되었습니다!');
+        } else {
+          throw new Error(response.message || '서버 응답이 올바르지 않습니다.');
+        }
+      } catch (apiError) {
+        console.error('[TravelPlanner] 서버 저장 실패:', apiError);
+        
+        // API 실패 시에도 로컬 저장 시도
+        const storageData = {
+          planData: planData,
+          planId, // 있는 경우에만 ID 포함
+          lastSaved: new Date().toISOString(),
+          isLocalOnly: true // 로컬에만 저장됨을 표시
+        };
+        localStorage.setItem('savedTravelPlan', JSON.stringify(storageData));
+        
+        alert('서버 저장에 실패했습니다. 계획은 기기에만 저장되었습니다.');
+      }
+    } catch (error) {
+      console.error('여행 계획 저장 실패:', error);
+      alert('여행 계획 저장 중 오류가 발생했습니다.');
+    } finally {
+      setIsSaving(false);
+      setIsSaveDialogOpen(false);
+    }
+  };
+
+  // startDate가 변경될 때 숙소 계획의 checkIn, checkOut도 동기화
+  useEffect(() => {
+    const checkIn = startDate;
+    const checkOut = new Date(startDate);
+    checkOut.setDate(checkOut.getDate() + 1);
+    setAccommodationFormData(prev => ({
+      ...prev,
+      checkIn,
+      checkOut
+    }));
+  }, [startDate]);
+
+  // --- 날짜 동기화를 위한 useEffect --- 
+  useEffect(() => {
+    if (startDate && Object.keys(travelPlans).length > 0) {
+      const currentTravelStartDate = startDate;
+      
+      // 여행 마지막 날짜 계산
+      const numberOfDays = Object.keys(travelPlans).length;
+      const currentTravelEndDate = new Date(startDate);
+      if (numberOfDays > 0) { // 최소 1일 이상일 때만 계산
+        currentTravelEndDate.setDate(startDate.getDate() + numberOfDays - 1);
+      }
+
+      // 비행 계획의 날짜가 (1) 아직 설정되지 않았거나 
+      // (2) 현재 여행 계획의 시작/종료일과 다를 경우 업데이트
+      // 이렇게 하면 사용자가 비행 계획 탭에서 직접 날짜를 바꾼 경우는 유지하려고 시도합니다.
+      // 하지만 여행 계획 탭에서 날짜를 바꾸면, 그 변경이 우선시되어 비행 계획 날짜도 바뀔 수 있습니다.
+      const shouldUpdateDeparture = !flightSearchParams.departureDate || flightSearchParams.departureDate.getTime() !== currentTravelStartDate.getTime();
+      const shouldUpdateReturn = numberOfDays > 0 && (!flightSearchParams.returnDate || flightSearchParams.returnDate.getTime() !== currentTravelEndDate.getTime());
+      const isOneDayTripForFlight = numberOfDays === 1; // 여행 기간이 하루일 경우 비행계획의 returnDate는 null로
+
+      if (shouldUpdateDeparture || (numberOfDays > 0 && shouldUpdateReturn) || (isOneDayTripForFlight && flightSearchParams.returnDate !== null) ) {
+        console.log('[TravelPlanner] Syncing dates from Travel Plan to Flight Plan.');
+        console.log('Travel Start:', currentTravelStartDate, 'Travel End:', currentTravelEndDate);
+        setFlightSearchParams(prevParams => ({
+          ...prevParams,
+          departureDate: currentTravelStartDate,
+          // 여행 기간이 하루면 returnDate는 null (편도 간주), 아니면 계산된 종료일
+          returnDate: numberOfDays > 1 ? currentTravelEndDate : null 
+        }));
+      }
+    }
+  }, [startDate, travelPlans, setFlightSearchParams]); // flightSearchParams를 의존성에 넣으면 무한루프 가능성 있어 제외
+  // --- 날짜 동기화 useEffect 끝 ---
+
+  // --- 공항 정보 로딩 useEffect (FlightPlan에서 가져옴) ---
+  useEffect(() => {
+    if (!flightResults || flightResults.length === 0) {
+        setAirportInfoCache({}); 
+        setLoadingAirportInfo(new Set());
+        return; 
+    }
+
+    const uniqueIataCodes = new Set();
+    flightResults.forEach(flight => {
+        flight.itineraries.forEach(itinerary => {
+            itinerary.segments.forEach(segment => {
+                if (segment.departure?.iataCode) uniqueIataCodes.add(segment.departure.iataCode);
+                if (segment.arrival?.iataCode) uniqueIataCodes.add(segment.arrival.iataCode);
+                if (segment.stops) {
+                    segment.stops.forEach(stop => { if (stop.iataCode) uniqueIataCodes.add(stop.iataCode); });
+                }
+            });
+        });
+    });
+
+    const codesToFetch = [...uniqueIataCodes].filter(code => code && !airportInfoCache[code] && !(loadingAirportInfo && loadingAirportInfo.has(code)));
+
+    if (codesToFetch.length > 0) {
+        setLoadingAirportInfo(prev => new Set([...prev, ...codesToFetch]));
+        
+        const fetchPromises = codesToFetch.map(iataCode => 
+            amadeusApi.getAirportDetails(iataCode).then(info => ({ [iataCode]: info || { warning: 'Failed to fetch details'} }))
+        );
+
+        Promise.all(fetchPromises).then(results => {
+            const newCacheEntries = results.reduce((acc, current) => ({ ...acc, ...current }), {});
+            setAirportInfoCache(prevCache => ({ ...prevCache, ...newCacheEntries }));
+            setLoadingAirportInfo(prev => {
+                const next = new Set(prev);
+                codesToFetch.forEach(code => next.delete(code));
+                return next;
+            });
+        });
+    }
+  }, [flightResults]); // flightResults가 변경될 때 실행
+ // --- 공항 정보 로딩 useEffect 끝 ---
+
+  const handleAddFlightToSchedule = useCallback((flightOffer, dictionaries, currentAirportCache) => {
+    console.log('[TravelPlanner] Adding flight to schedule:', flightOffer, dictionaries, currentAirportCache);
+    if (!flightOffer || !flightOffer.itineraries || flightOffer.itineraries.length === 0) {
+      console.error('Invalid flightOffer data for adding to schedule');
+      return;
+    }
+    
+    // 항공편 캐시 업데이트
+    if (dictionaries) {
+      setFlightDictionaries(prevDict => ({
+        ...prevDict,
+        ...dictionaries
+      }));
+    }
+    
+    if (currentAirportCache) {
+      setAirportInfoCache(prevCache => ({
+        ...prevCache,
+        ...currentAirportCache
+      }));
+    }
+    
+    // 기존 항공편을 찾기
+    const existingDepartureSchedule = findExistingFlightSchedule(travelPlans, 'Flight_Departure');
+    const existingReturnSchedule = findExistingFlightSchedule(travelPlans, 'Flight_Return');
+    
+    console.log('[TravelPlanner] 기존 항공편 검색 결과:', { 
+      existingDepartureSchedule: !!existingDepartureSchedule, 
+      existingReturnSchedule: !!existingReturnSchedule 
+    });
+    
+    const newSchedules = {};
+    const isRoundTrip = flightOffer.itineraries.length > 1;
+    const outboundItinerary = flightOffer.itineraries[0];
+    const outboundLastSegment = outboundItinerary.segments[outboundItinerary.segments.length - 1];
+    const outboundArrivalAirportInfo = currentAirportCache?.[outboundLastSegment.arrival.iataCode];
+    
+    // DynamoDB 저장 문제 해결을 위한 데이터 정규화
+    const normalizeDataForStorage = (data) => {
+      if (!data) return {};
+      return JSON.parse(JSON.stringify(data, (key, value) => {
+        // NaN, Infinity 등은 null로 변환
+        if (typeof value === 'number' && !Number.isFinite(value)) {
+          return null;
+        }
+        return value;
+      }));
+    };
+    
+    // 새 출발 항공편 정보 생성
+    const departureSchedule = {
+      id: existingDepartureSchedule?.id || `flight-departure-${flightOffer.id}-${Date.now()}`,
+      name: `${outboundItinerary.segments[0].departure.iataCode} → ${outboundLastSegment.arrival.iataCode} 항공편`,
+      time: new Date(outboundLastSegment.arrival.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+      address: currentAirportCache?.[outboundLastSegment.arrival.iataCode]?.koreanFullName || 
+              currentAirportCache?.[outboundLastSegment.arrival.iataCode]?.name || 
+              outboundLastSegment.arrival.iataCode,
+      category: '항공편',
+      type: 'Flight_Departure',
+      duration: formatDuration(outboundItinerary.duration),
+      notes: `가격: ${formatPrice(flightOffer.price.grandTotal || flightOffer.price.total, flightOffer.price.currency)}`,
+      lat: outboundArrivalAirportInfo?.geoCode?.latitude || dictionaries?.locations?.[outboundLastSegment.arrival.iataCode]?.geoCode?.latitude || null,
+      lng: outboundArrivalAirportInfo?.geoCode?.longitude || dictionaries?.locations?.[outboundLastSegment.arrival.iataCode]?.geoCode?.longitude || null,
+      flightOfferDetails: {
+        flightOfferData: normalizeDataForStorage(flightOffer),
+        departureAirportInfo: normalizeDataForStorage(currentAirportCache?.[outboundItinerary.segments[0].departure.iataCode]),
+        arrivalAirportInfo: normalizeDataForStorage(outboundArrivalAirportInfo),
+      }
+    };
+    
+    // 기존 출발 항공편을 찾은 경우 해당 일정에서 교체
+    if (existingDepartureSchedule) {
+      const dayKey = findDayKeyForSchedule(travelPlans, existingDepartureSchedule.id);
+      if (dayKey) {
+        console.log(`[TravelPlanner] ${dayKey}일차에서 기존 출발 항공편을 교체합니다.`);
+        const daySchedules = [...(travelPlans[dayKey]?.schedules || [])];
+        const scheduleIndex = daySchedules.findIndex(s => s.id === existingDepartureSchedule.id);
+        
+        if (scheduleIndex !== -1) {
+          daySchedules[scheduleIndex] = departureSchedule;
+          newSchedules[dayKey] = {
+            ...travelPlans[dayKey],
+            schedules: daySchedules
+          };
+        }
+      }
+    } else {
+      // 기존 항공편이 없으면 첫째 날에 추가
+      const firstDayKey = dayOrder[0] || '1';
+      newSchedules[firstDayKey] = {
+        ...travelPlans[firstDayKey],
+        schedules: [departureSchedule, ...(travelPlans[firstDayKey]?.schedules || [])]
+      };
+    }
+    
+    // 왕복 항공편인 경우 귀국 정보도 처리
+    if (isRoundTrip && flightOffer.itineraries.length > 1) {
+      const inboundItinerary = flightOffer.itineraries[1];
+      const inboundFirstSegment = inboundItinerary.segments[0];
+      const inboundLastSegment = inboundItinerary.segments[inboundItinerary.segments.length - 1];
+      const inboundDepartureAirportInfo = currentAirportCache?.[inboundFirstSegment.departure.iataCode];
+      
+      // 귀국 항공편 정보 생성
+      const returnSchedule = {
+        id: existingReturnSchedule?.id || `flight-return-${flightOffer.id}-${Date.now()}`,
+        name: `${inboundFirstSegment.departure.iataCode} → ${inboundLastSegment.arrival.iataCode} 항공편`,
+        time: new Date(inboundFirstSegment.departure.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+        address: currentAirportCache?.[inboundFirstSegment.departure.iataCode]?.koreanFullName || 
+                currentAirportCache?.[inboundFirstSegment.departure.iataCode]?.name || 
+                inboundFirstSegment.departure.iataCode,
+        category: '항공편',
+        type: 'Flight_Return',
+        duration: formatDuration(inboundItinerary.duration),
+        notes: `가격: ${formatPrice(flightOffer.price.grandTotal || flightOffer.price.total, flightOffer.price.currency)}`,
+        lat: inboundDepartureAirportInfo?.geoCode?.latitude || dictionaries?.locations?.[inboundFirstSegment.departure.iataCode]?.geoCode?.latitude || null,
+        lng: inboundDepartureAirportInfo?.geoCode?.longitude || dictionaries?.locations?.[inboundFirstSegment.departure.iataCode]?.geoCode?.longitude || null,
+        flightOfferDetails: {
+          flightOfferData: normalizeDataForStorage(flightOffer),
+          departureAirportInfo: normalizeDataForStorage(inboundDepartureAirportInfo),
+          arrivalAirportInfo: normalizeDataForStorage(currentAirportCache?.[inboundLastSegment.arrival.iataCode]),
+        }
+      };
+      
+      // 기존 귀국 항공편을 찾은 경우 해당 일정에서 교체
+      if (existingReturnSchedule) {
+        const dayKey = findDayKeyForSchedule(travelPlans, existingReturnSchedule.id);
+        if (dayKey) {
+          console.log(`[TravelPlanner] ${dayKey}일차에서 기존 귀국 항공편을 교체합니다.`);
+          const daySchedules = [...(travelPlans[dayKey]?.schedules || [])];
+          const scheduleIndex = daySchedules.findIndex(s => s.id === existingReturnSchedule.id);
+          
+          if (scheduleIndex !== -1) {
+            daySchedules[scheduleIndex] = returnSchedule;
+            newSchedules[dayKey] = {
+              ...travelPlans[dayKey],
+              schedules: daySchedules
+            };
+          }
+        }
+      } else {
+        // 기존 항공편이 없으면 마지막 날에 추가
+        const finalDayKey = dayOrder[dayOrder.length - 1] || '1';
+        
+        // 이미 newSchedules에 finalDayKey가 있는지 확인 (첫날과 마지막 날이 같은 경우)
+        if (newSchedules[finalDayKey]) {
+          newSchedules[finalDayKey] = {
+            ...newSchedules[finalDayKey],
+            schedules: [...newSchedules[finalDayKey].schedules, returnSchedule]
+          };
+        } else {
+          newSchedules[finalDayKey] = {
+            ...travelPlans[finalDayKey],
+            schedules: [...(travelPlans[finalDayKey]?.schedules || []), returnSchedule]
+          };
+        }
+      }
+    }
+    
+    // 새 일정 반영
+    setTravelPlans(prevPlans => ({
+      ...prevPlans,
+      ...newSchedules
+    }));
+    
+    // 사용자에게 작업 완료 알림
+    if (existingDepartureSchedule || existingReturnSchedule) {
+      alert('기존 항공편이 새 항공편으로 교체되었습니다!');
+    } else {
+      alert('항공편이 여행 계획에 추가되었습니다!');
+    }
+  }, [travelPlans, dayOrder, setTravelPlans]);
+  
+  // 기존 항공편 일정을 찾는 헬퍼 함수
+  const findExistingFlightSchedule = useCallback((plans, flightType) => {
+    for (const dayKey of Object.keys(plans)) {
+      const daySchedules = plans[dayKey]?.schedules || [];
+      const existingFlight = daySchedules.find(s => s.type === flightType);
+      if (existingFlight) {
+        return existingFlight;
+      }
+    }
+    return null;
+  }, []);
+
+  // 특정 일정이 속한 일차를 찾는 헬퍼 함수
+  const findDayKeyForSchedule = useCallback((plans, scheduleId) => {
+    for (const dayKey of Object.keys(plans)) {
+      const daySchedules = plans[dayKey]?.schedules || [];
+      if (daySchedules.some(s => s.id === scheduleId)) {
+        return dayKey;
+      }
+    }
+    return null;
+  }, []);
+
+  // 항공편 일정 항목을 렌더링하는 함수 추가
+  const renderScheduleItem = (schedule, index) => {
+    // 항공편 타입 확인 (Flight_Departure 또는 Flight_Return)
+    const isFlightItem = schedule.type === 'Flight_Departure' || schedule.type === 'Flight_Return';
+    
+    return (
+      <Draggable key={schedule.id || `${selectedDay}-${index}`} draggableId={schedule.id || `${selectedDay}-${index}`} index={index}>
+        {(provided) => (
+          <ListItem 
+            ref={provided.innerRef} 
+            {...provided.draggableProps} 
+            onClick={() => isFlightItem && handleOpenPlannerFlightDetail(schedule)}
+            sx={{ 
+                p: 2, 
+                bgcolor: isFlightItem ? '#e3f2fd' : (schedule.type === 'accommodation' ? '#fff0e6' : 'background.paper'), 
+                borderRadius: 1, border: 1, borderColor: 'divider', 
+                '&:hover': { bgcolor: 'action.hover', cursor: isFlightItem ? 'pointer' : 'grab' }, 
+            }}
+            secondaryAction={
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <IconButton edge="end" aria-label="edit" onClick={(e) => { e.stopPropagation(); handleEditSchedule(schedule); }} sx={{ mr: 1 }}>
+                        <EditIcon />
+                    </IconButton>
+                    <IconButton edge="end" aria-label="delete" onClick={(e) => { e.stopPropagation(); handleDeleteSchedule(schedule.id); }}>
+                        <DeleteIcon />
+                    </IconButton>
+                </Box>
+            }
+          >
+            <div {...provided.dragHandleProps} style={{ marginRight: 8, cursor: isFlightItem ? 'pointer' : 'grab' }}>
+              <DragIndicatorIcon color="action" />
+            </div>
+            <ListItemText
+              primary={
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Typography variant="subtitle1">
+                    {schedule.time}
+                  </Typography>
+                  <Typography variant="subtitle1" sx={{ ml: 2, color: isFlightItem ? '#0277bd' : 'inherit', fontWeight: isFlightItem ? 'bold' : 'normal' }}>
+                    {schedule.name}
+                  </Typography>
+                </Box>
+              }
+              secondary={
+                <React.Fragment>
+                  <Typography component="span" variant="body2" color={isFlightItem ? 'info.main' : 'text.primary'}>
+                    {schedule.address}
+                  </Typography>
+                  <br />
+                  <Typography component="span" variant="body2" color="text.secondary">
+                    {schedule.category}
+                    {schedule.duration && ` • ${schedule.duration}`}
+                    {isFlightItem && schedule.flightOfferDetails?.flightOfferData?.price && 
+                      ` • ${formatPrice(schedule.flightOfferDetails.flightOfferData.price.grandTotal || 
+                      schedule.flightOfferDetails.flightOfferData.price.total, 
+                      schedule.flightOfferDetails.flightOfferData.price.currency)}`}
+                  </Typography>
+                  {isFlightItem && schedule.notes && (
+                    <Typography component="span" variant="body2" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                      {schedule.notes}
+                    </Typography>
+                  )}
+                </React.Fragment>
+              }
+            />
+          </ListItem>
+        )}
+      </Draggable>
+    );
+  };
+
+  // --- 여행 계획 탭에서 항공편 클릭 시 상세 보기 핸들러 ---
+  const handleOpenPlannerFlightDetail = useCallback((flightScheduleItem) => {
+    if (flightScheduleItem?.flightOfferDetails?.flightOfferData) {
+      setSelectedFlightForPlannerDialog(flightScheduleItem.flightOfferDetails);
+      setIsPlannerFlightDetailOpen(true);
+    } else {
+      console.warn('Flight detail not found in schedule item:', flightScheduleItem);
+    }
+  }, []);
+  
+  const handleClosePlannerFlightDetail = useCallback(() => {
+    setIsPlannerFlightDetailOpen(false);
+    setSelectedFlightForPlannerDialog(null);
+  }, []);
+  // --- 여행 계획 탭 항공편 상세 보기 끝 ---
+
   if (!user) return null;
 
-  const currentPlan = travelPlans[selectedDay] || { title: '', schedules: [] };
-
   return (
-    <Box sx={{ display: 'flex', height: '100vh' }}>
-      {/* 사이드바 */}
-      <Box
-        sx={{
-          width: isSidebarOpen ? '300px' : '0',
-          flexShrink: 0,
-          whiteSpace: 'nowrap',
-          boxSizing: 'border-box',
-          overflow: 'hidden',
-          transition: 'width 0.3s ease',
-          bgcolor: 'background.paper',
-          boxShadow: 2,
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        <Box sx={{ 
-          width: '300px',
-          visibility: isSidebarOpen ? 'visible' : 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          height: '100%'
-        }}>
-          {/* 사이드바 헤더 */}
+    <LocalizationProvider dateAdapter={AdapterDateFns}>
+      <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)' }}>
+        {/* 사이드바 */}
+        <Box
+          sx={{
+            width: isSidebarOpen ? '350px' : '0',
+            flexShrink: 0,
+            whiteSpace: 'nowrap',
+            boxSizing: 'border-box',
+            overflow: 'hidden',
+            transition: 'width 0.3s ease',
+            bgcolor: 'background.paper',
+            boxShadow: 2,
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
           <Box sx={{ 
-            p: 2, 
-            borderBottom: 1, 
-            borderColor: 'divider',
+            width: '350px',
+            visibility: isSidebarOpen ? 'visible' : 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            height: '100%'
+          }}>
+            {/* 사이드바 헤더 */}
+            <Box sx={{ 
+              p: 2, 
+              borderBottom: 1, 
+              borderColor: 'divider',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <Typography variant="h6" noWrap>여행 플래너</Typography>
+              <IconButton onClick={toggleSidebar}>
+                <span className="text-2xl">☰</span>
+              </IconButton>
+            </Box>
+
+            {/* 사이드바 탭 */}
+            <Tabs
+              value={sidebarTab}
+              onChange={(e, newValue) => setSidebarTab(newValue)}
+              variant="fullWidth"
+              className="border-b border-gray-200 flex-shrink-0"
+            >
+              <Tab label="여행 계획" value="schedule" />
+              <Tab label="숙소 계획" value="accommodation" />
+              <Tab label="비행 계획" value="flight" />
+            </Tabs>
+
+            {/* 사이드바 컨텐츠 */}
+            <div className="flex-1 overflow-y-auto">
+              {sidebarTab === 'schedule' && (
+                <>
+                  <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                    <Button
+                      variant="contained"
+                      startIcon={<AddIcon />}
+                      onClick={addDay}
+                      fullWidth
+                    >
+                      날짜 추가
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      onClick={handleOpenDateEditDialog}
+                    >
+                      시작일 수정
+                    </Button>
+                  </Box>
+                  <DragDropContext onDragEnd={handleDayDragEnd}>
+                    <StrictModeDroppable droppableId="days" direction="vertical">
+                      {(provided, snapshot) => (
+                        <Box
+                          {...provided.droppableProps}
+                          ref={provided.innerRef}
+                          sx={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 1
+                          }}
+                        >
+                          {dayOrder.map((dayKey, index) => (
+                            <Draggable key={`day-${dayKey}`} draggableId={`day-${dayKey}`} index={index}>
+                              {(providedDraggable) => (
+                                <Paper
+                                  ref={providedDraggable.innerRef}
+                                  {...providedDraggable.draggableProps}
+                                  {...providedDraggable.dragHandleProps}
+                                  sx={{
+                                    p: 1.5, cursor: 'pointer',
+                                    bgcolor: selectedDay === parseInt(dayKey) ? 'primary.light' : 'background.paper',
+                                    border: selectedDay === parseInt(dayKey) ? 2 : 1,
+                                    borderColor: selectedDay === parseInt(dayKey) ? 'primary.main' : 'divider',
+                                    boxShadow: providedDraggable.isDragging ? 6 : 1,
+                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                                  }}
+                                  onClick={() => setSelectedDay(parseInt(dayKey))}
+                                >
+                                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                    <DragIndicatorIcon sx={{ mr: 1, color: 'action.active' }} />
+                                    <Typography variant="subtitle1">{travelPlans[dayKey]?.title || getDayTitle(parseInt(dayKey))}</Typography>
+                                  </Box>
+                                  <IconButton size="small" onClick={(e) => { e.stopPropagation(); removeDay(parseInt(dayKey)); }}>
+                                    <DeleteIcon />
+                                  </IconButton>
+                                </Paper>
+                              )}
+                            </Draggable>
+                          ))}
+                          {provided.placeholder}
+                        </Box>
+                      )}
+                    </StrictModeDroppable>
+                  </DragDropContext>
+                  <Box sx={{ mt: 2 }}>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      fullWidth
+                      onClick={onSaveTravelPlans}
+                      sx={{ mt: 2 }}
+                    >
+                      저장
+                    </Button>
+                  </Box>
+                </>
+              )}
+
+              {sidebarTab === 'accommodation' && (
+                <Box sx={{ p: 2 }}>
+                  <AccommodationPlan 
+                    onPlaceSelect={handleSidebarPlaceSelect}
+                    onSearch={handleSidebarSearch}
+                    onOpenSearchPopup={handleOpenSearchPopup}
+                    onSearchResults={handleHotelSearchResults}
+                    onHotelSelect={handleHotelSelect}
+                    ref={sidebarAccommodationPlanRef}
+                    formData={accommodationFormData}
+                    setFormData={setAccommodationFormData}
+                  />
+                </Box>
+              )}
+
+              {sidebarTab === 'flight' && (
+                <FlightPlan
+                  fullWidth={false}
+                  searchParams={flightSearchParams}
+                  setSearchParams={setFlightSearchParams}
+                  originCities={originCities}
+                  destinationCities={destinationCities}
+                  handleCitySearch={handleCitySearch}
+                  flights={flightResults}
+                  dictionaries={flightDictionaries}
+                  airportInfoCache={airportInfoCache}
+                  loadingAirportInfo={loadingAirportInfo}
+                  isLoadingCities={isLoadingCities}
+                  isLoadingFlights={isLoadingFlights}
+                  error={flightError}
+                  handleFlightSearch={handleFlightSearch}
+                  onAddFlightToSchedule={handleAddFlightToSchedule}
+                />
+              )}
+            </div>
+          </Box>
+        </Box>
+
+        {/* 메인 컨텐츠 */}
+        <Box sx={{ 
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          transition: 'margin-left 0.3s ease',
+        }}>
+          {/* 상단 바 */}
+          <Box sx={{ 
+            bgcolor: 'background.paper',
+            p: 2,
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between'
+            borderBottom: 1,
+            borderColor: 'divider'
           }}>
-            <Typography variant="h6" noWrap>여행 플래너</Typography>
-            <IconButton onClick={toggleSidebar}>
-              <span className="text-2xl">☰</span>
-            </IconButton>
+            <Button
+              variant="outlined"
+              onClick={toggleSidebar}
+              startIcon={<span className="text-xl">☰</span>}
+              sx={{ mr: 2 }}
+            >
+              메뉴
+            </Button>
+            <Typography variant="h6">
+              {sidebarTab === 'schedule' ? '여행 일정' : 
+               sidebarTab === 'accommodation' ? '숙소 검색 결과' : 
+               '항공편 검색 결과'}
+            </Typography>
           </Box>
 
-          {/* 사이드바 탭 */}
-          <Tabs
-            value={sidebarTab}
-            onChange={(e, newValue) => setSidebarTab(newValue)}
-            variant="fullWidth"
-            className="border-b border-gray-200"
-          >
-            <Tab label="여행 계획" value="schedule" />
-            <Tab label="숙소 계획" value="accommodation" />
-            <Tab label="비행 계획" value="flight" />
-          </Tabs>
-
-          {/* 사이드바 컨텐츠 */}
-          <div className="flex-1 overflow-y-auto">
-            {sidebarTab === 'schedule' && (
-              <>
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={addDay}
-                  fullWidth
-                  sx={{ mb: 2 }}
-                >
-                  날짜 추가
-                </Button>
-                <DragDropContext onDragEnd={handleDayDragEnd}>
-                  <StrictModeDroppable droppableId="days" direction="vertical">
-                    {(provided) => (
-                      <Box
-                        {...provided.droppableProps}
-                        ref={provided.innerRef}
-                        sx={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: 1
-                        }}
-                      >
-                        {/* 기존 일정 목록 유지 */}
-                        {dayOrder.map((day, index) => (
-                          <Draggable key={day} draggableId={`day-${day}`} index={index}>
-                            {(provided, snapshot) => (
-                              <Paper
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                sx={{
-                                  p: 1.5,
-                                  cursor: 'pointer',
-                                  transition: 'all 0.2s',
-                                  bgcolor: selectedDay === parseInt(day) ? 'primary.light' : 'background.paper',
-                                  border: selectedDay === parseInt(day) ? 2 : 1,
-                                  borderColor: selectedDay === parseInt(day) ? 'primary.main' : 'divider',
-                                  '&:hover': {
-                                    bgcolor: selectedDay === parseInt(day) ? 'primary.light' : 'action.hover',
-                                  },
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center',
-                                }}
-                                onClick={() => setSelectedDay(parseInt(day))}
-                              >
-                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                  <DragIndicatorIcon sx={{ mr: 1, color: 'action.active' }} />
-                                  <Typography variant="subtitle1">{getDayTitle(parseInt(day))}</Typography>
-                                </Box>
-                                <IconButton
-                                  size="small"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    removeDay(parseInt(day));
-                                  }}
-                                >
-                                  <DeleteIcon />
-                                </IconButton>
-                              </Paper>
-                            )}
-                          </Draggable>
-                        ))}
-                        {provided.placeholder}
-                      </Box>
-                    )}
-                  </StrictModeDroppable>
-                </DragDropContext>
-                <Box sx={{ mt: 2 }}>
-                  <Button
-                    variant={showAllMarkers ? "contained" : "outlined"}
-                    color="primary"
-                    fullWidth
-                    onClick={() => setShowAllMarkers(!showAllMarkers)}
-                  >
-                    {showAllMarkers ? "현재 날짜 마커만 보기" : "전체 날짜 마커 보기"}
-                  </Button>
-                </Box>
-              </>
-            )}
-
-            {sidebarTab === 'accommodation' && (
-              <Box sx={{ p: 2 }}>
-                <AccommodationPlan 
-                  onPlaceSelect={handleSidebarPlaceSelect}
-                  onSearch={handleSidebarSearch}
-                  onOpenSearchPopup={handleOpenSearchPopup}
-                  ref={sidebarAccommodationPlanRef}
-                />
-              </Box>
-            )}
-
-            {sidebarTab === 'flight' && (
-              <FlightPlan />
-            )}
-          </div>
-        </Box>
-      </Box>
-
-      {/* 메인 컨텐츠 */}
-      <Box sx={{ 
-        flex: 1,
-        display: 'flex',
-        flexDirection: 'column',
-        transition: 'margin-left 0.3s ease',
-      }}>
-        {/* 상단 바 */}
-        <Box sx={{ 
-          bgcolor: 'background.paper',
-          p: 2,
-          display: 'flex',
-          alignItems: 'center',
-          borderBottom: 1,
-          borderColor: 'divider'
-        }}>
-          <Button
-            variant="outlined"
-            onClick={toggleSidebar}
-            startIcon={<span className="text-xl">☰</span>}
-            sx={{ mr: 2 }}
-          >
-            메뉴
-          </Button>
-          <Typography variant="h6">
-            {sidebarTab === 'schedule' ? '여행 일정' : 
-             sidebarTab === 'accommodation' ? '숙소 검색 결과' : 
-             '비행 계획'}
-          </Typography>
-        </Box>
-
-        {/* 메인 컨텐츠 영역 - 탭에 따라 다른 컨텐츠 표시 */}
-        <Box sx={{ flex: 1, p: 2, overflow: 'hidden' }}>
-          {sidebarTab === 'schedule' ? (
-            // 여행 일정 탭
-            selectedDay ? (
-              <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Typography variant="h5">
-                    {currentPlan.title}
-                  </Typography>
-                  <Button
-                    variant="contained"
-                    startIcon={<SearchIcon />}
-                    onClick={() => setIsSearchOpen(true)}
-                  >
-                    장소 검색
-                  </Button>
-                </Box>
-                <Box sx={{ 
-                  flex: 1,
-                  display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
-                  gap: 2,
-                  overflow: 'hidden'
-                }}>
-                  {/* 일정 목록 */}
-                  <Box sx={{ 
-                    bgcolor: 'background.paper',
-                    borderRadius: 1,
-                    boxShadow: 1,
-                    p: 2,
-                    overflow: 'auto'
-                  }}>
-                    <Typography variant="h6" sx={{ mb: 2 }}>일정 목록</Typography>
-                    <DragDropContext onDragEnd={handleDragEnd}>
-                      <StrictModeDroppable droppableId="schedules">
-                        {(provided, snapshot) => (
-                          <List
-                            ref={provided.innerRef}
-                            {...provided.droppableProps}
-                            sx={{
-                              minHeight: '100px',
-                              bgcolor: snapshot.isDraggingOver ? 'action.hover' : 'transparent',
-                              transition: 'background-color 0.2s ease',
-                              '& > *:not(:last-child)': {
-                                mb: 1
+          {/* Main Content Area */}
+          <Box sx={{ flex: 1, p: 2, overflow: 'hidden', bgcolor: '#f4f6f8' }}>
+            {sidebarTab === 'schedule' ? (
+               selectedDay && currentPlan ? (
+                 <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                   {/* Schedule Details + Map */}
+                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                      {/* 대표 제목(상세 제목) 수정 UI */}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {editTitleMode ? (
+                          <TextField
+                            value={tempTitle}
+                            onChange={e => setTempTitle(e.target.value)}
+                            onBlur={() => {
+                              setTravelPlans(prev => ({
+                                ...prev,
+                                [selectedDay]: {
+                                  ...prev[selectedDay],
+                                  title: tempTitle
+                                }
+                              }));
+                              setEditTitleMode(false);
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                setTravelPlans(prev => ({
+                                  ...prev,
+                                  [selectedDay]: {
+                                    ...prev[selectedDay],
+                                    title: tempTitle
+                                  }
+                                }));
+                                setEditTitleMode(false);
                               }
                             }}
-                          >
-                            {currentPlan.schedules.map((schedule, index) => (
-                              <Draggable
-                                key={`schedule-${index}`}
-                                draggableId={`schedule-${index}`}
-                                index={index}
-                              >
-                                {(provided, snapshot) => (
-                                  <ListItem
-                                    ref={provided.innerRef}
-                                    {...provided.draggableProps}
-                                    sx={{
-                                      p: 2,
-                                      bgcolor: snapshot.isDragging ? 'action.hover' : 'background.paper',
-                                      borderRadius: 1,
-                                      border: 1,
-                                      borderColor: 'divider',
-                                      '&:hover': {
-                                        bgcolor: 'action.hover',
-                                      },
-                                    }}
-                                    secondaryAction={
-                                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                        <IconButton
-                                          edge="end"
-                                          aria-label="edit"
-                                          onClick={() => handleEditSchedule(schedule)}
-                                          sx={{ mr: 1 }}
-                                        >
-                                          <EditIcon />
-                                        </IconButton>
-                                        <IconButton
-                                          edge="end"
-                                          aria-label="delete"
-                                          onClick={() => handleDeleteSchedule(schedule.id)}
-                                        >
-                                          <DeleteIcon />
-                                        </IconButton>
-                                      </Box>
-                                    }
-                                  >
-                                    <div {...provided.dragHandleProps} style={{ marginRight: 8 }}>
-                                      <DragIndicatorIcon color="action" />
-                                    </div>
-                                    <ListItemText
-                                      primary={
-                                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                          <Typography variant="subtitle1">
-                                            {schedule.time}
-                                          </Typography>
-                                          <Typography variant="subtitle1" sx={{ ml: 2 }}>
-                                            {schedule.name}
-                                          </Typography>
-                                        </Box>
-                                      }
-                                      secondary={
-                                        <React.Fragment>
-                                          <Typography component="span" variant="body2" color="text.primary">
-                                            {schedule.address}
-                                          </Typography>
-                                          <br />
-                                          <Typography component="span" variant="body2" color="text.secondary">
-                                            {schedule.category}
-                                            {schedule.duration && ` • ${schedule.duration}`}
-                                          </Typography>
-                                    </React.Fragment>
-                                      }
-                                    />
-                                  </ListItem>
-                                )}
-                              </Draggable>
-                            ))}
-                            {provided.placeholder}
-                          </List>
+                            size="small"
+                            sx={{ minWidth: 220 }}
+                            autoFocus
+                          />
+                        ) : (
+                          <>
+                            <Typography variant="h5" sx={{ mr: 1 }}>{currentPlan.title}</Typography>
+                            <IconButton size="small" onClick={() => setEditTitleMode(true)}>
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          </>
                         )}
-                      </StrictModeDroppable>
-                    </DragDropContext>
+                      </Box>
+                      {/* 버튼 세 개를 한 줄에 배치: 전체 마커 보기 → 지도 숨기기 → 장소 검색 순 */}
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button
+                          variant={showAllMarkers ? "contained" : "outlined"}
+                          color="primary"
+                          onClick={() => setShowAllMarkers(!showAllMarkers)}
+                        >
+                          {showAllMarkers ? "현재 날짜 마커만 보기" : "전체 날짜 마커 보기"}
+                        </Button>
+                        <Button variant="outlined" size="small" onClick={() => setShowMap(v => !v)}>
+                          {showMap ? '지도 숨기기' : '지도 보이기'}
+                        </Button>
+                        <Button variant="contained" startIcon={<SearchIcon />} onClick={() => setIsSearchOpen(true)}>
+                          장소 검색
+                        </Button>
+                      </Box>
+                   </Box>
+                   <Box sx={{ flex: 1, display: 'grid', gridTemplateColumns: showMap ? { xs: '1fr', md: '1fr 1fr' } : '1fr', gap: 2, overflow: 'hidden' }}>
+                      {/* Schedule List */}
+                      <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: 1, p: 2, overflow: 'auto' }}>
+                         <Typography variant="h6" sx={{ mb: 2 }}>일정 목록</Typography>
+                         <DragDropContext onDragEnd={handleDragEnd}>
+                             <StrictModeDroppable droppableId="schedules">
+                               {(providedList) => (
+                                 <List ref={providedList.innerRef} {...providedList.droppableProps} sx={{ minHeight: '100px', bgcolor: providedList.isDraggingOver ? 'action.hover' : 'transparent', transition: 'background-color 0.2s ease', '& > *:not(:last-child)': { mb: 1 } }}>
+                                   {currentPlan.schedules.map((schedule, index) => renderScheduleItem(schedule, index))}
+                                   {providedList.placeholder}
+                                 </List>
+                               )}
+                             </StrictModeDroppable>
+                         </DragDropContext>
+                      </Box>
+                      {/* Map */}
+                      {showMap && (
+                        <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: 1, overflow: 'hidden', height: '100%' }}>
+                          <MapboxComponent selectedPlace={null} travelPlans={travelPlans} selectedDay={selectedDay} showAllMarkers={showAllMarkers}/>
+                        </Box>
+                      )}
+                   </Box>
+                 </Box>
+               ) : ( 
+                 <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                   <Typography variant="h6" color="text.secondary">날짜를 선택해주세요</Typography>
+                 </Box>
+               )
+            ) : 
+            sidebarTab === 'accommodation' ? (
+               <Box sx={{ height: '100%', overflow: 'hidden' }}>
+                  <Box sx={{ bgcolor: 'background.paper', p: 2, borderRadius: 1, boxShadow: 1, overflow: 'auto', height: '100%' }}>
+                       <AccommodationPlan displayInMain={true} ref={mainAccommodationPlanRef} formData={accommodationFormData} setFormData={setAccommodationFormData} travelPlans={travelPlans} setTravelPlans={setTravelPlans}/>
                   </Box>
-
-                  {/* 지도 */}
-                  <Box sx={{ 
-                    bgcolor: 'background.paper',
-                    borderRadius: 1,
-                    boxShadow: 1,
-                    overflow: 'hidden',
-                    height: '100%'
-                  }}>
-                    <MapboxComponent
-                      selectedPlace={null}
-                      travelPlans={travelPlans}
-                      selectedDay={selectedDay}
-                      showAllMarkers={showAllMarkers}
-                    />
+               </Box>
+             ) : 
+             sidebarTab === 'flight' ? (
+               <FlightPlan 
+                 fullWidth={true} 
+                 flights={flightResults} 
+                 dictionaries={flightDictionaries}
+                 airportInfoCache={airportInfoCache}
+                 loadingAirportInfo={loadingAirportInfo}
+                 isLoadingFlights={isLoadingFlights} 
+                 error={flightError} 
+                 onAddFlightToSchedule={handleAddFlightToSchedule}
+                 searchParams={flightSearchParams} 
+                 setSearchParams={setFlightSearchParams} 
+                 originCities={originCities} 
+                 destinationCities={destinationCities} 
+                 handleCitySearch={handleCitySearch} 
+                 isLoadingCities={isLoadingCities} 
+                 handleFlightSearch={handleFlightSearch} />
+             ) : (
+                <Box sx={{ height: '100%', overflow: 'hidden' }}>
+                  <Box sx={{ bgcolor: 'background.paper', p: 2, borderRadius: 1, boxShadow: 1, overflow: 'auto', height: '100%' }}>
+                       <AccommodationPlan displayInMain={true} ref={mainAccommodationPlanRef} formData={accommodationFormData} setFormData={setAccommodationFormData} travelPlans={travelPlans} setTravelPlans={setTravelPlans}/>
                   </Box>
-                </Box>
-              </Box>
-            ) : (
-              <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Typography variant="h6" color="text.secondary">
-                  날짜를 선택해주세요
-                </Typography>
-              </Box>
-            )
-          ) : sidebarTab === 'accommodation' ? (
-            // 숙소 계획 탭
-            <Box sx={{ 
-              height: '100%', 
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
-              gap: 2,
-              overflow: 'hidden'
-            }}>
-              {/* 숙소 검색 결과 영역 */}
-              <Box sx={{ bgcolor: 'background.paper', p: 2, borderRadius: 1, boxShadow: 1, overflow: 'auto' }}>
-                <AccommodationPlan 
-                  displayInMain={true} 
-                  ref={mainAccommodationPlanRef}
-                />
-              </Box>
-              
-              {/* 지도 */}
-              <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: 1, overflow: 'hidden' }}>
-                <MapboxComponent
-                  selectedPlace={null}
-                  travelPlans={travelPlans}
-                  selectedDay={selectedDay}
-                  showAllMarkers={showAllMarkers}
-                />
-              </Box>
-            </Box>
-          ) : (
-            // 비행 계획 탭 - 전체 화면에 표시
-            <Box sx={{ height: '100%', bgcolor: 'background.paper', p: 2, borderRadius: 1, boxShadow: 1 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>비행 일정</Typography>
-              <FlightPlan fullWidth={true} />
-            </Box>
-          )}
+               </Box>
+             )
+            } 
+          </Box>
         </Box>
+
+        {/* Dialogs */}
+         <Dialog open={isSearchOpen} onClose={() => setIsSearchOpen(false)} maxWidth="md" fullWidth>
+             <DialogTitle>장소 검색</DialogTitle>
+             <DialogContent><SearchPopup onSelect={handleAddPlace} onClose={() => setIsSearchOpen(false)} /></DialogContent>
+         </Dialog>
+         <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth>
+             <DialogTitle>일정 수정</DialogTitle>
+             <DialogContent>
+                 {editSchedule && ( <Box sx={{ pt: 2 }}>
+                   <TextField fullWidth label="이름" value={editSchedule.name} onChange={e => setEditSchedule({ ...editSchedule, name: e.target.value })} sx={{ mb: 2 }} />
+                   <TextField fullWidth label="주소" value={editSchedule.address} onChange={e => setEditSchedule({ ...editSchedule, address: e.target.value })} sx={{ mb: 2 }} />
+                   <TextField fullWidth label="카테고리" value={editSchedule.category} onChange={e => setEditSchedule({ ...editSchedule, category: e.target.value })} sx={{ mb: 2 }} />
+                   <TextField fullWidth label="시간" value={editSchedule.time} onChange={e => setEditSchedule({ ...editSchedule, time: e.target.value })} sx={{ mb: 2 }} />
+                   <TextField fullWidth label="소요 시간" value={editSchedule.duration} onChange={e => setEditSchedule({ ...editSchedule, duration: e.target.value })} sx={{ mb: 2 }} />
+                   <TextField fullWidth multiline rows={4} label="메모" value={editSchedule.notes} onChange={e => setEditSchedule({ ...editSchedule, notes: e.target.value })} />
+                 </Box> )}
+             </DialogContent>
+             <DialogActions>
+                 <Button onClick={() => setEditDialogOpen(false)}>취소</Button>
+                 <Button onClick={handleUpdateSchedule} variant="contained">저장</Button>
+             </DialogActions>
+         </Dialog>
+
+         {/* 날짜 수정 다이얼로그 수정 */}
+         <Dialog open={isDateEditDialogOpen} onClose={() => setIsDateEditDialogOpen(false)}>
+           <DialogTitle>여행 시작일 수정</DialogTitle>
+           <DialogContent>
+             <Box sx={{ pt: 2 }}>
+               <DatePicker
+                 label="시작일"
+                 value={startDate}
+                 onChange={handleDateChange}
+                 slotProps={{ textField: { fullWidth: true } }}
+               />
+             </Box>
+           </DialogContent>
+           <DialogActions>
+             <Button onClick={() => setIsDateEditDialogOpen(false)}>취소</Button>
+           </DialogActions>
+         </Dialog>
+
+         {/* 저장 다이얼로그 추가 */}
+         <Dialog open={isSaveDialogOpen} onClose={() => !isSaving && setIsSaveDialogOpen(false)}>
+           <DialogTitle>여행 계획 저장</DialogTitle>
+           <DialogContent>
+             <Box sx={{ pt: 2 }}>
+               <TextField
+                 autoFocus
+                 fullWidth
+                 label="여행 계획 제목"
+                 value={planTitle}
+                 onChange={e => setPlanTitle(e.target.value)}
+                 placeholder="예: 3박 4일 도쿄 여행"
+                 sx={{ mb: 2 }}
+                 disabled={isSaving}
+               />
+             </Box>
+           </DialogContent>
+           <DialogActions>
+             <Button onClick={() => setIsSaveDialogOpen(false)} disabled={isSaving}>취소</Button>
+             <Button 
+               onClick={handleSaveConfirm} 
+               variant="contained"
+               disabled={isSaving}
+               startIcon={isSaving ? <span className="loading-spinner" /> : null}
+             >
+               {isSaving ? '저장 중...' : '저장'}
+             </Button>
+           </DialogActions>
+         </Dialog>
+
+         {/* 여행 계획 탭에서 항공편 상세를 보기 위한 Dialog */}
+         {selectedFlightForPlannerDialog && (
+            <Dialog 
+                open={isPlannerFlightDetailOpen} 
+                onClose={handleClosePlannerFlightDetail} 
+                fullWidth 
+                maxWidth="md"
+                scroll="paper"
+            >
+                <DialogTitle sx={{ m: 0, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    항공편 상세 정보 (여행 계획)
+                    <IconButton aria-label="close" onClick={handleClosePlannerFlightDetail} sx={{ position: 'absolute', right: 8, top: 8 }}>
+                        <CloseIcon />
+                    </IconButton>
+                </DialogTitle>
+                <DialogContent dividers>
+                    {selectedFlightForPlannerDialog.flightOfferData.itineraries.map((itinerary, index) => (
+                        <React.Fragment key={`planner-detail-itinerary-${index}`}>
+                            {index > 0 && <Divider sx={{ my:2 }} />}
+                            {renderItineraryDetails(
+                                itinerary, 
+                                selectedFlightForPlannerDialog.flightOfferData.id, 
+                                flightDictionaries, 
+                                selectedFlightForPlannerDialog.flightOfferData.itineraries.length > 1 ? (index === 0 ? "가는 여정" : "오는 여정") : "여정 상세 정보", 
+                                airportInfoCache, 
+                                loadingAirportInfo
+                            )}
+                        </React.Fragment>
+                    ))}
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', mt:2 }}>가격 및 요금 정보</Typography>
+                    <Typography variant="caption" display="block">총액 (1인): {formatPrice(selectedFlightForPlannerDialog.flightOfferData.price.grandTotal || selectedFlightForPlannerDialog.flightOfferData.price.total, selectedFlightForPlannerDialog.flightOfferData.price.currency)}</Typography>
+                    <Typography variant="caption" display="block">기본 운임: {formatPrice(selectedFlightForPlannerDialog.flightOfferData.price.base, selectedFlightForPlannerDialog.flightOfferData.price.currency)}</Typography>
+                    {selectedFlightForPlannerDialog.flightOfferData.price.fees && selectedFlightForPlannerDialog.flightOfferData.price.fees.length > 0 && (
+                        <Typography variant="caption" display="block">수수료: 
+                            {selectedFlightForPlannerDialog.flightOfferData.price.fees.map(fee => `${fee.type}: ${formatPrice(fee.amount, selectedFlightForPlannerDialog.flightOfferData.price.currency)}`).join(', ')}
+                        </Typography>
+                    )}
+                    {selectedFlightForPlannerDialog.flightOfferData.price.taxes && selectedFlightForPlannerDialog.flightOfferData.price.taxes.length > 0 && (
+                            <Typography variant="caption" display="block">세금: 
+                            {selectedFlightForPlannerDialog.flightOfferData.price.taxes.map(tax => `${tax.code}: ${formatPrice(tax.amount, selectedFlightForPlannerDialog.flightOfferData.price.currency)}`).join(', ')}
+                        </Typography>
+                    )}
+                     <Typography variant="caption" display="block">
+                        마지막 발권일: {selectedFlightForPlannerDialog.flightOfferData.lastTicketingDate ? new Date(selectedFlightForPlannerDialog.flightOfferData.lastTicketingDate).toLocaleDateString('ko-KR') : '-'}
+                        , 예약 가능 좌석: {selectedFlightForPlannerDialog.flightOfferData.numberOfBookableSeats || '-'}석
+                    </Typography>
+                    {renderFareDetails(selectedFlightForPlannerDialog.flightOfferData.travelerPricings, flightDictionaries)}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleClosePlannerFlightDetail}>닫기</Button>
+                </DialogActions>
+            </Dialog>
+         )}
       </Box>
-
-      {/* 검색 팝업 */}
-      <Dialog
-        open={isSearchOpen}
-        onClose={() => setIsSearchOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>장소 검색</DialogTitle>
-        <DialogContent>
-          <SearchPopup
-            onSelect={handleAddPlace}
-            onClose={() => setIsSearchOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* 일정 수정 다이얼로그 */}
-      <Dialog
-        open={editDialogOpen}
-        onClose={() => setEditDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>일정 수정</DialogTitle>
-        <DialogContent>
-          {editSchedule && (
-            <Box sx={{ pt: 2 }}>
-              <TextField
-                fullWidth
-                label="시간"
-                value={editSchedule.time}
-                onChange={(e) => setEditSchedule({ ...editSchedule, time: e.target.value })}
-                sx={{ mb: 2 }}
-              />
-              <TextField
-                fullWidth
-                label="소요 시간"
-                value={editSchedule.duration}
-                onChange={(e) => setEditSchedule({ ...editSchedule, duration: e.target.value })}
-                sx={{ mb: 2 }}
-              />
-              <TextField
-                fullWidth
-                multiline
-                rows={4}
-                label="메모"
-                value={editSchedule.notes}
-                onChange={(e) => setEditSchedule({ ...editSchedule, notes: e.target.value })}
-              />
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditDialogOpen(false)}>취소</Button>
-          <Button onClick={handleUpdateSchedule} variant="contained">저장</Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+    </LocalizationProvider>
   );
 };
 
-export default TravelPlanner; 
+export default TravelPlanner;

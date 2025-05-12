@@ -561,10 +561,10 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers }) => {
 
     const waitForMap = () => {
       if (map.current && map.current.isStyleLoaded() && map.current.getSource('route')) {
-        const coordinates = travelPlans[selectedDay].schedules.map(schedule => [
-          schedule.lng,
-          schedule.lat
-        ]);
+    const coordinates = travelPlans[selectedDay].schedules.map(schedule => [
+      schedule.lng,
+      schedule.lat
+    ]);
 
         const routePromises = [];
         for (let i = 0; i < coordinates.length - 1; i++) {
@@ -642,20 +642,20 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers }) => {
             }
           } else {
             // 기존 Mapbox 경로
-            let profile = transportMode === 'driving' ? 'mapbox/driving' : 'mapbox/walking';
+    let profile = transportMode === 'driving' ? 'mapbox/driving' : 'mapbox/walking';
             const url = `https://api.mapbox.com/directions/v5/${profile}/${start.join(',')};${end.join(',')}?` + 
-              new URLSearchParams({
-                geometries: 'geojson',
-                steps: 'true',
-                language: 'ko',
-                overview: 'full',
-                annotations: 'distance,duration,speed',
-                access_token: mapboxgl.accessToken
-              });
+      new URLSearchParams({
+        geometries: 'geojson',
+        steps: 'true',
+        language: 'ko',
+        overview: 'full',
+        annotations: 'distance,duration,speed',
+        access_token: mapboxgl.accessToken
+      });
 
             routePromises.push(
-              fetch(url)
-                .then(response => response.json())
+    fetch(url)
+      .then(response => response.json())
                 .then(data => ({
                   data,
                   startIndex: i,
@@ -676,7 +676,7 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers }) => {
 
             const routeColor = transportMode === 'driving' ? '#1976d2' : 
                              transportMode === 'walking' ? '#c62828' : '#2e7d32';
-            
+          
             // 모든 경로의 좌표를 하나의 배열로 합침
             const allCoordinates = validRoutes.reduce((acc, result) => {
               const route = result.data.routes[0];
@@ -694,19 +694,19 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers }) => {
             const source = map.current.getSource('route');
             if (source) {
               source.setData({
-                type: 'Feature',
-                properties: {},
+            type: 'Feature',
+            properties: {},
                 geometry: {
                   type: 'LineString',
                   coordinates: allCoordinates
                 }
-              });
-              map.current.setPaintProperty('route', 'line-color', routeColor);
+          });
+          map.current.setPaintProperty('route', 'line-color', routeColor);
             }
 
-            // 경로 정보 업데이트
+          // 경로 정보 업데이트
             if (transportMode === 'transit') {
-              const routeInfo = {
+          const routeInfo = {
                 duration: validRoutes.reduce((total, result) => {
                   const route = result.data.routes[0];
                   return total + (route.originalRoute?.duration || 0);
@@ -751,61 +751,61 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers }) => {
                 distance: validRoutes.reduce((total, result) => total + Math.round(result.data.routes[0].distance / 1000 * 10) / 10, 0),
                 steps: validRoutes.flatMap((result, routeIndex) => {
                   const leg = result.data.routes[0].legs[0];
-                  return leg.steps.map((step, stepIndex) => {
-                    let instruction = '';
-                    if (stepIndex === 0) {
+              return leg.steps.map((step, stepIndex) => {
+                let instruction = '';
+                if (stepIndex === 0) {
                       instruction = `${travelPlans[selectedDay].schedules[result.startIndex].name}에서 출발`;
-                    } else if (stepIndex === leg.steps.length - 1) {
+                } else if (stepIndex === leg.steps.length - 1) {
                       instruction = `${travelPlans[selectedDay].schedules[result.endIndex].name}에 도착`;
-                    } else {
-                      let direction = '';
-                      switch (step.maneuver.modifier) {
-                        case 'right': direction = '우회전'; break;
-                        case 'left': direction = '좌회전'; break;
-                        case 'straight': direction = '직진'; break;
-                        case 'slight right': direction = '우측 방향'; break;
-                        case 'slight left': direction = '좌측 방향'; break;
-                        case 'sharp right': direction = '급우회전'; break;
-                        case 'sharp left': direction = '급좌회전'; break;
-                        case 'uturn': direction = 'U턴'; break;
-                        default: direction = step.maneuver.type; break;
-                      }
+                } else {
+                  let direction = '';
+                  switch (step.maneuver.modifier) {
+                    case 'right': direction = '우회전'; break;
+                    case 'left': direction = '좌회전'; break;
+                    case 'straight': direction = '직진'; break;
+                    case 'slight right': direction = '우측 방향'; break;
+                    case 'slight left': direction = '좌측 방향'; break;
+                    case 'sharp right': direction = '급우회전'; break;
+                    case 'sharp left': direction = '급좌회전'; break;
+                    case 'uturn': direction = 'U턴'; break;
+                    default: direction = step.maneuver.type; break;
+                  }
 
-                      instruction = direction;
-                      if (step.name) {
-                        instruction += ` - ${step.name}`;
-                      }
-                      if (step.maneuver.instruction) {
-                        instruction = step.maneuver.instruction
-                          .replace('Turn right', '우회전')
-                          .replace('Turn left', '좌회전')
-                          .replace('Continue straight', '직진')
-                          .replace('Arrive at', '도착:')
-                          .replace('Head', '시작:')
-                          .replace('north', '북쪽')
-                          .replace('south', '남쪽')
-                          .replace('east', '동쪽')
-                          .replace('west', '서쪽')
-                          .replace('destination', '목적지');
-                      }
-                    }
+                  instruction = direction;
+                  if (step.name) {
+                    instruction += ` - ${step.name}`;
+                  }
+                  if (step.maneuver.instruction) {
+                    instruction = step.maneuver.instruction
+                      .replace('Turn right', '우회전')
+                      .replace('Turn left', '좌회전')
+                      .replace('Continue straight', '직진')
+                      .replace('Arrive at', '도착:')
+                      .replace('Head', '시작:')
+                      .replace('north', '북쪽')
+                      .replace('south', '남쪽')
+                      .replace('east', '동쪽')
+                      .replace('west', '서쪽')
+                      .replace('destination', '목적지');
+                  }
+                }
 
-                    return {
-                      type: step.maneuver.type,
-                      instruction: instruction,
-                      distance: Math.round(step.distance / 1000 * 10) / 10,
-                      duration: Math.round(step.duration / 60),
-                      mode: transportMode,
-                      modifier: step.maneuver.modifier,
-                      name: step.name || ''
-                    };
-                  });
-                })
-              };
-              setRouteInfo(routeInfo);
-            }
-          })
-          .catch(error => {
+                return {
+                  type: step.maneuver.type,
+                  instruction: instruction,
+                  distance: Math.round(step.distance / 1000 * 10) / 10,
+                  duration: Math.round(step.duration / 60),
+                  mode: transportMode,
+                  modifier: step.maneuver.modifier,
+                  name: step.name || ''
+                };
+              });
+            })
+          };
+          setRouteInfo(routeInfo);
+        }
+      })
+      .catch(error => {
             console.error('Error fetching routes:', error);
           });
       } else {
@@ -893,11 +893,11 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers }) => {
         });
       } else {
         // 여러 마커가 있는 경우 모든 마커가 보이도록 범위 조정
-        map.current.fitBounds(bounds, { 
+      map.current.fitBounds(bounds, { 
           padding: { top: 100, bottom: 100, left: 100, right: 100 },
           duration: 1000,
           maxZoom: 15 // 최대 줌 레벨 제한
-        });
+      });
       }
     }
   }, [travelPlans, selectedDay, showAllMarkers]);
@@ -1095,9 +1095,9 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers }) => {
                   secondary={
                     <Box sx={{ mt: 0.5 }}>
                       <Typography variant="body2" color="text.secondary">
-                        {step.distance > 0 ? `${step.distance}km` : ''} 
-                        {step.duration > 0 ? ` • 약 ${step.duration}분` : ''}
-                      </Typography>
+                      {step.distance > 0 ? `${step.distance}km` : ''} 
+                      {step.duration > 0 ? ` • 약 ${step.duration}분` : ''}
+                    </Typography>
                       {step.mode === 'transit' && step.details && (
                         <Box sx={{ mt: 1 }}>
                           {step.details.line_name && (
