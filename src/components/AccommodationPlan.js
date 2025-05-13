@@ -56,7 +56,7 @@ const modalStyle = {
 const AccommodationPlan = forwardRef(({ 
   showMap: showMapProp,
   isSearchTab = false, 
-  onHotelSelect, 
+  onHotelSelect,
   onSearchResults, 
   displayInMain = false,
   onPlaceSelect,
@@ -65,7 +65,8 @@ const AccommodationPlan = forwardRef(({
   formData,
   setFormData,
   travelPlans,
-  setTravelPlans
+  onAddToSchedule,
+  dayOrderLength
 }, ref) => {
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -84,7 +85,7 @@ const AccommodationPlan = forwardRef(({
   const [hotelToAdd, setHotelToAdd] = useState(null);
   const [latestPlan, setLatestPlan] = useState(null);
   const [daySelectList, setDaySelectList] = useState([]);
-  const [roomConfig, setRoomConfig] = useState([{ adults: '', children: '' }]); // 기본값을 빈 문자열로 변경
+  const [roomConfig, setRoomConfig] = useState([{ adults: '', children: '' }]);
   const [roomData, setRoomData] = useState(null);
   const [selectedHotelId, setSelectedHotelId] = useState(null);
 
@@ -102,7 +103,6 @@ const AccommodationPlan = forwardRef(({
     const value = event.target.value;
     console.log('인원 수 변경:', value);
     
-    // 빈 문자열이거나 숫자인 경우 모두 허용
     if (value === '' || /^\d+$/.test(value)) {
       const newFormData = {
         ...formData,
@@ -111,7 +111,6 @@ const AccommodationPlan = forwardRef(({
       setFormData(newFormData);
       console.log('인원 수 변경 후 업데이트된 formData:', newFormData);
       
-      // 기존 검색 결과가 있는 경우, URL만 업데이트
       if (searchResults.length > 0 && value !== '') {
         const updatedResults = searchResults.map(hotel => ({
           ...hotel,
@@ -168,23 +167,20 @@ const AccommodationPlan = forwardRef(({
 
     setSearchResults([]);
     setSortedResults([]);
-      setError(null);
+    setError(null);
     setLoading(true);
 
     try {
       if (!formData.cityName) throw new Error('도시를 선택해주세요.');
       if (!formData.checkIn || !formData.checkOut) throw new Error('체크인/체크아웃 날짜를 선택해주세요.');
 
-      // roomConfig 정보를 API 파라미터로 변환
       const rooms = formData.roomConfig || [{ adults: parseInt(formData.adults) || 2, children: parseInt(formData.children) || 0 }];
       
-      // 각 객실별 어린이 나이 정보 생성
       const roomsWithChildrenAges = rooms.map(room => ({
         ...room,
-        childrenAges: Array(room.children).fill(7) // 기본값 7세
+        childrenAges: Array(room.children).fill(7)
       }));
 
-      // API 파라미터 구성
       const apiParams = {
         checkin_date: format(formData.checkIn, 'yyyy-MM-dd'),
         checkout_date: format(formData.checkOut, 'yyyy-MM-dd'),
@@ -200,7 +196,6 @@ const AccommodationPlan = forwardRef(({
         units: 'metric',
         dest_type: 'city',
         include_adjacency: 'true',
-        // 각 객실별 상세 정보 추가
         adults_number_by_rooms: rooms.map(room => room.adults.toString()).join(','),
         children_number_by_rooms: rooms.map(room => room.children.toString()).join(','),
         rooms: roomsWithChildrenAges.map((room, index) => ({
@@ -220,9 +215,7 @@ const AccommodationPlan = forwardRef(({
         throw new Error('검색 결과를 가져오는데 실패했습니다.');
       }
 
-      // 거리 기준으로 필터링
       const filteredResults = responseData.result.filter(hotel => {
-        // 거리 정보 추출
         const distanceValue = parseFloat(hotel.distance_to_cc) || parseFloat(hotel.distance) || calculateDistance(
           formData.latitude,
           formData.longitude,
@@ -230,12 +223,10 @@ const AccommodationPlan = forwardRef(({
           parseFloat(hotel.longitude)
         );
 
-        // 거리 표시 형식 설정
         hotel.distance_to_center = hotel.distance_to_cc_formatted || 
           hotel.distance_formatted || 
           (distanceValue < 1 ? `${(distanceValue * 1000).toFixed(0)}m` : `${distanceValue.toFixed(1)}km`);
         
-        // actual_distance 설정
         hotel.actual_distance = distanceValue;
 
         return distanceValue <= 5;
@@ -248,7 +239,6 @@ const AccommodationPlan = forwardRef(({
       setSearchResults(filteredResults);
       setSortedResults(sortResults(filteredResults, sortType));
 
-      // 검색 결과와 formData를 localStorage에 저장
       localStorage.setItem('accommodationSearchResults', JSON.stringify(filteredResults));
       localStorage.setItem('accommodationFormData', JSON.stringify(formData));
 
@@ -257,7 +247,7 @@ const AccommodationPlan = forwardRef(({
         onSearch(filteredResults);
       }
 
-        if (onSearchResults) {
+      if (onSearchResults) {
         console.log('[검색] onSearchResults 콜백 호출');
         onSearchResults(filteredResults);
       }
@@ -266,7 +256,7 @@ const AccommodationPlan = forwardRef(({
       console.error('[검색] 오류 발생:', error);
       const errorMessage = error.message || '검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
       setError(errorMessage);
-        setSearchResults([]);
+      setSearchResults([]);
       setSortedResults([]);
       
       if (onSearch) onSearch([]);
@@ -326,7 +316,6 @@ const AccommodationPlan = forwardRef(({
   };
 
   const handleSortChange = (newSortType) => {
-    // 같은 버튼을 눌렀을 때 오름차순/내림차순 전환
     if (newSortType === 'price') {
       if (sortType === 'price_asc') {
         setSortType('price_desc');
@@ -354,20 +343,16 @@ const AccommodationPlan = forwardRef(({
       onHotelSelect(hotel);
     }
     
-      setSelectedHotel(hotel);
-      setModalOpen(true);
+    setSelectedHotel(hotel);
+    setModalOpen(true);
 
     try {
       setLoading(true);
-      // roomConfig 정보를 API 파라미터로 변환
       const rooms = formData.roomConfig || [{ adults: parseInt(formData.adults) || 2, children: parseInt(formData.children) || 0 }];
-
-      // 각 객실별 어린이 나이 정보 생성
       const roomsWithChildrenAges = rooms.map(room => ({
         ...room,
-        childrenAges: Array(room.children).fill(7) // 기본값 7세
+        childrenAges: Array(room.children).fill(7)
       }));
-
       const roomListParams = {
         type: 'room_list',
         hotel_id: hotel.hotel_id,
@@ -379,7 +364,6 @@ const AccommodationPlan = forwardRef(({
         currency: 'KRW',
         locale: 'ko',
         units: 'metric',
-        // 각 객실별 상세 정보 추가
         adults_number_by_rooms: rooms.map(room => room.adults.toString()).join(','),
         children_number_by_rooms: rooms.map(room => room.children.toString()).join(','),
         rooms: roomsWithChildrenAges.map((room, index) => ({
@@ -389,11 +373,7 @@ const AccommodationPlan = forwardRef(({
           children_ages: room.childrenAges
         }))
       };
-
-      console.log('[객실 조회] 요청 파라미터:', roomListParams);
       const response = await travelApi.searchHotels(roomListParams);
-      console.log('[객실 조회] 응답:', response);
-
       const processedRoomData = processRoomData(response, rooms);
       setRoomData(processedRoomData);
     } catch (error) {
@@ -414,14 +394,12 @@ const AccommodationPlan = forwardRef(({
     console.log('[객실 데이터 처리] rooms:', rooms);
     console.log('[객실 데이터 처리] blocks:', blocks);
 
-    // 총 가격 계산을 위한 변수
     let totalPrice = 0;
     let totalCurrency = 'KRW';
 
     const processedRooms = Object.entries(rooms).map(([roomId, room]) => {
       console.log(`[객실 ${roomId}] 상세정보:`, room);
       
-      // block 매칭 로직 개선
       const matchingBlocks = blocks.filter(block => {
         const blockRoomId = String(block.room_id || '');
         const currentRoomId = String(roomId);
@@ -434,7 +412,6 @@ const AccommodationPlan = forwardRef(({
       console.log(`[객실 ${roomId}] matchingBlocks:`, matchingBlocks);
       const matchingBlock = matchingBlocks[0];
 
-      // 객실 이름 처리 로직 개선
       let roomName = '객실 정보 없음';
       if (room.name) {
         roomName = room.name;
@@ -446,7 +423,6 @@ const AccommodationPlan = forwardRef(({
 
       console.log(`[객실 ${roomId}] 이름:`, roomName);
 
-      // 가격 정보 추출 로직
       let price = null;
       let currency = 'KRW';
       let priceBreakdown = null;
@@ -456,7 +432,6 @@ const AccommodationPlan = forwardRef(({
         let extractedCurrency = currency;
         let extractedBreakdown = null;
 
-        // 1. product_price_breakdown에서 가격 확인
         if (block.product_price_breakdown) {
           if (block.product_price_breakdown.all_inclusive_amount) {
             extractedPrice = block.product_price_breakdown.all_inclusive_amount.value;
@@ -469,13 +444,11 @@ const AccommodationPlan = forwardRef(({
           }
         }
         
-        // 2. min_price에서 가격 확인
         if (extractedPrice === null && block.min_price) {
           extractedPrice = block.min_price.price || block.min_price.value;
           extractedCurrency = block.min_price.currency || extractedCurrency;
         }
 
-        // 3. block_price_breakdown에서 가격 확인
         if (extractedPrice === null && block.block_price_breakdown) {
           if (block.block_price_breakdown.gross_amount) {
             extractedPrice = block.block_price_breakdown.gross_amount.value;
@@ -484,13 +457,11 @@ const AccommodationPlan = forwardRef(({
           }
         }
 
-        // 4. price 필드에서 직접 확인
         if (extractedPrice === null && block.price) {
           extractedPrice = block.price;
           extractedCurrency = block.currency || extractedCurrency;
         }
 
-        // 5. gross_price에서 확인
         if (extractedPrice === null && block.gross_price) {
           extractedPrice = block.gross_price;
           extractedCurrency = block.currency || extractedCurrency;
@@ -503,7 +474,6 @@ const AccommodationPlan = forwardRef(({
         };
       };
 
-      // 모든 매칭된 블록에서 가격 정보 추출
       let bestPrice = null;
       let bestBlock = null;
       
@@ -518,7 +488,6 @@ const AccommodationPlan = forwardRef(({
         }
       });
 
-      // 매칭된 블록이 없는 경우 첫 번째 블록 사용
       if (!bestBlock && blocks.length > 0) {
         const extracted = extractPrice(blocks[0]);
         price = extracted.price;
@@ -527,7 +496,6 @@ const AccommodationPlan = forwardRef(({
         bestBlock = blocks[0];
       }
 
-      // 총 가격에 현재 객실 가격 추가
       if (price !== null) {
         totalPrice += price;
       }
@@ -570,7 +538,6 @@ const AccommodationPlan = forwardRef(({
     console.log('[예약] 현재 formData:', formData);
     console.log('[예약] hotel 정보:', hotel);
 
-    // 체크인/체크아웃 날짜가 Date 객체가 아니면 변환
     let checkInDate = formData.checkIn instanceof Date ? formData.checkIn : new Date(formData.checkIn);
     let checkOutDate = formData.checkOut instanceof Date ? formData.checkOut : new Date(formData.checkOut);
 
@@ -585,7 +552,6 @@ const AccommodationPlan = forwardRef(({
       return;
     }
 
-    // 객실 구성 정보 가져오기
     const rooms = formData.roomConfig || [{ adults: parseInt(formData.adults) || 2, children: parseInt(formData.children) || 0 }];
     const totalChildren = rooms.reduce((sum, room) => sum + room.children, 0);
     const roomCount = rooms.length;
@@ -610,83 +576,63 @@ const AccommodationPlan = forwardRef(({
   };
 
   const handleAddToPlanClick = async () => {
-    if (!travelPlans) {
-      alert('일정을 먼저 생성해주세요.');
+    if (!selectedHotel) {
+      alert('먼저 상세 정보를 볼 호텔을 선택해주세요.');
+      return;
+    }
+    if (dayOrderLength === 0) { 
+      alert('일정을 먼저 생성해주세요. 사이드바에서 날짜를 추가할 수 있습니다.');
       return;
     }
 
-    const days = Object.keys(travelPlans).length;
-    setDaySelectList(Array.from({ length: days }, (_, idx) => ({
-      dayKey: idx,
-      title: travelPlans[(idx + 1).toString()]?.title || `${idx + 1}일차`
+    if (!travelPlans || Object.keys(travelPlans).length === 0 || Object.keys(travelPlans).length !== dayOrderLength) {
+        console.warn('[AccommodationPlan] travelPlans 상태와 dayOrderLength가 일치하지 않거나 travelPlans가 비어있습니다.', travelPlans, dayOrderLength);
+        // 이 경우에도 사용자에게 알림을 주거나, 로직을 중단할 수 있습니다.
+        // alert('일정 데이터에 문제가 있어 숙소를 추가할 수 없습니다. 페이지를 새로고침하거나 다시 시도해주세요.');
+        // return;
+        // 일단은 dayOrderLength 기준으로 daySelectList를 생성하도록 진행
+    }
+
+    const currentTravelPlans = travelPlans || {};
+    const availableDayKeys = Object.keys(currentTravelPlans).filter(key => currentTravelPlans[key]);
+
+    if (availableDayKeys.length === 0 && dayOrderLength > 0) {
+        alert('표시할 날짜 정보가 없습니다. 일정 데이터를 확인해주세요.');
+        return;
+    }
+    
+    setDaySelectList(availableDayKeys.map(dayKey => ({
+      dayKey: dayKey, // TravelPlanner의 dayOrder에서 오는 키 (문자열 '1', '2', ...)
+      title: currentTravelPlans[dayKey]?.title || `${dayKey}일차`
     })));
+
     setHotelToAdd(selectedHotel);
     setAddToPlanDialogOpen(true);
   };
 
   const handleSelectDay = (dayKey) => {
-    if (!travelPlans || !setTravelPlans) return;
-    const hotel = hotelToAdd;
-
-    // 숙소 상세 정보를 포함한 캐시 데이터 생성
-    const hotelCache = {
-      hotel_id: hotel.hotel_id,
-      hotel_name: hotel.hotel_name,
-      address: hotel.address,
-      city: hotel.city,
-      main_photo_url: hotel.main_photo_url,
-      review_score: hotel.review_score,
-      review_score_word: hotel.review_score_word,
-      review_nr: hotel.review_nr,
-      price: hotel.price,
-      original_price: hotel.original_price,
-      distance_to_center: hotel.distance_to_center,
-      latitude: hotel.latitude,
-      longitude: hotel.longitude,
-      url: hotel.url,
-      actual_distance: hotel.actual_distance,
-      accommodation_type: hotel.accommodation_type,
-      checkin_from: hotel.checkin_from,
-      checkin_until: hotel.checkin_until,
-      checkout_from: hotel.checkout_from,
-      checkout_until: hotel.checkout_until
-    };
-
-    // 일정에 표시될 기본 정보
-    const newSchedule = {
-      id: `hotel-${hotel.hotel_id}-${Date.now()}`,
-      name: hotel.hotel_name,
-      time: '체크인',
-      address: hotel.address,
-      category: '숙소',
-      duration: '1박',
-      notes: `가격: ${hotel.price}`,
-      lat: hotel.latitude,
-      lng: hotel.longitude,
-      type: 'accommodation',
-      hotelCache: hotelCache // 캐시 데이터 추가
-    };
-
-    // dayKey는 0부터 시작, travelPlans의 키는 1,2,3...이므로 dayKey+1
-    const dayNum = (dayKey + 1).toString();
-    if (!travelPlans[dayNum]) return;
-    if (!travelPlans[dayNum].schedules) travelPlans[dayNum].schedules = [];
-    const newPlans = { ...travelPlans };
-    newPlans[dayNum].schedules = [...newPlans[dayNum].schedules, newSchedule];
-    setTravelPlans(newPlans);
+    if (!hotelToAdd) {
+      alert('추가할 호텔 정보가 없습니다.');
+      return;
+    }
+    if (!onAddToSchedule) {
+      alert('일정 추가 기능을 사용할 수 없습니다.');
+      return;
+    }
+    
+    onAddToSchedule(hotelToAdd, dayKey);
+    
     setAddToPlanDialogOpen(false);
-    alert('일정에 추가되었습니다!');
   };
 
   const handleRoomConfigChange = (index, field, value) => {
     const newConfig = [...roomConfig];
     newConfig[index] = {
       ...newConfig[index],
-      [field]: value === '' ? '' : parseInt(value) || 0  // 빈 문자열 허용
+      [field]: value === '' ? '' : parseInt(value) || 0
     };
     setRoomConfig(newConfig);
     
-    // formData 업데이트 - 빈 값은 0으로 처리
     const totalAdults = newConfig.reduce((sum, room) => sum + (room.adults === '' ? 0 : parseInt(room.adults) || 0), 0);
     const totalChildren = newConfig.reduce((sum, room) => sum + (room.children === '' ? 0 : parseInt(room.children) || 0), 0);
     
@@ -699,8 +645,8 @@ const AccommodationPlan = forwardRef(({
   };
 
   const addRoom = () => {
-    if (roomConfig.length < 5) { // 최대 5개 객실까지
-      setRoomConfig([...roomConfig, { adults: '', children: '' }]);  // 새 객실도 빈 값으로 초기화
+    if (roomConfig.length < 5) {
+      setRoomConfig([...roomConfig, { adults: '', children: '' }]);
     }
   };
 
@@ -709,7 +655,6 @@ const AccommodationPlan = forwardRef(({
       const newConfig = roomConfig.filter((_, i) => i !== index);
       setRoomConfig(newConfig);
       
-      // formData 업데이트
       const totalAdults = newConfig.reduce((sum, room) => sum + (room.adults === '' ? 0 : parseInt(room.adults) || 0), 0);
       const totalChildren = newConfig.reduce((sum, room) => sum + (room.children === '' ? 0 : parseInt(room.children) || 0), 0);
       
@@ -740,7 +685,6 @@ const AccommodationPlan = forwardRef(({
   }));
 
   useEffect(() => {
-    // localStorage에서 이전 검색 결과 불러오기
     const savedResults = localStorage.getItem('accommodationSearchResults');
     if (savedResults) {
       const parsedResults = JSON.parse(savedResults);
@@ -748,14 +692,11 @@ const AccommodationPlan = forwardRef(({
       setSortedResults(sortResults(parsedResults, sortType));
     }
 
-    // localStorage에서 이전 formData 불러오기
     const savedFormData = localStorage.getItem('accommodationFormData');
     if (savedFormData) {
       const parsedFormData = JSON.parse(savedFormData);
-      // Date 객체로 변환
       if (parsedFormData.checkIn) parsedFormData.checkIn = new Date(parsedFormData.checkIn);
       if (parsedFormData.checkOut) parsedFormData.checkOut = new Date(parsedFormData.checkOut);
-      // Ensure all necessary fields are present, provide defaults if not
       setFormData(prevData => ({
         ...{
           cityName: '',
@@ -767,11 +708,10 @@ const AccommodationPlan = forwardRef(({
           latitude: null,
           longitude: null,
         },
-        ...prevData, // 기존 formData가 있으면 유지
-        ...parsedFormData // localStorage에서 불러온 값으로 덮어쓰기
+        ...prevData,
+        ...parsedFormData
       }));
-    } else if (setFormData) { // setFormData가 있을 때 (즉, 외부에서 주입받을 때) 기본값 설정
-      // 기본 formData 설정
+    } else if (setFormData) {
       const today = new Date();
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
@@ -783,13 +723,12 @@ const AccommodationPlan = forwardRef(({
         adults: prev?.adults || '2',
         children: prev?.children || '0',
         roomConfig: prev?.roomConfig || [{ adults: 2, children: 0 }],
-        // cityName, latitude, longitude는 검색 전까지 null 또는 빈 문자열일 수 있음
         cityName: prev?.cityName || '',
         latitude: prev?.latitude || null,
         longitude: prev?.longitude || null,
       }));
     }
-  }, [setFormData]); // sortType 제거, setFormData만 의존
+  }, [setFormData]);
 
   useEffect(() => {
     if (searchResults.length > 0) {
@@ -799,17 +738,16 @@ const AccommodationPlan = forwardRef(({
   }, [searchResults, sortType]);
 
   useEffect(() => {
-    if (formData && Object.keys(formData).length > 0 && setFormData) { // setFormData가 있을 때만 localStorage에 저장
+    if (formData && Object.keys(formData).length > 0 && setFormData) {
       localStorage.setItem('accommodationFormData', JSON.stringify(formData));
     }
   }, [formData, setFormData]);
 
   useEffect(() => {
-    // travelPlans의 일수가 바뀌면 daySelectList도 최신화
     if (travelPlans) {
       const days = Object.keys(travelPlans).length;
       setDaySelectList(Array.from({ length: days }, (_, idx) => ({
-        dayKey: idx,
+        dayKey: (idx + 1).toString(),
         title: travelPlans[(idx + 1).toString()]?.title || `${idx + 1}일차`
       })));
     }
@@ -856,7 +794,6 @@ const AccommodationPlan = forwardRef(({
               />
             </LocalizationProvider>
 
-            {/* 객실 및 인원 선택 UI */}
             <Box sx={{ mt: 2 }}>
               <Typography variant="subtitle1" gutterBottom>
                 객실 및 인원
@@ -926,21 +863,18 @@ const AccommodationPlan = forwardRef(({
 
       {displayInMain && (
         <Box sx={{ flex: 1, overflow: 'auto' }}>
-          {/* 오른쪽(결과/지도 영역 상단)에만 지도 숨기기/보이기 버튼 */}
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
             <Button variant="outlined" size="small" onClick={() => setShowMap(v => !v)}>
               {showMap ? '지도 숨기기' : '지도 보이기'}
             </Button>
           </Box>
           
-          {/* 검색 결과와 지도를 포함하는 컨테이너 */}
           <Box sx={{ 
             display: 'grid',
             gridTemplateColumns: showMap ? '1fr 1fr' : '1fr',
             gap: 2,
             mt: 2
           }}>
-            {/* 검색 결과 영역 */}
             <Box sx={{ 
               maxHeight: 'calc(100vh - 200px)',
               overflow: 'auto',
@@ -1151,7 +1085,6 @@ const AccommodationPlan = forwardRef(({
               ) : null}
             </Box>
 
-            {/* 지도 영역 */}
             {showMap && (
               <Box sx={{ 
                 height: 'calc(100vh - 200px)',
@@ -1171,7 +1104,7 @@ const AccommodationPlan = forwardRef(({
                   }}
                   center={searchResults.length > 0 
                     ? [parseFloat(searchResults[0].longitude), parseFloat(searchResults[0].latitude)] 
-                    : [126.9779692, 37.5662952] // 서울 시청 좌표 (기본값)
+                    : [126.9779692, 37.5662952]
                   }
                   zoom={searchResults.length > 0 ? 12 : 10}
                 />
@@ -1297,7 +1230,6 @@ const AccommodationPlan = forwardRef(({
                     </Typography>
                   )}
 
-                {/* 객실 정보 섹션 */}
                 {loading ? (
                   <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
                     <CircularProgress />
@@ -1445,7 +1377,6 @@ const AccommodationPlan = forwardRef(({
             <Typography>일정이 없습니다.</Typography>
           ) : (
             daySelectList.map(({ dayKey }) => {
-              // checkIn과 dayKey로 날짜 계산
               const baseDate = formData?.checkIn ? new Date(formData.checkIn) : new Date();
               const date = new Date(baseDate);
               date.setDate(baseDate.getDate() + dayKey);

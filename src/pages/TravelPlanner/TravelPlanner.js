@@ -56,7 +56,8 @@ const TravelPlanner = () => {
     planId, setPlanId,
     isLoadingPlan, loadTravelPlan,
     loadedFlightInfo,
-    isRoundTrip
+    isRoundTrip,
+    loadError
   } = useTravelPlanLoader(user);
 
   const {
@@ -477,46 +478,48 @@ const TravelPlanner = () => {
   }, []);
 
   // 호텔 선택 처리 핸들러 (AccommodationPlan으로부터 받음)
+  // 이 함수는 AccommodationPlan에서 호텔이 "선택"되었을 때 호출됨 (예: 상세 보기 클릭)
+  // 이 시점에서 바로 일정에 추가하지 않도록 수정합니다.
   const handleHotelSelect = useCallback((hotel) => {
-    setSelectedHotel(hotel);
-    
-    // 선택된 호텔을 현재 선택된 날짜의 일정에 추가 (기존 로직 참고)
-    if (selectedDay && hotel) {
-      const newSchedule = {
-        id: `hotel-${hotel.hotel_id || hotel.id}-${Date.now()}`,
-        name: hotel.hotel_name || hotel.name,
-        time: '체크인', // 기본값 또는 호텔 정보에서 가져오기
-        address: hotel.address,
-        category: '숙소',
-        duration: '1박', // 기본값
-        notes: hotel.price ? `가격: ${hotel.price}` : (hotel.composite_price_breakdown?.gross_amount_per_night?.value ? `1박 평균: ${Math.round(hotel.composite_price_breakdown.gross_amount_per_night.value).toLocaleString()} ${hotel.composite_price_breakdown.gross_amount_per_night.currency}` : ''),
-        lat: hotel.latitude,
-        lng: hotel.longitude,
-        type: 'accommodation', // 타입 명시
-        hotelDetails: { ...hotel } // 호텔 상세 정보 복사해서 저장
-      };
+    console.log('[TravelPlanner] Hotel selected for viewing details:', hotel);
+    setSelectedHotel(hotel); // TravelPlanner의 상태에만 선택된 호텔 정보 저장
+    // 일정 추가 로직은 여기에서 제거. 실제 추가는 AccommodationPlan 내부의 명시적인 액션으로 처리.
+  }, []); // 의존성 배열에서 selectedDay, setTravelPlans, getDayTitle 제거
 
-      setTravelPlans(prevTravelPlans => {
-        const currentSchedules = prevTravelPlans[selectedDay]?.schedules || [];
-        // 이미 동일한 호텔이 있는지 확인 (선택적)
-        // const hotelExists = currentSchedules.some(s => s.type === 'accommodation' && s.hotelDetails?.hotel_id === hotel.hotel_id);
-        // if (hotelExists) {
-        //   alert('이미 추가된 숙소입니다.');
-        //   return prevTravelPlans;
-        // }
-        return {
-          ...prevTravelPlans,
-          [selectedDay]: {
-            ...(prevTravelPlans[selectedDay] || { title: getDayTitle(selectedDay), schedules: [] }),
-            schedules: [...currentSchedules, newSchedule]
-          }
-        };
-      });
-      alert('숙소가 선택한 날짜의 일정에 추가되었습니다.');
-    } else if (!selectedDay) {
-      alert('숙소를 추가할 날짜를 먼저 선택해주세요.');
+  // 실제 숙소를 일정에 추가하는 함수
+  const addAccommodationToSchedule = useCallback((hotelToAdd, dayKey) => {
+    if (!dayKey || !hotelToAdd) {
+      alert('숙소를 추가할 날짜 또는 호텔 정보가 없습니다.');
+      return;
     }
-  }, [selectedDay, setTravelPlans, getDayTitle]);
+    const newSchedule = {
+      id: `hotel-${hotelToAdd.hotel_id || hotelToAdd.id}-${Date.now()}`,
+      name: hotelToAdd.hotel_name || hotelToAdd.name,
+      time: '체크인', 
+      address: hotelToAdd.address,
+      category: '숙소',
+      duration: '1박', 
+      notes: hotelToAdd.price ? `가격: ${hotelToAdd.price}` : (hotelToAdd.composite_price_breakdown?.gross_amount_per_night?.value ? `1박 평균: ${Math.round(hotelToAdd.composite_price_breakdown.gross_amount_per_night.value).toLocaleString()} ${hotelToAdd.composite_price_breakdown.gross_amount_per_night.currency}` : ''),
+      lat: hotelToAdd.latitude,
+      lng: hotelToAdd.longitude,
+      type: 'accommodation', 
+      hotelDetails: { ...hotelToAdd }
+    };
+
+    setTravelPlans(prevTravelPlans => {
+      const targetDayKey = dayKey.toString();
+      const currentSchedules = prevTravelPlans[targetDayKey]?.schedules || [];
+      return {
+        ...prevTravelPlans,
+        [targetDayKey]: {
+          ...(prevTravelPlans[targetDayKey] || { title: plannerGetDayTitle(targetDayKey), schedules: [] }),
+          schedules: [...currentSchedules, newSchedule]
+        }
+      };
+    });
+    alert('숙소가 선택한 날짜의 일정에 추가되었습니다.');
+
+  }, [setTravelPlans, plannerGetDayTitle]);
 
   // travelPlans, airportInfoCache, 또는 loadedFlightInfo가 변경될 때 항공편 스케줄의 상세 정보 업데이트
   useEffect(() => {
@@ -743,6 +746,10 @@ const TravelPlanner = () => {
                   onOpenSearchPopup={handleSidebarOpenSearchPopup}
                   onSearchResults={handleHotelSearchResults}
                   onHotelSelect={handleHotelSelect}
+                  travelPlans={travelPlans}
+                  onAddToSchedule={addAccommodationToSchedule}
+                  displayInMain={false}
+                  dayOrderLength={dayOrder.length}
                 />
               )}
               {sidebarTab === 'flight' && (
@@ -868,10 +875,11 @@ const TravelPlanner = () => {
                 ref={mainAccommodationPlanRef}
                 formData={accommodationFormData}
                 setFormData={setAccommodationFormData}
-                travelPlans={travelPlans}
-                setTravelPlans={setTravelPlans}
                 onSearchResults={handleHotelSearchResults}
                 onHotelSelect={handleHotelSelect}
+                onAddToSchedule={addAccommodationToSchedule}
+                travelPlans={travelPlans}
+                dayOrderLength={dayOrder.length}
               />
             )}
             {sidebarTab === 'flight' && (
