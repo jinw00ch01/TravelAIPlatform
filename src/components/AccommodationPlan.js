@@ -222,13 +222,23 @@ const AccommodationPlan = forwardRef(({
 
       // 거리 기준으로 필터링
       const filteredResults = responseData.result.filter(hotel => {
-        const distance = calculateDistance(
-            formData.latitude,
-            formData.longitude,
-            parseFloat(hotel.latitude),
-            parseFloat(hotel.longitude)
-          );
-        return distance <= 5;
+        // 거리 정보 추출
+        const distanceValue = parseFloat(hotel.distance_to_cc) || parseFloat(hotel.distance) || calculateDistance(
+          formData.latitude,
+          formData.longitude,
+          parseFloat(hotel.latitude),
+          parseFloat(hotel.longitude)
+        );
+
+        // 거리 표시 형식 설정
+        hotel.distance_to_center = hotel.distance_to_cc_formatted || 
+          hotel.distance_formatted || 
+          (distanceValue < 1 ? `${(distanceValue * 1000).toFixed(0)}m` : `${distanceValue.toFixed(1)}km`);
+        
+        // actual_distance 설정
+        hotel.actual_distance = distanceValue;
+
+        return distanceValue <= 5;
       });
 
       if (filteredResults.length === 0) {

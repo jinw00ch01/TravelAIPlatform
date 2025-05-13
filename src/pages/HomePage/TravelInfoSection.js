@@ -107,16 +107,17 @@ const TravelInfoSection = () => {
                   price: hotel.price || "가격 정보 없음",
                   original_price: hotel.original_price,
                   currency: city.currency,
-                  distance_to_center: hotel.distance_to_cc_formatted || '정보 없음',
+                  distance_to_center: hotel.distance_to_cc_formatted || hotel.distance || '정보 없음',
                   latitude: hotel.latitude,
                   longitude: hotel.longitude,
-                  actual_distance: hotel.distance_to_cc,
+                  actual_distance: hotel.distance_to_cc || hotel.distance || 0,
                   accommodation_type: hotel.accommodation_type_name || '숙박시설',
                   checkin_from: hotel.checkin?.from || '정보 없음',
                   checkin_until: hotel.checkin?.until || '정보 없음',
                   checkout_from: hotel.checkout?.from || '정보 없음',
                   checkout_until: hotel.checkout?.until || '정보 없음',
-                  review_nr: hotel.review_nr
+                  review_nr: hotel.review_nr,
+                  hotel_id: hotel.hotel_id
                 }));
             }
             return [];
