@@ -53,17 +53,6 @@ const modalStyle = {
   borderRadius: 2,
 };
 
-const JPY_TO_KRW = 9.5;    // 1엔 = 9.5원
-const USD_TO_KRW = 1350;   // 1달러 = 1350원
-const CNY_TO_KRW = 185;    // 1위안 = 185원
-function convertToKRW(value, currency) {
-  if (currency === 'KRW') return value;
-  if (currency === 'JPY') return Math.round(value * JPY_TO_KRW);
-  if (currency === 'USD') return Math.round(value * USD_TO_KRW);
-  if (currency === 'CNY' || currency === 'RMB') return Math.round(value * CNY_TO_KRW);
-  return value;
-}
-
 const AccommodationPlan = forwardRef(({ 
   showMap: showMapProp,
   isSearchTab = false, 
@@ -172,7 +161,6 @@ const AccommodationPlan = forwardRef(({
   const handleSearch = async () => {
     console.log('숙소 검색 시작 - 현재 formData:', formData);
     
-    // 이미 검색 중이면 중복 요청 방지
     if (loading) {
       console.log('[검색] 이미 검색이 진행 중입니다.');
       return;
@@ -247,137 +235,35 @@ const AccommodationPlan = forwardRef(({
         throw new Error(`${formData.cityName} 주변 5km 반경 내에 검색 결과를 찾을 수 없습니다.`);
       }
 
-      // 검색 결과 처리 및 상태 업데이트
-      const processedResults = processSearchResults(filteredResults, formData);
-      setSearchResults(processedResults);
-      setSortedResults(sortResults(processedResults, sortType));
+      setSearchResults(filteredResults);
+      setSortedResults(sortResults(filteredResults, sortType));
 
       // 검색 결과와 formData를 localStorage에 저장
-      localStorage.setItem('accommodationSearchResults', JSON.stringify(processedResults));
+      localStorage.setItem('accommodationSearchResults', JSON.stringify(filteredResults));
       localStorage.setItem('accommodationFormData', JSON.stringify(formData));
 
-      // 부모 컴포넌트로 결과 전달
       if (onSearch) {
         console.log('[검색] onSearch 콜백 호출');
-        onSearch(processedResults);
+        onSearch(filteredResults);
       }
 
-      if (onSearchResults) {
+        if (onSearchResults) {
         console.log('[검색] onSearchResults 콜백 호출');
-        onSearchResults(processedResults);
+        onSearchResults(filteredResults);
       }
 
     } catch (error) {
       console.error('[검색] 오류 발생:', error);
-      
-      // 사용자 친화적인 에러 메시지 설정
       const errorMessage = error.message || '검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
       setError(errorMessage);
-      setSearchResults([]);
+        setSearchResults([]);
       setSortedResults([]);
       
-      // 에러 시에도 부모 컴포넌트에 알림
       if (onSearch) onSearch([]);
       if (onSearchResults) onSearchResults([]);
     } finally {
       setLoading(false);
     }
-  };
-
-  // 검색 결과 처리를 위한 별도 함수
-  const processSearchResults = (results, formData) => {
-    // roomConfig 정보 가져오기
-    const rooms = formData.roomConfig || [{ adults: parseInt(formData.adults) || 2, children: parseInt(formData.children) || 0 }];
-    
-    // 총 인원 계산
-    const totalAdults = rooms.reduce((sum, room) => sum + room.adults, 0);
-    const totalChildren = rooms.reduce((sum, room) => sum + room.children, 0);
-    const roomCount = rooms.length;
-
-    return results.map(hotel => {
-          let priceDisplay = '가격 정보 없음';
-          let originalPrice = null;
-          let currency = hotel.composite_price_breakdown?.gross_amount?.currency || 'KRW';
-          let value = null;
-
-      // 가격 정보 처리
-          if (hotel.composite_price_breakdown?.gross_amount?.value) {
-            value = hotel.composite_price_breakdown.gross_amount.value;
-          } else if (hotel.composite_price_breakdown?.all_inclusive_amount?.value) {
-            value = hotel.composite_price_breakdown.all_inclusive_amount.value;
-          } else if (hotel.min_total_price) {
-            value = hotel.min_total_price;
-          }
-
-          if (value !== null) {
-            value = convertToKRW(value, currency);
-            priceDisplay = `KRW ${value.toLocaleString()}`;
-          }
-
-          if (hotel.composite_price_breakdown?.strikethrough_amount?.value) {
-            let originalValue = hotel.composite_price_breakdown.strikethrough_amount.value;
-            let originalCurrency = hotel.composite_price_breakdown.strikethrough_amount.currency || currency;
-            originalValue = convertToKRW(originalValue, originalCurrency);
-            originalPrice = `KRW ${originalValue.toLocaleString()}`;
-          }
-
-      // 거리 계산 및 표시 형식 지정
-          const actualDistance = calculateDistance(
-            formData.latitude,
-            formData.longitude,
-            parseFloat(hotel.latitude),
-            parseFloat(hotel.longitude)
-          );
-
-      const distanceDisplay = !isNaN(actualDistance) 
-        ? (actualDistance < 1 ? `${Math.round(actualDistance * 1000)}m` : `${actualDistance.toFixed(1)}km`)
-        : '정보 없음';
-
-      // Booking.com URL 생성
-      const bookingUrl = new URL('https://www.booking.com/hotel/index.html');
-      bookingUrl.searchParams.append('hotel_id', hotel.hotel_id);
-      bookingUrl.searchParams.append('checkin', format(formData.checkIn, 'yyyy-MM-dd'));
-      bookingUrl.searchParams.append('checkout', format(formData.checkOut, 'yyyy-MM-dd'));
-      bookingUrl.searchParams.append('group_adults', totalAdults.toString());
-      bookingUrl.searchParams.append('group_children', totalChildren.toString());
-      bookingUrl.searchParams.append('no_rooms', roomCount.toString());
-      bookingUrl.searchParams.append('selected_currency', 'KRW');
-      bookingUrl.searchParams.append('lang', 'ko');
-
-      // 각 객실별 성인/어린이 수 추가
-      rooms.forEach((room, index) => {
-        bookingUrl.searchParams.append(`room${index + 1}_adults`, room.adults.toString());
-        if (room.children > 0) {
-          bookingUrl.searchParams.append(`room${index + 1}_children`, room.children.toString());
-          // 해당 객실의 어린이 나이 정보 추가
-          Array(room.children).fill('7').forEach((age, ageIndex) => {
-            bookingUrl.searchParams.append(`room${index + 1}_child_ages_${ageIndex + 1}`, age);
-          });
-        }
-      });
-
-          return {
-            hotel_id: hotel.hotel_id,
-            hotel_name: hotel.hotel_name_trans || hotel.hotel_name,
-            address: hotel.address || '',
-            city: hotel.city || '',
-            main_photo_url: hotel.max_photo_url,
-            review_score: hotel.review_score || 0,
-            review_score_word: hotel.review_score_word || '',
-        price: priceDisplay,
-        original_price: originalPrice,
-            distance_to_center: distanceDisplay,
-            latitude: hotel.latitude,
-            longitude: hotel.longitude,
-        url: bookingUrl.toString(),
-            actual_distance: actualDistance,
-            accommodation_type: hotel.accommodation_type_name || '숙박시설',
-            checkin_from: hotel.checkin?.from || '정보 없음',
-            checkin_until: hotel.checkin?.until || '정보 없음',
-            checkout_from: hotel.checkout?.from || '정보 없음',
-            checkout_until: hotel.checkout?.until || '정보 없음'
-          };
-        });
   };
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -613,10 +499,8 @@ const AccommodationPlan = forwardRef(({
       
       matchingBlocks.forEach(block => {
         const extracted = extractPrice(block);
-        const convertedPrice = convertToKRW(extracted.price, extracted.currency);
-        
-        if (bestPrice === null || convertedPrice < bestPrice) {
-          bestPrice = convertedPrice;
+        if (bestPrice === null || extracted.price < bestPrice) {
+          bestPrice = extracted.price;
           price = extracted.price;
           currency = extracted.currency;
           priceBreakdown = extracted.breakdown;
@@ -635,12 +519,9 @@ const AccommodationPlan = forwardRef(({
 
       // 총 가격에 현재 객실 가격 추가
       if (price !== null) {
-        const priceInKRW = convertToKRW(price, currency);
-        totalPrice += priceInKRW;
+        totalPrice += price;
       }
 
-      console.log(`[객실 ${roomId}] 처리된 가격:`, { price, currency, priceBreakdown });
-      
       return {
         id: roomId,
         name: roomName,
@@ -650,7 +531,7 @@ const AccommodationPlan = forwardRef(({
         price: price,
         currency: currency,
         priceBreakdown: priceBreakdown,
-        priceInKRW: price !== null ? convertToKRW(price, currency) : null,
+        priceInKRW: price !== null ? price : null,
         bedConfigurations: room.bed_configurations,
         roomSize: room.room_size,
         isRefundable: bestBlock ? !bestBlock.non_refundable : true,
@@ -746,6 +627,7 @@ const AccommodationPlan = forwardRef(({
       main_photo_url: hotel.main_photo_url,
       review_score: hotel.review_score,
       review_score_word: hotel.review_score_word,
+      review_nr: hotel.review_nr,
       price: hotel.price,
       original_price: hotel.original_price,
       distance_to_center: hotel.distance_to_center,
@@ -1153,6 +1035,11 @@ const AccommodationPlan = forwardRef(({
                                 <Typography variant="body2" sx={{ ml: 1 }}>
                                   {hotel.review_score_word} ({hotel.review_score})
                                 </Typography>
+                                {hotel.review_nr && (
+                                  <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                                    • {hotel.review_nr.toLocaleString()}개의 리뷰
+                                  </Typography>
+                                )}
                               </Box>
                             </Box>
                             <Box sx={{ display: 'flex', gap: 1 }}>
@@ -1346,8 +1233,13 @@ const AccommodationPlan = forwardRef(({
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                     <Rating value={selectedHotel.review_score / 2} precision={0.5} readOnly />
                     <Typography variant="body1" sx={{ ml: 1 }}>
-                      {selectedHotel.review_score_word}
+                      {selectedHotel.review_score_word} ({selectedHotel.review_score})
                     </Typography>
+                    {selectedHotel.review_nr && (
+                      <Typography variant="body1" color="text.secondary" sx={{ ml: 1 }}>
+                        • {selectedHotel.review_nr.toLocaleString()}개의 리뷰
+                      </Typography>
+                    )}
                   </Box>
 
                   <Box sx={{ mb: 2 }}>
