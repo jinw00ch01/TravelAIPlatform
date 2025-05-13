@@ -20,7 +20,12 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction
+  ListItemSecondaryAction,
+  Card,
+  CardMedia,
+  CardContent,
+  CardActions,
+  Tooltip
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
@@ -29,7 +34,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { format } from 'date-fns';
 import SearchPopup from './SearchPopup';
-import { Search as SearchIcon, Add as AddIcon, Sort as SortIcon, AttachMoney as AttachMoneyIcon, Star as StarIcon } from '@mui/icons-material';
+import { Search as SearchIcon, Add as AddIcon, Sort as SortIcon, AttachMoney as AttachMoneyIcon, Star as StarIcon, Delete as DeleteIcon, ArrowUpward as ArrowUpwardIcon, ArrowDownward as ArrowDownwardIcon, LocationOn as LocationOnIcon, Info as InfoIcon } from '@mui/icons-material';
 import HotelMap from './HotelMap';
 import { travelApi } from '../services/api';
 
@@ -85,12 +90,14 @@ const AccommodationPlan = forwardRef(({
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const initialized = useRef(false);
   const [showMap, setShowMap] = useState(true);
   const [addToPlanDialogOpen, setAddToPlanDialogOpen] = useState(false);
   const [hotelToAdd, setHotelToAdd] = useState(null);
   const [latestPlan, setLatestPlan] = useState(null);
   const [daySelectList, setDaySelectList] = useState([]);
+  const [roomConfig, setRoomConfig] = useState([{ adults: '', children: '' }]); // 기본값을 빈 문자열로 변경
+  const [roomData, setRoomData] = useState(null);
+  const [selectedHotelId, setSelectedHotelId] = useState(null);
 
   const handleDateChange = (field, date) => {
     console.log(`${field} 날짜 변경:`, date);
@@ -164,70 +171,136 @@ const AccommodationPlan = forwardRef(({
 
   const handleSearch = async () => {
     console.log('숙소 검색 시작 - 현재 formData:', formData);
-    if (!formData.cityName) {
-      setError('도시를 선택해주세요.');
-      return;
-    }
-    if (!formData.checkIn || !formData.checkOut) {
-      setError('체크인/체크아웃 날짜를 선택해주세요.');
-      return;
-    }
-    if (!formData.adults || parseInt(formData.adults) < 1) {
-      setError('인원 수를 입력해주세요.');
+    
+    // 이미 검색 중이면 중복 요청 방지
+    if (loading) {
+      console.log('[검색] 이미 검색이 진행 중입니다.');
       return;
     }
 
-    if (onSearch && !displayInMain) {
-      onSearch();
-      return;
-    }
+    setSearchResults([]);
+    setSortedResults([]);
+      setError(null);
+    setLoading(true);
 
     try {
-      setLoading(true);
-      setError(null);
+      if (!formData.cityName) throw new Error('도시를 선택해주세요.');
+      if (!formData.checkIn || !formData.checkOut) throw new Error('체크인/체크아웃 날짜를 선택해주세요.');
 
-      // Lambda 함수로 전달할 파라미터 구성
+      // roomConfig 정보를 API 파라미터로 변환
+      const rooms = formData.roomConfig || [{ adults: parseInt(formData.adults) || 2, children: parseInt(formData.children) || 0 }];
+      
+      // 각 객실별 어린이 나이 정보 생성
+      const roomsWithChildrenAges = rooms.map(room => ({
+        ...room,
+        childrenAges: Array(room.children).fill(7) // 기본값 7세
+      }));
+
+      // API 파라미터 구성
       const apiParams = {
         checkin_date: format(formData.checkIn, 'yyyy-MM-dd'),
         checkout_date: format(formData.checkOut, 'yyyy-MM-dd'),
-        adults_number: formData.adults.toString(),
+        room_number: rooms.length.toString(),
+        adults_number: rooms.reduce((sum, room) => sum + room.adults, 0).toString(),
+        children_number: rooms.reduce((sum, room) => sum + room.children, 0).toString(),
         latitude: formData.latitude.toString(),
         longitude: formData.longitude.toString(),
         order_by: 'distance',
         page_number: '0',
         locale: 'ko',
         filter_by_currency: 'KRW',
+        units: 'metric',
+        dest_type: 'city',
+        include_adjacency: 'true',
+        // 각 객실별 상세 정보 추가
+        adults_number_by_rooms: rooms.map(room => room.adults.toString()).join(','),
+        children_number_by_rooms: rooms.map(room => room.children.toString()).join(','),
+        rooms: roomsWithChildrenAges.map((room, index) => ({
+          room_number: (index + 1).toString(),
+          adults_number: room.adults.toString(),
+          children_number: room.children.toString(),
+          children_ages: room.childrenAges
+        }))
       };
 
-      console.log('Lambda로 전달할 숙소 검색 파라미터:', apiParams);
+      console.log('[검색] API 요청 파라미터:', apiParams);
       
-      // travelApi.searchHotels 함수 호출 (Lambda 경유)
       const responseData = await travelApi.searchHotels(apiParams);
-      console.log('Lambda로부터 받은 숙소 검색 응답:', responseData);
+      console.log('[검색] API 응답:', responseData);
 
-      let allResults = [];
-      if (responseData && responseData.result) {
-        allResults = responseData.result.filter(hotel => {
-          const actualDistance = calculateDistance(
+      if (!responseData || !responseData.result) {
+        throw new Error('검색 결과를 가져오는데 실패했습니다.');
+      }
+
+      // 거리 기준으로 필터링
+      const filteredResults = responseData.result.filter(hotel => {
+        const distance = calculateDistance(
             formData.latitude,
             formData.longitude,
             parseFloat(hotel.latitude),
             parseFloat(hotel.longitude)
           );
-          return actualDistance <= 5;
-        });
-      } else {
-        console.warn('Lambda 응답에 result 필드가 없거나 유효하지 않습니다.', responseData);
+        return distance <= 5;
+      });
+
+      if (filteredResults.length === 0) {
+        throw new Error(`${formData.cityName} 주변 5km 반경 내에 검색 결과를 찾을 수 없습니다.`);
       }
 
-      console.log('필터링된 전체 결과:', allResults.length, '개');
+      // 검색 결과 처리 및 상태 업데이트
+      const processedResults = processSearchResults(filteredResults, formData);
+      setSearchResults(processedResults);
+      setSortedResults(sortResults(processedResults, sortType));
 
-      if (allResults.length > 0) {
-        const processedResults = allResults.map(hotel => {
+      // 검색 결과와 formData를 localStorage에 저장
+      localStorage.setItem('accommodationSearchResults', JSON.stringify(processedResults));
+      localStorage.setItem('accommodationFormData', JSON.stringify(formData));
+
+      // 부모 컴포넌트로 결과 전달
+      if (onSearch) {
+        console.log('[검색] onSearch 콜백 호출');
+        onSearch(processedResults);
+      }
+
+      if (onSearchResults) {
+        console.log('[검색] onSearchResults 콜백 호출');
+        onSearchResults(processedResults);
+      }
+
+    } catch (error) {
+      console.error('[검색] 오류 발생:', error);
+      
+      // 사용자 친화적인 에러 메시지 설정
+      const errorMessage = error.message || '검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+      setError(errorMessage);
+      setSearchResults([]);
+      setSortedResults([]);
+      
+      // 에러 시에도 부모 컴포넌트에 알림
+      if (onSearch) onSearch([]);
+      if (onSearchResults) onSearchResults([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 검색 결과 처리를 위한 별도 함수
+  const processSearchResults = (results, formData) => {
+    // roomConfig 정보 가져오기
+    const rooms = formData.roomConfig || [{ adults: parseInt(formData.adults) || 2, children: parseInt(formData.children) || 0 }];
+    
+    // 총 인원 계산
+    const totalAdults = rooms.reduce((sum, room) => sum + room.adults, 0);
+    const totalChildren = rooms.reduce((sum, room) => sum + room.children, 0);
+    const roomCount = rooms.length;
+
+    return results.map(hotel => {
           let priceDisplay = '가격 정보 없음';
           let originalPrice = null;
           let currency = hotel.composite_price_breakdown?.gross_amount?.currency || 'KRW';
           let value = null;
+
+      // 가격 정보 처리
           if (hotel.composite_price_breakdown?.gross_amount?.value) {
             value = hotel.composite_price_breakdown.gross_amount.value;
           } else if (hotel.composite_price_breakdown?.all_inclusive_amount?.value) {
@@ -235,10 +308,12 @@ const AccommodationPlan = forwardRef(({
           } else if (hotel.min_total_price) {
             value = hotel.min_total_price;
           }
+
           if (value !== null) {
             value = convertToKRW(value, currency);
             priceDisplay = `KRW ${value.toLocaleString()}`;
           }
+
           if (hotel.composite_price_breakdown?.strikethrough_amount?.value) {
             let originalValue = hotel.composite_price_breakdown.strikethrough_amount.value;
             let originalCurrency = hotel.composite_price_breakdown.strikethrough_amount.currency || currency;
@@ -246,6 +321,7 @@ const AccommodationPlan = forwardRef(({
             originalPrice = `KRW ${originalValue.toLocaleString()}`;
           }
 
+      // 거리 계산 및 표시 형식 지정
           const actualDistance = calculateDistance(
             formData.latitude,
             formData.longitude,
@@ -253,12 +329,33 @@ const AccommodationPlan = forwardRef(({
             parseFloat(hotel.longitude)
           );
 
-          let distanceDisplay = '정보 없음';
-          if (!isNaN(actualDistance)) {
-            distanceDisplay = actualDistance < 1 ? 
-              `${Math.round(actualDistance * 1000)}m` : 
-              `${actualDistance.toFixed(1)}km`;
-          }
+      const distanceDisplay = !isNaN(actualDistance) 
+        ? (actualDistance < 1 ? `${Math.round(actualDistance * 1000)}m` : `${actualDistance.toFixed(1)}km`)
+        : '정보 없음';
+
+      // Booking.com URL 생성
+      const bookingUrl = new URL('https://www.booking.com/hotel/index.html');
+      bookingUrl.searchParams.append('hotel_id', hotel.hotel_id);
+      bookingUrl.searchParams.append('checkin', format(formData.checkIn, 'yyyy-MM-dd'));
+      bookingUrl.searchParams.append('checkout', format(formData.checkOut, 'yyyy-MM-dd'));
+      bookingUrl.searchParams.append('group_adults', totalAdults.toString());
+      bookingUrl.searchParams.append('group_children', totalChildren.toString());
+      bookingUrl.searchParams.append('no_rooms', roomCount.toString());
+      bookingUrl.searchParams.append('selected_currency', 'KRW');
+      bookingUrl.searchParams.append('lang', 'ko');
+
+      // 각 객실별 성인/어린이 수 추가
+      rooms.forEach((room, index) => {
+        bookingUrl.searchParams.append(`room${index + 1}_adults`, room.adults.toString());
+        if (room.children > 0) {
+          bookingUrl.searchParams.append(`room${index + 1}_children`, room.children.toString());
+          // 해당 객실의 어린이 나이 정보 추가
+          Array(room.children).fill('7').forEach((age, ageIndex) => {
+            bookingUrl.searchParams.append(`room${index + 1}_child_ages_${ageIndex + 1}`, age);
+          });
+        }
+      });
+
           return {
             hotel_id: hotel.hotel_id,
             hotel_name: hotel.hotel_name_trans || hotel.hotel_name,
@@ -267,39 +364,20 @@ const AccommodationPlan = forwardRef(({
             main_photo_url: hotel.max_photo_url,
             review_score: hotel.review_score || 0,
             review_score_word: hotel.review_score_word || '',
-            price: priceDisplay !== '가격 정보 없음' ? priceDisplay : priceDisplay,
-            original_price: originalPrice ? originalPrice : null,
+        price: priceDisplay,
+        original_price: originalPrice,
             distance_to_center: distanceDisplay,
             latitude: hotel.latitude,
             longitude: hotel.longitude,
-            url: `https://www.booking.com/hotel.ko.html?hotel_id=${hotel.hotel_id}&checkin=${format(formData.checkIn, 'yyyy-MM-dd')}&checkout=${format(formData.checkOut, 'yyyy-MM-dd')}&group_adults=${formData.adults}&no_rooms=1&lang=ko&selected_currency=KRW`,
+        url: bookingUrl.toString(),
             actual_distance: actualDistance,
             accommodation_type: hotel.accommodation_type_name || '숙박시설',
-            tax_info: hotel.tax_info || '',
             checkin_from: hotel.checkin?.from || '정보 없음',
             checkin_until: hotel.checkin?.until || '정보 없음',
             checkout_from: hotel.checkout?.from || '정보 없음',
             checkout_until: hotel.checkout?.until || '정보 없음'
           };
         });
-        const processedAndSortedResults = sortByDistance(processedResults);
-        setSearchResults(processedAndSortedResults);
-        setSortedResults(sortResults(processedAndSortedResults, sortType));
-        if (onSearchResults) {
-          onSearchResults(processedAndSortedResults);
-        }
-      } else {
-        setError(`${formData.cityName} 주변 5km 반경 내에 검색 결과를 찾을 수 없습니다.`);
-        setSearchResults([]);
-      }
-    } catch (errData) {
-      console.error('숙소 검색 API 호출 실패:', errData);
-      const message = errData?.error || errData?.message || '숙소 검색 중 알 수 없는 오류가 발생했습니다.';
-      setError(message);
-      setSearchResults([]);
-    } finally {
-      setLoading(false);
-    }
   };
 
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -321,15 +399,28 @@ const AccommodationPlan = forwardRef(({
   const sortResults = (results, type) => {
     let sorted = [...results];
     switch (type) {
-      case 'price':
+      case 'price_asc':
         sorted.sort((a, b) => {
           const priceA = parseInt(a.price.replace(/[^0-9]/g, '')) || 0;
           const priceB = parseInt(b.price.replace(/[^0-9]/g, '')) || 0;
           return priceA - priceB;
         });
         break;
-      case 'rating':
+      case 'price_desc':
+        sorted.sort((a, b) => {
+          const priceA = parseInt(a.price.replace(/[^0-9]/g, '')) || 0;
+          const priceB = parseInt(b.price.replace(/[^0-9]/g, '')) || 0;
+          return priceB - priceA;
+        });
+        break;
+      case 'rating_asc':
+        sorted.sort((a, b) => (a.review_score || 0) - (b.review_score || 0));
+        break;
+      case 'rating_desc':
         sorted.sort((a, b) => (b.review_score || 0) - (a.review_score || 0));
+        break;
+      case 'distance':
+        sorted.sort((a, b) => a.actual_distance - b.actual_distance);
         break;
       case 'default':
         sorted.sort(() => Math.random() - 0.5);
@@ -338,20 +429,244 @@ const AccommodationPlan = forwardRef(({
     return sorted;
   };
 
-  const handleSortChange = (event, newSortType) => {
-    if (newSortType !== null) {
+  const handleSortChange = (newSortType) => {
+    // 같은 버튼을 눌렀을 때 오름차순/내림차순 전환
+    if (newSortType === 'price') {
+      if (sortType === 'price_asc') {
+        setSortType('price_desc');
+        setSortedResults(sortResults(searchResults, 'price_desc'));
+      } else {
+        setSortType('price_asc');
+        setSortedResults(sortResults(searchResults, 'price_asc'));
+      }
+    } else if (newSortType === 'rating') {
+      if (sortType === 'rating_desc') {
+        setSortType('rating_asc');
+        setSortedResults(sortResults(searchResults, 'rating_asc'));
+      } else {
+        setSortType('rating_desc');
+        setSortedResults(sortResults(searchResults, 'rating_desc'));
+      }
+    } else {
       setSortType(newSortType);
       setSortedResults(sortResults(searchResults, newSortType));
     }
   };
 
-  const handleHotelClick = (hotel) => {
+  const handleHotelClick = async (hotel) => {
     if (onHotelSelect) {
       onHotelSelect(hotel);
-    } else {
+    }
+    
       setSelectedHotel(hotel);
       setModalOpen(true);
+
+    try {
+      setLoading(true);
+      // roomConfig 정보를 API 파라미터로 변환
+      const rooms = formData.roomConfig || [{ adults: parseInt(formData.adults) || 2, children: parseInt(formData.children) || 0 }];
+
+      // 각 객실별 어린이 나이 정보 생성
+      const roomsWithChildrenAges = rooms.map(room => ({
+        ...room,
+        childrenAges: Array(room.children).fill(7) // 기본값 7세
+      }));
+
+      const roomListParams = {
+        type: 'room_list',
+        hotel_id: hotel.hotel_id,
+        checkin_date: format(formData.checkIn, 'yyyy-MM-dd'),
+        checkout_date: format(formData.checkOut, 'yyyy-MM-dd'),
+        room_number: rooms.length.toString(),
+        adults_number: rooms.reduce((sum, room) => sum + room.adults, 0).toString(),
+        children_number: rooms.reduce((sum, room) => sum + room.children, 0).toString(),
+        currency: 'KRW',
+        locale: 'ko',
+        units: 'metric',
+        // 각 객실별 상세 정보 추가
+        adults_number_by_rooms: rooms.map(room => room.adults.toString()).join(','),
+        children_number_by_rooms: rooms.map(room => room.children.toString()).join(','),
+        rooms: roomsWithChildrenAges.map((room, index) => ({
+          room_number: (index + 1).toString(),
+          adults_number: room.adults.toString(),
+          children_number: room.children.toString(),
+          children_ages: room.childrenAges
+        }))
+      };
+
+      console.log('[객실 조회] 요청 파라미터:', roomListParams);
+      const response = await travelApi.searchHotels(roomListParams);
+      console.log('[객실 조회] 응답:', response);
+
+      const processedRoomData = processRoomData(response, rooms);
+      setRoomData(processedRoomData);
+    } catch (error) {
+      console.error('[객실 조회] 오류:', error);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const processRoomData = (data, requestedRooms) => {
+    if (!data || !data.result || !data.result[0]) return null;
+    
+    const result = data.result[0];
+    const rooms = result.rooms;
+    const blocks = result.block;
+
+    console.log('[객실 데이터 처리] 전체 응답:', data);
+    console.log('[객실 데이터 처리] rooms:', rooms);
+    console.log('[객실 데이터 처리] blocks:', blocks);
+
+    // 총 가격 계산을 위한 변수
+    let totalPrice = 0;
+    let totalCurrency = 'KRW';
+
+    const processedRooms = Object.entries(rooms).map(([roomId, room]) => {
+      console.log(`[객실 ${roomId}] 상세정보:`, room);
+      
+      // block 매칭 로직 개선
+      const matchingBlocks = blocks.filter(block => {
+        const blockRoomId = String(block.room_id || '');
+        const currentRoomId = String(roomId);
+        
+        return blockRoomId === currentRoomId || 
+               blockRoomId.includes(currentRoomId) ||
+               currentRoomId.includes(blockRoomId);
+      });
+
+      console.log(`[객실 ${roomId}] matchingBlocks:`, matchingBlocks);
+      const matchingBlock = matchingBlocks[0];
+
+      // 객실 이름 처리 로직 개선
+      let roomName = '객실 정보 없음';
+      if (room.name) {
+        roomName = room.name;
+      } else if (matchingBlock && matchingBlock.room_name) {
+        roomName = matchingBlock.room_name;
+      } else if (room.room_name) {
+        roomName = room.room_name;
+      }
+
+      console.log(`[객실 ${roomId}] 이름:`, roomName);
+
+      // 가격 정보 추출 로직
+      let price = null;
+      let currency = 'KRW';
+      let priceBreakdown = null;
+
+      const extractPrice = (block) => {
+        let extractedPrice = null;
+        let extractedCurrency = currency;
+        let extractedBreakdown = null;
+
+        // 1. product_price_breakdown에서 가격 확인
+        if (block.product_price_breakdown) {
+          if (block.product_price_breakdown.all_inclusive_amount) {
+            extractedPrice = block.product_price_breakdown.all_inclusive_amount.value;
+            extractedCurrency = block.product_price_breakdown.all_inclusive_amount.currency;
+            extractedBreakdown = block.product_price_breakdown;
+          } else if (block.product_price_breakdown.gross_amount) {
+            extractedPrice = block.product_price_breakdown.gross_amount.value;
+            extractedCurrency = block.product_price_breakdown.gross_amount.currency;
+            extractedBreakdown = block.product_price_breakdown;
+          }
+        }
+        
+        // 2. min_price에서 가격 확인
+        if (extractedPrice === null && block.min_price) {
+          extractedPrice = block.min_price.price || block.min_price.value;
+          extractedCurrency = block.min_price.currency || extractedCurrency;
+        }
+
+        // 3. block_price_breakdown에서 가격 확인
+        if (extractedPrice === null && block.block_price_breakdown) {
+          if (block.block_price_breakdown.gross_amount) {
+            extractedPrice = block.block_price_breakdown.gross_amount.value;
+            extractedCurrency = block.block_price_breakdown.gross_amount.currency;
+            extractedBreakdown = block.block_price_breakdown;
+          }
+        }
+
+        // 4. price 필드에서 직접 확인
+        if (extractedPrice === null && block.price) {
+          extractedPrice = block.price;
+          extractedCurrency = block.currency || extractedCurrency;
+        }
+
+        // 5. gross_price에서 확인
+        if (extractedPrice === null && block.gross_price) {
+          extractedPrice = block.gross_price;
+          extractedCurrency = block.currency || extractedCurrency;
+        }
+
+        return { 
+          price: extractedPrice, 
+          currency: extractedCurrency,
+          breakdown: extractedBreakdown
+        };
+      };
+
+      // 모든 매칭된 블록에서 가격 정보 추출
+      let bestPrice = null;
+      let bestBlock = null;
+      
+      matchingBlocks.forEach(block => {
+        const extracted = extractPrice(block);
+        const convertedPrice = convertToKRW(extracted.price, extracted.currency);
+        
+        if (bestPrice === null || convertedPrice < bestPrice) {
+          bestPrice = convertedPrice;
+          price = extracted.price;
+          currency = extracted.currency;
+          priceBreakdown = extracted.breakdown;
+          bestBlock = block;
+        }
+      });
+
+      // 매칭된 블록이 없는 경우 첫 번째 블록 사용
+      if (!bestBlock && blocks.length > 0) {
+        const extracted = extractPrice(blocks[0]);
+        price = extracted.price;
+        currency = extracted.currency;
+        priceBreakdown = extracted.breakdown;
+        bestBlock = blocks[0];
+      }
+
+      // 총 가격에 현재 객실 가격 추가
+      if (price !== null) {
+        const priceInKRW = convertToKRW(price, currency);
+        totalPrice += priceInKRW;
+      }
+
+      console.log(`[객실 ${roomId}] 처리된 가격:`, { price, currency, priceBreakdown });
+      
+      return {
+        id: roomId,
+        name: roomName,
+        description: room.description || matchingBlock?.description,
+        photos: room.photos,
+        facilities: room.facilities,
+        price: price,
+        currency: currency,
+        priceBreakdown: priceBreakdown,
+        priceInKRW: price !== null ? convertToKRW(price, currency) : null,
+        bedConfigurations: room.bed_configurations,
+        roomSize: room.room_size,
+        isRefundable: bestBlock ? !bestBlock.non_refundable : true,
+        mealPlan: bestBlock?.mealplan,
+        policies: bestBlock?.policies,
+        paymentTerms: bestBlock?.payment_terms,
+        blockInfo: bestBlock
+      };
+    });
+
+    return {
+      rooms: processedRooms,
+      totalPrice: totalPrice,
+      totalCurrency: totalCurrency,
+      requestedRooms: requestedRooms
+    };
   };
 
   const handleCloseModal = () => {
@@ -379,11 +694,16 @@ const AccommodationPlan = forwardRef(({
       return;
     }
 
+    // 객실 구성 정보 가져오기
+    const rooms = formData.roomConfig || [{ adults: parseInt(formData.adults) || 2, children: parseInt(formData.children) || 0 }];
+    const totalChildren = rooms.reduce((sum, room) => sum + room.children, 0);
+    const roomCount = rooms.length;
+
     const formattedCheckIn = checkInDate.toISOString().split('T')[0];
     const formattedCheckOut = checkOutDate.toISOString().split('T')[0];
     const hotelName = encodeURIComponent(hotel.hotel_name);
 
-    const bookingUrl = `https://www.booking.com/searchresults.ko.html?ss=${hotelName}&checkin=${formattedCheckIn}&checkout=${formattedCheckOut}&group_adults=${adults}&no_rooms=1&lang=ko`;
+    const bookingUrl = `https://www.booking.com/searchresults.ko.html?ss=${hotelName}&checkin=${formattedCheckIn}&checkout=${formattedCheckOut}&group_adults=${adults}&group_children=${totalChildren}&no_rooms=${roomCount}&lang=ko`;
     console.log('[예약] Booking.com 호텔명+날짜+인원 검색 URL:', bookingUrl);
     window.open(bookingUrl, '_blank');
   };
@@ -416,10 +736,34 @@ const AccommodationPlan = forwardRef(({
   const handleSelectDay = (dayKey) => {
     if (!travelPlans || !setTravelPlans) return;
     const hotel = hotelToAdd;
-    // 숙소 이름으로 저장
+
+    // 숙소 상세 정보를 포함한 캐시 데이터 생성
+    const hotelCache = {
+      hotel_id: hotel.hotel_id,
+      hotel_name: hotel.hotel_name,
+      address: hotel.address,
+      city: hotel.city,
+      main_photo_url: hotel.main_photo_url,
+      review_score: hotel.review_score,
+      review_score_word: hotel.review_score_word,
+      price: hotel.price,
+      original_price: hotel.original_price,
+      distance_to_center: hotel.distance_to_center,
+      latitude: hotel.latitude,
+      longitude: hotel.longitude,
+      url: hotel.url,
+      actual_distance: hotel.actual_distance,
+      accommodation_type: hotel.accommodation_type,
+      checkin_from: hotel.checkin_from,
+      checkin_until: hotel.checkin_until,
+      checkout_from: hotel.checkout_from,
+      checkout_until: hotel.checkout_until
+    };
+
+    // 일정에 표시될 기본 정보
     const newSchedule = {
       id: `hotel-${hotel.hotel_id}-${Date.now()}`,
-      name: hotel.hotel_name, // 숙소 이름!
+      name: hotel.hotel_name,
       time: '체크인',
       address: hotel.address,
       category: '숙소',
@@ -427,8 +771,10 @@ const AccommodationPlan = forwardRef(({
       notes: `가격: ${hotel.price}`,
       lat: hotel.latitude,
       lng: hotel.longitude,
-      type: 'accommodation'
+      type: 'accommodation',
+      hotelCache: hotelCache // 캐시 데이터 추가
     };
+
     // dayKey는 0부터 시작, travelPlans의 키는 1,2,3...이므로 dayKey+1
     const dayNum = (dayKey + 1).toString();
     if (!travelPlans[dayNum]) return;
@@ -440,6 +786,59 @@ const AccommodationPlan = forwardRef(({
     alert('일정에 추가되었습니다!');
   };
 
+  const handleRoomConfigChange = (index, field, value) => {
+    const newConfig = [...roomConfig];
+    newConfig[index] = {
+      ...newConfig[index],
+      [field]: value === '' ? '' : parseInt(value) || 0  // 빈 문자열 허용
+    };
+    setRoomConfig(newConfig);
+    
+    // formData 업데이트 - 빈 값은 0으로 처리
+    const totalAdults = newConfig.reduce((sum, room) => sum + (room.adults === '' ? 0 : parseInt(room.adults) || 0), 0);
+    const totalChildren = newConfig.reduce((sum, room) => sum + (room.children === '' ? 0 : parseInt(room.children) || 0), 0);
+    
+    setFormData(prev => ({
+      ...prev,
+      adults: totalAdults.toString(),
+      children: totalChildren.toString(),
+      roomConfig: newConfig
+    }));
+  };
+
+  const addRoom = () => {
+    if (roomConfig.length < 5) { // 최대 5개 객실까지
+      setRoomConfig([...roomConfig, { adults: '', children: '' }]);  // 새 객실도 빈 값으로 초기화
+    }
+  };
+
+  const removeRoom = (index) => {
+    if (roomConfig.length > 1) {
+      const newConfig = roomConfig.filter((_, i) => i !== index);
+      setRoomConfig(newConfig);
+      
+      // formData 업데이트
+      const totalAdults = newConfig.reduce((sum, room) => sum + (room.adults === '' ? 0 : parseInt(room.adults) || 0), 0);
+      const totalChildren = newConfig.reduce((sum, room) => sum + (room.children === '' ? 0 : parseInt(room.children) || 0), 0);
+      
+      setFormData(prev => ({
+        ...prev,
+        adults: totalAdults.toString(),
+        children: totalChildren.toString(),
+        roomConfig: newConfig
+      }));
+    }
+  };
+
+  const handleHotelCardClick = (hotel) => {
+    setSelectedHotelId(hotel.hotel_id === selectedHotelId ? null : hotel.hotel_id);
+  };
+
+  const handleDetailClick = (event, hotel) => {
+    event.stopPropagation();
+    handleHotelClick(hotel);
+  };
+
   useImperativeHandle(ref, () => ({
     handlePlaceSelect,
     handleSearch,
@@ -449,38 +848,47 @@ const AccommodationPlan = forwardRef(({
   }));
 
   useEffect(() => {
-    // 컴포넌트 마운트 시 복원
+    // localStorage에서 이전 검색 결과 불러오기
     const savedResults = localStorage.getItem('accommodationSearchResults');
-    const savedFormData = localStorage.getItem('accommodationFormData');
     if (savedResults) {
-      setSearchResults(JSON.parse(savedResults));
-      setSortedResults(sortResults(JSON.parse(savedResults), sortType));
+      const parsedResults = JSON.parse(savedResults);
+      setSearchResults(parsedResults);
+      setSortedResults(sortResults(parsedResults, sortType));
     }
+
+    // localStorage에서 이전 formData 불러오기
+    const savedFormData = localStorage.getItem('accommodationFormData');
     if (savedFormData) {
-      try {
-        const parsed = JSON.parse(savedFormData);
-        // checkIn/checkOut을 Date 객체로 변환, 유효하지 않으면 기본값
-        const checkIn = parsed.checkIn ? new Date(parsed.checkIn) : new Date();
-        const checkOut = parsed.checkOut ? new Date(parsed.checkOut) : new Date(new Date().setDate(new Date().getDate() + 1));
+      const parsedFormData = JSON.parse(savedFormData);
+      // Date 객체로 변환
+      if (parsedFormData.checkIn) parsedFormData.checkIn = new Date(parsedFormData.checkIn);
+      if (parsedFormData.checkOut) parsedFormData.checkOut = new Date(parsedFormData.checkOut);
+      setFormData(parsedFormData);
+    } else {
+      // 기본 formData 설정
+      const today = new Date();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
         setFormData(prev => ({
           ...prev,
-          ...parsed,
-          checkIn: isNaN(checkIn.getTime()) ? new Date() : checkIn,
-          checkOut: isNaN(checkOut.getTime()) ? new Date(new Date().setDate(new Date().getDate() + 1)) : checkOut,
-        }));
-      } catch (e) {}
+        checkIn: today,
+        checkOut: tomorrow,
+        adults: '2',
+        children: '0'
+      }));
     }
-  }, []);
+  }, []); // 컴포넌트 마운트 시에만 실행
 
   useEffect(() => {
-    // 검색 결과/조건이 바뀔 때마다 저장
     if (searchResults.length > 0) {
       localStorage.setItem('accommodationSearchResults', JSON.stringify(searchResults));
+      setSortedResults(sortResults(searchResults, sortType));
     }
-  }, [searchResults]);
+  }, [searchResults, sortType]);
 
   useEffect(() => {
-    if (formData) {
+    if (formData && Object.keys(formData).length > 0) {
       localStorage.setItem('accommodationFormData', JSON.stringify(formData));
     }
   }, [formData]);
@@ -537,22 +945,52 @@ const AccommodationPlan = forwardRef(({
               />
             </LocalizationProvider>
 
+            {/* 객실 및 인원 선택 UI */}
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle1" gutterBottom>
+                객실 및 인원
+              </Typography>
+              {roomConfig.map((room, index) => (
+                <Box key={index} sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
+                  <Typography variant="body2" sx={{ minWidth: 60 }}>
+                    객실 {index + 1}
+                  </Typography>
             <TextField
-              fullWidth
-              label="성인 수"
-              type="text"
-              value={formData.adults}
-              onChange={handleAdultsChange}
-              onFocus={e => e.target.select()}
-              inputProps={{ 
-                inputMode: 'numeric',
-                pattern: '[0-9]*',
-                min: 1, 
-                max: 10 
-              }}
-              error={!formData.adults && !!error}
-              helperText={!formData.adults && error ? '인원 수를 입력해주세요' : ''}
-            />
+                    type="number"
+                    label="성인"
+                    value={room.adults}
+                    onChange={(e) => handleRoomConfigChange(index, 'adults', e.target.value)}
+                    inputProps={{ min: 1, max: 4 }}
+                    sx={{ width: 100 }}
+                    placeholder="성인"
+                  />
+                  <TextField
+                    type="number"
+                    label="어린이"
+                    value={room.children}
+                    onChange={(e) => handleRoomConfigChange(index, 'children', e.target.value)}
+                    inputProps={{ min: 0, max: 3 }}
+                    sx={{ width: 100 }}
+                    placeholder="어린이"
+                  />
+                  {index > 0 && (
+                    <IconButton onClick={() => removeRoom(index)} size="small">
+                      <DeleteIcon />
+                    </IconButton>
+                  )}
+                </Box>
+              ))}
+              {roomConfig.length < 5 && (
+                <Button
+                  startIcon={<AddIcon />}
+                  onClick={addRoom}
+                  size="small"
+                  sx={{ mt: 1 }}
+                >
+                  객실 추가
+                </Button>
+              )}
+            </Box>
 
       <Button
         variant="contained"
@@ -561,13 +999,13 @@ const AccommodationPlan = forwardRef(({
               size="large"
         onClick={handleSearch}
         disabled={loading}
-              sx={{ height: '56px' }}
+              sx={{ height: '56px', mt: 2 }}
       >
-              {loading ? <CircularProgress size={24} color="inherit" /> : '숙소 검색'}
+              숙소 검색
       </Button>
 
       {error && (
-              <Typography color="error" sx={{ mt: 1}}>
+              <Typography color="error" sx={{ mt: 1 }}>
           {error}
               </Typography>
             )}
@@ -583,17 +1021,6 @@ const AccommodationPlan = forwardRef(({
               {showMap ? '지도 숨기기' : '지도 보이기'}
             </Button>
           </Box>
-          {loading && (
-            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-              <CircularProgress />
-            </Box>
-          )}
-
-          {error && (
-            <Typography color="error" sx={{ p: 2 }}>
-              {error}
-            </Typography>
-          )}
           
           {/* 검색 결과와 지도를 포함하는 컨테이너 */}
           <Box sx={{ 
@@ -606,30 +1033,75 @@ const AccommodationPlan = forwardRef(({
             <Box sx={{ 
               maxHeight: 'calc(100vh - 200px)',
               overflow: 'auto',
-              pr: showMap ? 2 : 0
+              pr: showMap ? 2 : 0,
+              position: 'relative'
             }}>
-              {searchResults.length > 0 ? (
+              {loading ? (
+                <Box sx={{ 
+                  display: 'flex', 
+                  justifyContent: 'center', 
+                  alignItems: 'center',
+                  minHeight: '200px'
+                }}>
+                  <CircularProgress />
+                  <Typography variant="body1" sx={{ ml: 2 }}>
+                    숙소를 검색하고 있습니다...
+                  </Typography>
+                </Box>
+              ) : searchResults.length > 0 ? (
                 <>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Box sx={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    mb: 2,
+                    position: 'sticky',
+                    top: 0,
+                    backgroundColor: 'background.paper',
+                    zIndex: 1,
+                    py: 2,
+                    borderBottom: '1px solid',
+                    borderColor: 'divider'
+                  }}>
                     <Typography variant="h6">
                       검색 결과 ({searchResults.length}개)
                     </Typography>
-                    <ToggleButtonGroup
-                      value={sortType}
-                      exclusive
-                      onChange={handleSortChange}
-                      aria-label="정렬 방식"
-                    >
-                      <ToggleButton value="default">
-                        <SortIcon />
-                      </ToggleButton>
-                      <ToggleButton value="price">
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Button
+                        variant={sortType.startsWith('price') ? 'contained' : 'outlined'}
+                        size="small"
+                        onClick={() => handleSortChange('price')}
+                        startIcon={
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
                         <AttachMoneyIcon />
-                      </ToggleButton>
-                      <ToggleButton value="rating">
+                            {sortType === 'price_desc' ? <ArrowDownwardIcon sx={{ fontSize: '0.8rem' }} /> : <ArrowUpwardIcon sx={{ fontSize: '0.8rem' }} />}
+                          </Box>
+                        }
+                      >
+                        가격순
+                      </Button>
+                      <Button
+                        variant={sortType.startsWith('rating') ? 'contained' : 'outlined'}
+                        size="small"
+                        onClick={() => handleSortChange('rating')}
+                        startIcon={
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
                         <StarIcon />
-                      </ToggleButton>
-                    </ToggleButtonGroup>
+                            {sortType === 'rating_asc' ? <ArrowDownwardIcon sx={{ fontSize: '0.8rem' }} /> : <ArrowUpwardIcon sx={{ fontSize: '0.8rem' }} />}
+                          </Box>
+                        }
+                      >
+                        별점순
+                      </Button>
+                      <Button
+                        variant={sortType === 'distance' ? 'contained' : 'outlined'}
+                        size="small"
+                        onClick={() => handleSortChange('distance')}
+                        startIcon={<LocationOnIcon />}
+                      >
+                        거리순
+                      </Button>
+                    </Box>
                   </Box>
 
                   {(sortType === 'default' ? searchResults : sortedResults).map((hotel) => (
@@ -641,9 +1113,10 @@ const AccommodationPlan = forwardRef(({
                         cursor: 'pointer',
                         '&:hover': {
                           boxShadow: 6
-                        }
+                        },
+                        border: hotel.hotel_id === selectedHotelId ? '2px solid #4169E1' : 'none'
                       }}
-                      onClick={() => handleHotelClick(hotel)}
+                      onClick={() => handleHotelCardClick(hotel)}
                     >
                       <Grid container spacing={2}>
                         <Grid item xs={12} sm={4}>
@@ -682,16 +1155,28 @@ const AccommodationPlan = forwardRef(({
                                 </Typography>
                               </Box>
                             </Box>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                              <Button
+                                variant="outlined"
+                                color="primary"
+                                size="small"
+                                onClick={(e) => handleDetailClick(e, hotel)}
+                                startIcon={<InfoIcon />}
+                                sx={{ minWidth: '110px', width: '110px' }}
+                              >
+                                상세정보
+                              </Button>
                             <Button
                               variant="contained"
                               color="primary"
                               size="small"
                               onClick={(e) => handleBooking(e, hotel)}
                               startIcon={<OpenInNewIcon />}
-                              sx={{ minWidth: '100px' }}
+                                sx={{ minWidth: '110px', width: '110px' }}
                             >
                               예약하기
                             </Button>
+                            </Box>
                           </Box>
                           <Box sx={{ mt: 2 }}>
                             {hotel.original_price && (
@@ -737,6 +1222,16 @@ const AccommodationPlan = forwardRef(({
                     </Paper>
                   ))}
                 </>
+              ) : error ? (
+                <Box sx={{ 
+                  display: 'flex', 
+                  justifyContent: 'center', 
+                  alignItems: 'center',
+                  minHeight: '200px',
+                  color: 'error.main'
+                }}>
+                  <Typography>{error}</Typography>
+                </Box>
               ) : null}
             </Box>
 
@@ -752,6 +1247,12 @@ const AccommodationPlan = forwardRef(({
               }}>
                 <HotelMap 
                   hotels={searchResults}
+                  selectedHotelId={selectedHotelId}
+                  searchLocation={{
+                    latitude: formData.latitude,
+                    longitude: formData.longitude,
+                    name: formData.cityName
+                  }}
                   center={searchResults.length > 0 
                     ? [parseFloat(searchResults[0].longitude), parseFloat(searchResults[0].latitude)] 
                     : [126.9779692, 37.5662952] // 서울 시청 좌표 (기본값)
@@ -776,14 +1277,26 @@ const AccommodationPlan = forwardRef(({
         />
       </Dialog>
 
+      {modalOpen && selectedHotel && (
       <Modal
         open={modalOpen}
         onClose={handleCloseModal}
         aria-labelledby="hotel-detail-modal"
       >
-        <Box sx={modalStyle}>
-          {selectedHotel && (
-            <>
+          <Box sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: '90%',
+            maxWidth: 800,
+            maxHeight: '90vh',
+            bgcolor: 'background.paper',
+            boxShadow: 24,
+            p: 4,
+            overflow: 'auto',
+            borderRadius: 2
+          }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="h5" component="h2">
                   {selectedHotel.hotel_name}
@@ -859,15 +1372,105 @@ const AccommodationPlan = forwardRef(({
 
                   {selectedHotel.distance_to_center && (
                     <Typography variant="body1" paragraph>
-                      {selectedHotel.distance_to_center}
+                    중심가까지 거리: {selectedHotel.distance_to_center}
                     </Typography>
                   )}
+
+                {/* 객실 정보 섹션 */}
+                {loading ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+                    <CircularProgress />
+                  </Box>
+                ) : roomData && roomData.rooms ? (
+                  <>
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="h6" gutterBottom>객실 정보</Typography>
+                    <Box sx={{ mt: 2 }}>
+                      {roomData.rooms.map((room, index) => (
+                        <Paper key={room.id} sx={{ p: 2, mb: 2 }}>
+                          <Grid container spacing={2}>
+                            {room.photos && room.photos.length > 0 && (
+                              <Grid item xs={12} sm={4}>
+                                <Box
+                                  component="img"
+                                  src={room.photos[0].url_original}
+                                  alt={room.name}
+                                  sx={{
+                                    width: '100%',
+                                    height: 150,
+                                    objectFit: 'cover',
+                                    borderRadius: 1
+                                  }}
+                                />
                 </Grid>
+                            )}
+                            <Grid item xs={12} sm={room.photos?.length ? 8 : 12}>
+                              <Typography variant="h6" gutterBottom>
+                                {room.name || '객실 ' + (index + 1)}
+                              </Typography>
+                              <Typography variant="subtitle1" color="text.secondary" gutterBottom>
+                                침대 {room.bedConfigurations && room.bedConfigurations.length > 0 
+                                  ? room.bedConfigurations[0].bed_types.reduce((sum, bed) => sum + bed.count, 0) 
+                                  : '정보 없음'}개
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary" paragraph>
+                                {room.description}
+                              </Typography>
+                              
+                              <Grid container spacing={2}>
+                                <Grid item xs={12} md={6}>
+                                  <Box sx={{ mt: 1 }}>
+                                    {room.roomSize && (
+                                      <Typography variant="body2" gutterBottom>
+                                        <strong>객실 크기:</strong> {room.roomSize.size} {room.roomSize.unit}
+                                      </Typography>
+                                    )}
+                                    {room.bedConfigurations && room.bedConfigurations.length > 0 && (
+                                      <Typography variant="body2" gutterBottom>
+                                        <strong>침대 구성:</strong> {room.bedConfigurations[0].bed_types.map(bed => 
+                                          `${bed.name} (${bed.count}개)`).join(', ')}
+                                      </Typography>
+                                    )}
+                                  </Box>
               </Grid>
-            </>
-          )}
+                                <Grid item xs={12} md={6}>
+                                  <Box sx={{ mt: 1, textAlign: 'right' }}>
+                                    <Typography variant="h6" color="primary" gutterBottom>
+                                      {room.price > 0 ? `${Number(room.price).toLocaleString()} ${room.currency}` : '가격 정보 없음'}
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                      {room.isRefundable ? '환불 가능' : '환불 불가'}
+                                    </Typography>
+                                  </Box>
+                                </Grid>
+                              </Grid>
+
+                              <Box sx={{ mt: 2 }}>
+                                <Button
+                                  variant="contained"
+                                  color="primary"
+                                  onClick={(e) => handleBooking(e, selectedHotel)}
+                                  fullWidth
+                                >
+                                  예약하기
+                                </Button>
+                              </Box>
+                            </Grid>
+                          </Grid>
+                        </Paper>
+                      ))}
+                    </Box>
+                  </>
+                ) : (
+                  <Typography variant="body1" color="error" align="center">
+                    사용 가능한 객실이 없습니다.
+                  </Typography>
+                )}
+              </Grid>
+            </Grid>
         </Box>
       </Modal>
+      )}
 
       <Dialog open={isDialogOpen} onClose={() => setIsDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>숙소 검색</DialogTitle>
