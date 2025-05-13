@@ -557,14 +557,14 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers }) => {
 
   // 이동 수단 변경 시 경로 업데이트
   useEffect(() => {
-    if (!map.current || !travelPlans[selectedDay]?.schedules.length > 1) return;
+    if (!map.current || !travelPlans?.[selectedDay]?.schedules || travelPlans[selectedDay].schedules.length <= 1) return;
 
     const waitForMap = () => {
       if (map.current && map.current.isStyleLoaded() && map.current.getSource('route')) {
-    const coordinates = travelPlans[selectedDay].schedules.map(schedule => [
-      schedule.lng,
-      schedule.lat
-    ]);
+        const currentSchedules = travelPlans[selectedDay]?.schedules;
+        if (!currentSchedules || currentSchedules.length <= 1) return;
+
+        const coordinates = currentSchedules.map(schedule => [schedule.lng, schedule.lat]);
 
         const routePromises = [];
         for (let i = 0; i < coordinates.length - 1; i++) {
@@ -721,10 +721,14 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers }) => {
                   
                   return route.originalRoute.steps.map((step, stepIndex) => {
                     let instruction = step.instruction;
+                    // Safely access schedule names
+                    const startScheduleName = currentSchedules[result.startIndex]?.name || '알 수 없는 출발지';
+                    const endScheduleName = currentSchedules[result.endIndex]?.name || '알 수 없는 도착지';
+
                     if (stepIndex === 0) {
-                      instruction = `${travelPlans[selectedDay].schedules[result.startIndex].name}에서 출발`;
+                      instruction = `${startScheduleName}에서 출발`;
                     } else if (stepIndex === route.originalRoute.steps.length - 1) {
-                      instruction = `${travelPlans[selectedDay].schedules[result.endIndex].name}에 도착`;
+                      instruction = `${endScheduleName}에 도착`;
                     }
 
                     return {
@@ -753,10 +757,14 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers }) => {
                   const leg = result.data.routes[0].legs[0];
               return leg.steps.map((step, stepIndex) => {
                 let instruction = '';
+                // Safely access schedule names
+                const startScheduleName = currentSchedules[result.startIndex]?.name || '알 수 없는 출발지';
+                const endScheduleName = currentSchedules[result.endIndex]?.name || '알 수 없는 도착지';
+
                 if (stepIndex === 0) {
-                      instruction = `${travelPlans[selectedDay].schedules[result.startIndex].name}에서 출발`;
+                      instruction = `${startScheduleName}에서 출발`;
                 } else if (stepIndex === leg.steps.length - 1) {
-                      instruction = `${travelPlans[selectedDay].schedules[result.endIndex].name}에 도착`;
+                      instruction = `${endScheduleName}에 도착`;
                 } else {
                   let direction = '';
                   switch (step.maneuver.modifier) {
@@ -814,7 +822,7 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers }) => {
     };
 
     waitForMap();
-  }, [transportMode, travelPlans, selectedDay]);
+  }, [transportMode, travelPlans, selectedDay, isGoogleMapsLoaded]);
 
   // 마커 표시
   useEffect(() => {

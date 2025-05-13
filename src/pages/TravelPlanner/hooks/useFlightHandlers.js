@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import amadeusApi from '../../utils/amadeusApi';
+import { useState, useCallback, useEffect } from 'react';
+import amadeusApi from '../../../utils/amadeusApi';
 
 const useFlightHandlers = () => {
   const [flightSearchParams, setFlightSearchParams] = useState({
@@ -25,6 +25,12 @@ const useFlightHandlers = () => {
   const [isLoadingFlights, setIsLoadingFlights] = useState(false);
   const [flightError, setFlightError] = useState(null);
 
+  const [airportInfoCache, setAirportInfoCache] = useState({});
+  const [loadingAirportInfo, setLoadingAirportInfo] = useState(new Set());
+
+  const [originSearchQuery, setOriginSearchQuery] = useState('');
+  const [destinationSearchQuery, setDestinationSearchQuery] = useState('');
+
   const handleCitySearch = useCallback(async (value, type) => {
     if (!value || value.length < 2) {
       if (type === 'origin') setOriginCities([]);
@@ -44,11 +50,14 @@ const useFlightHandlers = () => {
       if (type === 'origin') setOriginCities(options);
       else setDestinationCities(options);
     } catch (err) {
+      console.error('[AmadeusApi] City/Airport search error:', err);
       setFlightError(err.message || '도시 검색 실패');
+      if (type === 'origin') setOriginCities([]);
+      else setDestinationCities([]);
     } finally {
       setIsLoadingCities(false);
     }
-  }, []);
+  }, [setFlightError]);
 
   const handleFlightSearch = useCallback(async () => {
     const {
@@ -78,7 +87,7 @@ const useFlightHandlers = () => {
       setFlightError('총 인원은 9명을 초과할 수 없습니다.');
       return;
     }
-
+    setFlightError(null);
     setIsLoadingFlights(true);
     try {
       const params = {
@@ -113,14 +122,99 @@ const useFlightHandlers = () => {
     } finally {
       setIsLoadingFlights(false);
     }
-  }, [flightSearchParams]);
+  }, [flightSearchParams, setFlightError, setIsLoadingFlights, setFlightResults, setFlightDictionaries]);
+
+  useEffect(() => {
+    if (!flightResults || flightResults.length === 0) {
+        setAirportInfoCache({}); 
+        setLoadingAirportInfo(new Set());
+        return; 
+    }
+
+    const uniqueIataCodes = new Set();
+    flightResults.forEach(flight => {
+        flight.itineraries.forEach(itinerary => {
+            itinerary.segments.forEach(segment => {
+                if (segment.departure?.iataCode) uniqueIataCodes.add(segment.departure.iataCode);
+                if (segment.arrival?.iataCode) uniqueIataCodes.add(segment.arrival.iataCode);
+                if (segment.stops) {
+                    segment.stops.forEach(stop => { if (stop.iataCode) uniqueIataCodes.add(stop.iataCode); });
+                }
+            });
+        });
+    });
+
+    const currentAirportInfoCache = airportInfoCache;
+    const currentLoadingAirportInfo = loadingAirportInfo;
+
+    const codesToFetch = [...uniqueIataCodes].filter(code => {
+      return code && !currentAirportInfoCache[code] && !currentLoadingAirportInfo.has(code);
+    });
+
+    if (codesToFetch.length > 0) {
+        setLoadingAirportInfo(prevLoadingCodes => {
+          const newLoadingCodes = new Set(prevLoadingCodes);
+          let added = false;
+          codesToFetch.forEach(code => {
+            if (!newLoadingCodes.has(code)) {
+              newLoadingCodes.add(code);
+              added = true;
+            }
+          });
+          return added ? newLoadingCodes : prevLoadingCodes;
+        });
+        setFlightError(null);
+        
+        const fetchPromises = codesToFetch.map(iataCode => 
+            amadeusApi.getAirportDetails(iataCode)
+              .then(info => ({ [iataCode]: info || { warning: 'Failed to fetch details'} }))
+              .catch(error => {
+                console.error(`Error fetching airport details for ${iataCode}:`, error);
+                setFlightError(prevError => {
+                  const newErrorMessage = `공항 정보(${iataCode}) 로딩 실패.`;
+                  return prevError ? `${prevError}\n${newErrorMessage}` : newErrorMessage;
+                });
+                return { [iataCode]: { error: `Failed to fetch details for ${iataCode}` } };
+              })
+        );
+
+        Promise.all(fetchPromises)
+          .then(results => {
+            const newCacheEntries = results.reduce((acc, current) => ({ ...acc, ...current }), {});
+            setAirportInfoCache(prevCache => ({ ...prevCache, ...newCacheEntries }));
+          })
+          .catch(error => {
+            console.error("Error fetching airport details in hook (Promise.all):", error);
+            setFlightError("일부 공항 정보를 가져오는 중 문제가 발생했습니다.");
+          })
+          .finally(() => {
+            setLoadingAirportInfo(prevLoadingCodes => {
+                const nextLoadingCodes = new Set(prevLoadingCodes);
+                let changed = false;
+                codesToFetch.forEach(code => {
+                  if (nextLoadingCodes.has(code)) {
+                    nextLoadingCodes.delete(code);
+                    changed = true;
+                  }
+                });
+                return changed ? nextLoadingCodes : prevLoadingCodes;
+            });
+        });
+    }
+  }, [flightResults, setAirportInfoCache, setLoadingAirportInfo, setFlightError]);
 
   return {
     flightSearchParams, setFlightSearchParams,
     originCities, destinationCities,
     isLoadingCities, isLoadingFlights,
     flightResults, flightDictionaries, flightError,
-    handleCitySearch, handleFlightSearch
+    handleCitySearch, handleFlightSearch,
+    airportInfoCache,
+    loadingAirportInfo,
+    setFlightDictionaries,
+    setAirportInfoCache,
+    originSearchQuery, setOriginSearchQuery,
+    destinationSearchQuery, setDestinationSearchQuery
   };
 };
 

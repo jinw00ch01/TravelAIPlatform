@@ -1,22 +1,28 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { format as formatDateFns } from 'date-fns';
-import { travelApi } from '../../services/api';
+import { travelApi } from '../../../services/api';
 
 const usePlannerActions = ({
   travelPlans, setTravelPlans,
   dayOrder, setDayOrder,
   selectedDay, setSelectedDay,
-  startDate, planId, setPlanId
+  startDate, setStartDate,
+  planId, setPlanId
 }) => {
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
+  const [planTitleForSave, setPlanTitleForSave] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
 
-  const getDayTitle = (dayNumber) => {
+  const getDayTitle = useCallback((dayNumber) => {
     const date = new Date(startDate);
+    if (isNaN(date.getTime())) return `Day ${dayNumber}`;
     date.setDate(date.getDate() + dayNumber - 1);
     return formatDateFns(date, 'M/d');
-  };
+  }, [startDate]);
 
-  const addDay = () => {
-    const newDayNumber = Math.max(...Object.keys(travelPlans).map(Number)) + 1;
+  const addDay = useCallback(() => {
+    const newDayNumber = dayOrder.length > 0 ? Math.max(...dayOrder.map(Number)) + 1 : 1;
     const newPlans = {
       ...travelPlans,
       [newDayNumber]: {
@@ -26,60 +32,94 @@ const usePlannerActions = ({
     };
     setTravelPlans(newPlans);
     setDayOrder(prev => [...prev, newDayNumber.toString()]);
-  };
+    setSelectedDay(newDayNumber);
+  }, [travelPlans, dayOrder, getDayTitle, setTravelPlans, setDayOrder, setSelectedDay]);
 
-  const removeDay = (dayToRemove) => {
+  const removeDay = useCallback((dayToRemove) => {
     if (Object.keys(travelPlans).length <= 1) {
       alert('최소 하루는 남아있어야 합니다.');
       return;
     }
 
-    const remainingDays = Object.keys(travelPlans).filter(d => d !== String(dayToRemove)).map(Number).sort((a, b) => a - b);
+    const remainingDays = dayOrder.filter(d => d !== String(dayToRemove));
     const newPlans = {};
-    remainingDays.forEach((day, index) => {
-      newPlans[index + 1] = {
-        ...travelPlans[day],
-        title: getDayTitle(index + 1)
+    const newDayOrderArray = [];
+
+    remainingDays.forEach((originalDayKey, index) => {
+      const newDayNumber = index + 1;
+      newDayOrderArray.push(newDayNumber.toString());
+      newPlans[newDayNumber.toString()] = {
+        ...travelPlans[originalDayKey],
+        title: getDayTitle(newDayNumber)
       };
     });
 
     setTravelPlans(newPlans);
-    setDayOrder(Object.keys(newPlans));
-    if (selectedDay === dayToRemove) {
-      setSelectedDay(Math.min(dayToRemove, Object.keys(newPlans).length));
-    } else if (selectedDay > dayToRemove) {
-      setSelectedDay(selectedDay - 1);
-    }
-  };
+    setDayOrder(newDayOrderArray);
 
-  const handleDateChange = (newDate) => {
-    const newPlans = {};
-    Object.keys(travelPlans).forEach((day, index) => {
+    if (String(selectedDay) === String(dayToRemove)) {
+      setSelectedDay(newDayOrderArray.length > 0 ? parseInt(newDayOrderArray[0]) : 1);
+    } else {
+      const oldSelectedIndex = dayOrder.indexOf(String(selectedDay));
+      const removedDayIndex = dayOrder.indexOf(String(dayToRemove));
+      if (oldSelectedIndex > removedDayIndex) {
+        setSelectedDay(selectedDay -1);
+      }
+    }
+  }, [travelPlans, dayOrder, selectedDay, getDayTitle, setTravelPlans, setDayOrder, setSelectedDay]);
+
+  const handleDateChange = useCallback((newDate) => {
+    if (!newDate || isNaN(newDate.getTime())) return;
+    setStartDate(newDate);
+    const updatedPlans = { ...travelPlans };
+    dayOrder.forEach((dayKey, index) => {
       const date = new Date(newDate);
       date.setDate(date.getDate() + index);
-      const detail = travelPlans[day].title.replace(/^[0-9]{1,2}\/[^ ]*:?/, '').trim();
-      const newTitle = detail ? `${formatDateFns(date, 'M/d')} ${detail}` : formatDateFns(date, 'M/d');
-      newPlans[day] = {
-        ...travelPlans[day],
-        title: newTitle
-      };
+      const currentPlan = travelPlans[dayKey];
+      if (currentPlan) {
+        const detail = currentPlan.title.replace(/^[0-9]{1,2}\/[0-9]{1,2}( |:)?/, '').trim();
+        updatedPlans[dayKey] = {
+          ...currentPlan,
+          title: detail ? `${formatDateFns(date, 'M/d')} ${detail}` : formatDateFns(date, 'M/d')
+        };
+      }
     });
-    setTravelPlans(newPlans);
-  };
+    setTravelPlans(updatedPlans);
+  }, [travelPlans, dayOrder, setStartDate, setTravelPlans]);
 
-  const handleSaveConfirm = async (planTitle) => {
-    if (!planTitle.trim()) {
-      alert('여행 계획 제목을 입력해주세요.');
-      return;
+  const openSaveDialog = useCallback(() => {
+    setPlanTitleForSave('');
+    setIsSaveDialogOpen(true);
+    setSaveError(null);
+  }, []);
+
+  const closeSaveDialog = useCallback(() => {
+    if (!isSaving) {
+      setIsSaveDialogOpen(false);
     }
+  }, [isSaving]);
 
+  const handleSaveConfirm = useCallback(async (titleToSave) => {
+    if (!titleToSave || !titleToSave.trim()) {
+      setSaveError('여행 계획 제목을 입력해주세요.');
+      return false;
+    }
+    setIsSaving(true);
+    setSaveError(null);
     try {
       const planData = {
-        title: planTitle,
+        title: titleToSave,
         days: Object.keys(travelPlans).map(day => ({
           day: parseInt(day),
           title: travelPlans[day].title,
-          schedules: travelPlans[day].schedules || []
+          schedules: travelPlans[day].schedules?.map(schedule => {
+            const baseSchedule = { ...schedule };
+            if (baseSchedule.flightOfferDetails?.flightOfferData) {
+              baseSchedule.flightOfferDetails.flightOfferData = 
+                JSON.parse(JSON.stringify(baseSchedule.flightOfferDetails.flightOfferData, (k,v) => typeof v === 'number' && !isFinite(v) ? null : v));
+            }
+            return baseSchedule;
+          }) || []
         })),
         startDate: formatDateFns(startDate, 'yyyy-MM-dd')
       };
@@ -87,21 +127,34 @@ const usePlannerActions = ({
       const response = await travelApi.savePlan(planData);
       if (response?.success && response.plan_id) {
         setPlanId(response.plan_id);
-        alert('저장 완료!');
+        setIsSaveDialogOpen(false);
+        return true;
       } else {
-        alert('저장 실패');
+        setSaveError(response?.message || '저장 중 알 수 없는 오류가 발생했습니다.');
+        return false;
       }
     } catch (err) {
       console.error('저장 실패:', err);
-      alert('저장 중 오류 발생');
+      setSaveError(`저장 중 오류 발생: ${err.message || '네트워크 오류일 수 있습니다.'}`);
+      return false;
+    } finally {
+      setIsSaving(false);
     }
-  };
+  }, [travelPlans, startDate, setPlanId]);
 
   return {
+    getDayTitle,
     addDay,
     removeDay,
     handleDateChange,
-    handleSaveConfirm
+    openSaveDialog,
+    closeSaveDialog,
+    handleSaveConfirm,
+    isSaveDialogOpen,
+    planTitleForSave,
+    setPlanTitleForSave,
+    isSaving,
+    saveError
   };
 };
 

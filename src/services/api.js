@@ -106,10 +106,10 @@ export const travelApi = {
   // 최신 여행 계획 또는 조건에 맞는 계획 불러오기
   loadPlan: async (params = { newest: true }) => {
     try {
-      console.log('여행 계획 불러오기 시도 - URL:', `${API_URL}/api/travel/load`, 'Params:', params);
+      console.log('여행 계획 불러오기 시도 - URL:', `${API_URL}api/travel/LoadPlanFunction_NEW`, 'Params:', params);
       
       // 직접 axios 대신 apiClient 사용 (인터셉터에서 인증 헤더 자동 추가)
-      const response = await apiClient.post('/api/travel/load', params, {
+      const response = await apiClient.post('api/travel/LoadPlanFunction_NEW', params, {
         // 타임아웃 설정 (8초)
         timeout: 8000,
         // 재시도 설정 

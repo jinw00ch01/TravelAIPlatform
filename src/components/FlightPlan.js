@@ -24,6 +24,10 @@ const FlightPlan = ({
   setSearchParams,
   originCities,
   destinationCities,
+  originSearchQuery,
+  setOriginSearchQuery,
+  destinationSearchQuery,
+  setDestinationSearchQuery,
   handleCitySearch,
   flights,
   dictionaries,
@@ -68,14 +72,14 @@ const FlightPlan = ({
 
       <Box className="flex flex-col gap-3 mb-4">
         <Autocomplete
-          options={originCities}
+          options={originCities || []}
           getOptionLabel={(option) => `${option.name} (${option.iataCode})`}
           filterOptions={(x) => x}
           value={searchParams.selectedOrigin || null}
           onChange={(_, value) => handleParamChange('selectedOrigin', value)}
-          inputValue={searchParams.originSearch || ''}
+          inputValue={originSearchQuery}
           onInputChange={(_, value, reason) => {
-            handleParamChange('originSearch', value);
+            setOriginSearchQuery(value);
             if (reason === 'input' && value.length >= 2) {
               handleCitySearch(value, 'origin');
             }
@@ -100,14 +104,14 @@ const FlightPlan = ({
         />
 
         <Autocomplete
-          options={destinationCities}
+          options={destinationCities || []}
           getOptionLabel={(option) => `${option.name} (${option.iataCode})`}
           filterOptions={(x) => x}
           value={searchParams.selectedDestination || null}
           onChange={(_, value) => handleParamChange('selectedDestination', value)}
-          inputValue={searchParams.destinationSearch || ''}
+          inputValue={destinationSearchQuery}
           onInputChange={(_, value, reason) => {
-            handleParamChange('destinationSearch', value);
+            setDestinationSearchQuery(value);
             if (reason === 'input' && value.length >= 2) {
               handleCitySearch(value, 'destination');
             }

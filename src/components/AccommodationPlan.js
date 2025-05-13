@@ -755,22 +755,41 @@ const AccommodationPlan = forwardRef(({
       // Date 객체로 변환
       if (parsedFormData.checkIn) parsedFormData.checkIn = new Date(parsedFormData.checkIn);
       if (parsedFormData.checkOut) parsedFormData.checkOut = new Date(parsedFormData.checkOut);
-      setFormData(parsedFormData);
-    } else {
+      // Ensure all necessary fields are present, provide defaults if not
+      setFormData(prevData => ({
+        ...{
+          cityName: '',
+          checkIn: new Date(),
+          checkOut: new Date(new Date().setDate(new Date().getDate() + 1)),
+          adults: '2',
+          children: '0',
+          roomConfig: [{ adults: 2, children: 0 }],
+          latitude: null,
+          longitude: null,
+        },
+        ...prevData, // 기존 formData가 있으면 유지
+        ...parsedFormData // localStorage에서 불러온 값으로 덮어쓰기
+      }));
+    } else if (setFormData) { // setFormData가 있을 때 (즉, 외부에서 주입받을 때) 기본값 설정
       // 기본 formData 설정
       const today = new Date();
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
       
-        setFormData(prev => ({
-          ...prev,
-        checkIn: today,
-        checkOut: tomorrow,
-        adults: '2',
-        children: '0'
+      setFormData(prev => ({
+        ...prev,
+        checkIn: prev?.checkIn || today,
+        checkOut: prev?.checkOut || tomorrow,
+        adults: prev?.adults || '2',
+        children: prev?.children || '0',
+        roomConfig: prev?.roomConfig || [{ adults: 2, children: 0 }],
+        // cityName, latitude, longitude는 검색 전까지 null 또는 빈 문자열일 수 있음
+        cityName: prev?.cityName || '',
+        latitude: prev?.latitude || null,
+        longitude: prev?.longitude || null,
       }));
     }
-  }, []); // 컴포넌트 마운트 시에만 실행
+  }, [setFormData]); // sortType 제거, setFormData만 의존
 
   useEffect(() => {
     if (searchResults.length > 0) {
@@ -780,10 +799,10 @@ const AccommodationPlan = forwardRef(({
   }, [searchResults, sortType]);
 
   useEffect(() => {
-    if (formData && Object.keys(formData).length > 0) {
+    if (formData && Object.keys(formData).length > 0 && setFormData) { // setFormData가 있을 때만 localStorage에 저장
       localStorage.setItem('accommodationFormData', JSON.stringify(formData));
     }
-  }, [formData]);
+  }, [formData, setFormData]);
 
   useEffect(() => {
     // travelPlans의 일수가 바뀌면 daySelectList도 최신화
@@ -806,32 +825,32 @@ const AccommodationPlan = forwardRef(({
               fullWidth
               onClick={handleOpenSearchPopupClick}
             >
-              {formData.cityName || '도시 또는 지역 검색'}
+              {formData?.cityName || '도시 또는 지역 검색'}
             </Button>
         
         <LocalizationProvider dateAdapter={AdapterDateFns}>
             <DatePicker
                 label="체크인"
-                value={formData.checkIn}
+                value={formData?.checkIn || null}
                 onChange={(date) => handleDateChange('checkIn', date)}
                 slotProps={{ 
                   textField: { 
                     fullWidth: true,
-                    error: !formData.checkIn && !!error,
-                    helperText: !formData.checkIn && error ? '체크인 날짜를 선택해주세요' : ''
+                    error: !formData?.checkIn && !!error,
+                    helperText: !formData?.checkIn && error ? '체크인 날짜를 선택해주세요' : ''
                   } 
                 }}
             />
             <DatePicker
                 label="체크아웃"
-                value={formData.checkOut}
+                value={formData?.checkOut || null}
                 onChange={(date) => handleDateChange('checkOut', date)}
-                minDate={formData.checkIn ? new Date(new Date(formData.checkIn).setDate(new Date(formData.checkIn).getDate() + 1)) : new Date(new Date().setDate(new Date().getDate() + 1))}
+                minDate={formData?.checkIn ? new Date(new Date(formData.checkIn).setDate(new Date(formData.checkIn).getDate() + 1)) : new Date(new Date().setDate(new Date().getDate() + 1))}
                 slotProps={{ 
                   textField: { 
                     fullWidth: true,
-                    error: !formData.checkOut && !!error,
-                    helperText: !formData.checkOut && error ? '체크아웃 날짜를 선택해주세요' : ''
+                    error: !formData?.checkOut && !!error,
+                    helperText: !formData?.checkOut && error ? '체크아웃 날짜를 선택해주세요' : ''
                   } 
                 }}
               />
@@ -1146,9 +1165,9 @@ const AccommodationPlan = forwardRef(({
                   hotels={searchResults}
                   selectedHotelId={selectedHotelId}
                   searchLocation={{
-                    latitude: formData.latitude,
-                    longitude: formData.longitude,
-                    name: formData.cityName
+                    latitude: formData?.latitude,
+                    longitude: formData?.longitude,
+                    name: formData?.cityName
                   }}
                   center={searchResults.length > 0 
                     ? [parseFloat(searchResults[0].longitude), parseFloat(searchResults[0].latitude)] 
@@ -1427,7 +1446,7 @@ const AccommodationPlan = forwardRef(({
           ) : (
             daySelectList.map(({ dayKey }) => {
               // checkIn과 dayKey로 날짜 계산
-              const baseDate = formData.checkIn ? new Date(formData.checkIn) : new Date();
+              const baseDate = formData?.checkIn ? new Date(formData.checkIn) : new Date();
               const date = new Date(baseDate);
               date.setDate(baseDate.getDate() + dayKey);
               const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
