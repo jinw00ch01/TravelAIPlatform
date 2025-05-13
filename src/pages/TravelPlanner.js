@@ -7,19 +7,19 @@ import SearchIcon from '@mui/icons-material/Search';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
-import SearchPopup from '../components/SearchPopup';
-import MapboxComponent from '../components/MapboxComponent';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
-import AccommodationPlan from '../components/AccommodationPlan';
-import FlightPlan from '../components/FlightPlan';
-import { travelApi } from '../services/api';
-import amadeusApi from '../utils/amadeusApi';
 import { format as formatDateFns } from 'date-fns';
 import { DatePicker } from '@mui/x-date-pickers';
 import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import CloseIcon from '@mui/icons-material/Close';
 import { Divider } from '@mui/material';
+import SearchPopup from '../components/SearchPopup';
+import MapboxComponent from '../components/MapboxComponent';
+import { travelApi } from '../services/api';
+import amadeusApi from '../utils/amadeusApi';
+import AccommodationPlan from '../components/AccommodationPlan';
+import FlightPlan from '../components/FlightPlan';
 import {
     formatPrice,
     formatDuration,
