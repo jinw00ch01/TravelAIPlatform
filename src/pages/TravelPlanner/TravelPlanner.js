@@ -30,6 +30,7 @@ import {
     renderFareDetails,
     renderItineraryDetails
 } from '../../utils/flightFormatters';
+import AIChatWidget from './components/AIChatWidget';
 
 const StrictModeDroppable = ({ children, ...props }) => {
   const [enabled, setEnabled] = useState(false);
@@ -325,13 +326,20 @@ const TravelPlanner = () => {
     addAccommodationToSchedule(hotelToAdd, dayKey, getDayTitle, setTravelPlans);
   }, [addAccommodationToSchedule, getDayTitle, setTravelPlans]);
 
+  // AIChatWidget에서 메시지 전송 시 호출될 핸들러
+  const handleAISendMessage = useCallback((message) => {
+    // TODO: AI에게 메시지 전송 및 응답 처리 로직 구현
+    console.log('Message to AI from TravelPlanner:', message);
+    // 여기에 실제 AI 서비스 호출 및 응답에 따른 상태 업데이트 로직이 들어갑니다.
+  }, []);
+
   if (!user && !process.env.REACT_APP_SKIP_AUTH) {
     return <Typography>로그인이 필요합니다.</Typography>;
   }
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
-      <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)' }}>
+      <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', position: 'relative' }}>
         <Box
           sx={{
             width: isSidebarOpen ? '350px' : '0px',
@@ -759,6 +767,9 @@ const TravelPlanner = () => {
         </DialogActions>
       </Dialog>
         )}
+
+        <AIChatWidget onSendMessage={handleAISendMessage} />
+
     </Box>
     </LocalizationProvider>
   );
