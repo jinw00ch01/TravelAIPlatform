@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useCallback } from "react";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -35,6 +35,84 @@ export const HomePage = () => {
   const [selectedFlightDictionaries, setSelectedFlightDictionaries] = useState({});
   const [airportInfoCache, setAirportInfoCache] = useState({});
 
+  // 항공편 정보와 공항 정보를 합쳐서 확장된 항공편 정보를 만드는 함수
+  const enrichFlightWithAirportInfo = useCallback((flight) => {
+    if (!flight || !flight.itineraries || Object.keys(airportInfoCache).length === 0) {
+      return flight;
+    }
+
+    // 원본 객체를 변경하지 않기 위해 깊은 복사
+    const enrichedFlight = JSON.parse(JSON.stringify(flight));
+    
+    // 각 여정(가는편, 오는편)에 대해 공항 정보 추가
+    enrichedFlight.itineraries.forEach((itinerary, itineraryIndex) => {
+      // 각 구간(세그먼트)마다 출발/도착 공항 정보 추가
+      itinerary.segments.forEach((segment, segmentIndex) => {
+        // 출발 공항 정보 추가
+        if (segment.departure?.iataCode && airportInfoCache[segment.departure.iataCode]) {
+          const airportInfo = airportInfoCache[segment.departure.iataCode];
+          
+          // enrichedFlight에 위치 정보 추가
+          enrichedFlight.itineraries[itineraryIndex].segments[segmentIndex].departure.airportInfo = {
+            name: airportInfo.name,
+            koreanName: airportInfo.koreanName || airportInfo.name,
+            city: airportInfo.city || airportInfo.address?.cityName,
+            country: airportInfo.country || airportInfo.address?.countryName,
+          };
+          
+          // 위경도 정보가 있는 경우 추가
+          if (airportInfo.geoCode?.latitude && airportInfo.geoCode?.longitude) {
+            enrichedFlight.itineraries[itineraryIndex].segments[segmentIndex].departure.geoCode = {
+              latitude: airportInfo.geoCode.latitude,
+              longitude: airportInfo.geoCode.longitude
+            };
+          }
+        }
+        
+        // 도착 공항 정보 추가
+        if (segment.arrival?.iataCode && airportInfoCache[segment.arrival.iataCode]) {
+          const airportInfo = airportInfoCache[segment.arrival.iataCode];
+          
+          // enrichedFlight에 위치 정보 추가
+          enrichedFlight.itineraries[itineraryIndex].segments[segmentIndex].arrival.airportInfo = {
+            name: airportInfo.name,
+            koreanName: airportInfo.koreanName || airportInfo.name,
+            city: airportInfo.city || airportInfo.address?.cityName,
+            country: airportInfo.country || airportInfo.address?.countryName,
+          };
+          
+          // 위경도 정보가 있는 경우 추가
+          if (airportInfo.geoCode?.latitude && airportInfo.geoCode?.longitude) {
+            enrichedFlight.itineraries[itineraryIndex].segments[segmentIndex].arrival.geoCode = {
+              latitude: airportInfo.geoCode.latitude,
+              longitude: airportInfo.geoCode.longitude
+            };
+          }
+        }
+      });
+    });
+    
+    return enrichedFlight;
+  }, [airportInfoCache]);
+
+  // 항공편 선택 함수 업데이트
+  const selectFlight = useCallback((flight, dictionaries, newAirportInfoCache) => {
+    if (!flight) return;
+    
+    // 새로운 공항 정보가 있으면 캐시에 추가
+    if (newAirportInfoCache && Object.keys(newAirportInfoCache).length > 0) {
+      setAirportInfoCache(prev => ({...prev, ...newAirportInfoCache}));
+    }
+    
+    // 항공편 정보에 공항 정보 추가
+    const enrichedFlight = enrichFlightWithAirportInfo(flight);
+    
+    console.log('[HomePage] Selected flight with airport info:', enrichedFlight);
+    setSelectedFlight(enrichedFlight);
+    setSelectedFlightDictionaries(dictionaries || {});
+    setIsFlightDialogOpen(false);
+  }, [enrichFlightWithAirportInfo]);
+
   // 선택한 항공편의 공항 세부정보(한글 공항/도시명 등) 동기화
   useEffect(() => {
     if (!selectedFlight) return;
@@ -66,6 +144,15 @@ export const HomePage = () => {
       setAirportInfoCache((prev) => ({ ...prev, ...newEntries }));
     });
   }, [selectedFlight, airportInfoCache]);
+
+  // 공항 정보가 업데이트 되면 선택된 항공편 정보도 업데이트
+  useEffect(() => {
+    if (selectedFlight && Object.keys(airportInfoCache).length > 0) {
+      // 이미 선택된 항공편이 있고 공항 정보가 업데이트 된 경우, 항공편 정보도 업데이트
+      const updatedFlight = enrichFlightWithAirportInfo(selectedFlight);
+      setSelectedFlight(updatedFlight);
+    }
+  }, [airportInfoCache, selectedFlight, enrichFlightWithAirportInfo]);
 
   const processTextFile = async (file) => {
     return new Promise((resolve, reject) => {
@@ -149,7 +236,7 @@ export const HomePage = () => {
 
     setIsProcessing(true); // 로딩 시작
     try {
-      // Lambda 함수에 전달할 정보 구성 (children 제외)
+      // Lambda 함수에 전달할 정보 구성
       const planDetails = {
         query: searchText,
         startDate: startDate ? format(startDate, 'yyyy-MM-dd', { locale: ko }) : null,
@@ -159,7 +246,7 @@ export const HomePage = () => {
       
       // 선택한 항공편 정보가 있으면 추가
       if (selectedFlight) {
-        // 원본 항공편 데이터를 그대로 사용
+        // 확장된 항공편 데이터를 사용 (위경도 포함)
         planDetails.flightInfo = selectedFlight;
         
         console.log('[PlanTravel] 선택한 항공편 정보를 포함하여 AI 여행 계획 생성 요청:', planDetails);
@@ -168,7 +255,6 @@ export const HomePage = () => {
       }
 
       // travelApi.createTravelPlan 호출
-      // 주의: api.js의 createTravelPlan 함수가 올바른 Python Lambda 엔드포인트를 호출하는지 확인 필요
       const result = await travelApi.createTravelPlan(planDetails);
 
       console.log('[PlanTravel] AI 여행 계획 생성 성공:', result);
@@ -537,11 +623,7 @@ export const HomePage = () => {
         <FlightDialog
           isOpen={isFlightDialogOpen}
           onClose={() => setIsFlightDialogOpen(false)}
-          onSelectFlight={(flight, dictionaries) => {
-            console.log("선택한 항공편 정보:", flight);
-            setSelectedFlight(flight);
-            setSelectedFlightDictionaries(dictionaries || {});
-          }}
+          onSelectFlight={selectFlight}
           initialAdultCount={adultCount}
           initialChildCount={childCount}
           initialInfantCount={infantCount}

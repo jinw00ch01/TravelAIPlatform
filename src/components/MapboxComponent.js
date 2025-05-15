@@ -63,7 +63,7 @@ const isJapanLocation = (coord) => {
          coord[1] <= JAPAN_BOUNDS.north;
 };
 
-const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers }) => {
+const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightMarkers = false }) => {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const markers = useRef([]);
@@ -826,34 +826,42 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers }) => {
 
   // 마커 표시
   useEffect(() => {
-    // 기존 마커 제거
+    // 지도가 초기화된 경우만 실행
+    if (!map.current || !map.current.getSource('route')) return;
+
+    // 기존 마커 모두 제거
     markers.current.forEach(marker => marker.remove());
     markers.current = [];
 
-    if (!map.current || !travelPlans) return;
+    if (!travelPlans) return;
 
-    // 표시할 일정 결정
-    let plansToShow = {};
-    if (showAllMarkers) {
-      // 전체 일정 표시
-      plansToShow = travelPlans;
-    } else if (travelPlans[selectedDay]) {
-      // 선택된 일차만 표시
-      plansToShow = { [selectedDay]: travelPlans[selectedDay] };
-    } else {
-      return; // 유효하지 않은 일차면 마커 표시하지 않음
-    }
+    // 표시할 일정 데이터 선택 (전체 보기 또는 선택된 날짜만)
+    const bounds = new mapboxgl.LngLatBounds();
+    let scheduleCount = 0;
 
-    // 마커 생성 및 표시
-    Object.entries(plansToShow).forEach(([day, plan]) => {
-      if (!plan || !plan.schedules) return;
-
-      const dayNumber = parseInt(day);
-      const color = dayColors[dayNumber % dayColors.length];
+    Object.keys(travelPlans).forEach(dayKey => {
+      // 선택된 날짜가 아니고 showAllMarkers가 false면 건너뜀
+      if (!showAllMarkers && parseInt(dayKey) !== parseInt(selectedDay)) return;
       
-      plan.schedules.forEach((schedule, index) => {
-        if (!schedule.lng || !schedule.lat) return; // 좌표가 없는 경우 건너뛰기
+      if (!travelPlans[dayKey]?.schedules) return;
 
+      // 해당 일자의 일정
+      const daySchedules = travelPlans[dayKey].schedules.filter(schedule => {
+        // hideFlightMarkers가 true이고 일정 타입이 항공편인 경우 필터링
+        if (hideFlightMarkers && 
+            (schedule.type === 'Flight_Departure' || 
+             schedule.type === 'Flight_Return' || 
+             schedule.category === '항공편')) {
+          return false;
+        }
+        return schedule.lat && schedule.lng;
+      });
+
+      // 각 일정에 대해 마커 생성
+      daySchedules.forEach((schedule, index) => {
+        const dayNumber = parseInt(dayKey);
+        const color = dayColors[dayNumber % dayColors.length];
+        
         const markerElement = document.createElement('div');
         markerElement.className = 'custom-marker';
         markerElement.innerHTML = `
@@ -882,33 +890,20 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers }) => {
           .addTo(map.current);
 
         markers.current.push(marker);
+        bounds.extend(marker.getLngLat());
+        scheduleCount++;
       });
     });
 
     // 모든 마커가 보이도록 지도 범위 조정
-    if (markers.current.length > 0) {
-      const bounds = new mapboxgl.LngLatBounds();
-      markers.current.forEach(marker => bounds.extend(marker.getLngLat()));
-      
-      // 마커가 하나일 경우 (첫 번째 일정 추가 시)
-      if (markers.current.length === 1) {
-        const center = markers.current[0].getLngLat();
-        map.current.flyTo({
-          center: [center.lng, center.lat],
-          zoom: 13, // 도시 수준의 줌 레벨
-          duration: 1000,
-          essential: true
-        });
-      } else {
-        // 여러 마커가 있는 경우 모든 마커가 보이도록 범위 조정
+    if (scheduleCount > 0) {
       map.current.fitBounds(bounds, { 
           padding: { top: 100, bottom: 100, left: 100, right: 100 },
           duration: 1000,
           maxZoom: 15 // 최대 줌 레벨 제한
       });
-      }
     }
-  }, [travelPlans, selectedDay, showAllMarkers]);
+  }, [travelPlans, selectedDay, showAllMarkers, hideFlightMarkers]);
 
   // 좌표가 동일한지 확인하는 헬퍼 함수 추가
   const coordinatesAreEqual = (coord1, coord2) => {

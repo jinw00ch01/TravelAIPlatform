@@ -100,6 +100,7 @@ const TravelPlanner = () => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [showAllMarkers, setShowAllMarkers] = useState(false);
   const [showMap, setShowMap] = useState(true);
+  const [hideFlightMarkers, setHideFlightMarkers] = useState(true);
   const [isDateEditDialogOpen, setIsDateEditDialogOpen] = useState(false);
   const [tempStartDate, setTempStartDate] = useState(null);
   const [editTitleMode, setEditTitleMode] = useState(false);
@@ -836,11 +837,27 @@ const TravelPlanner = () => {
                     )}
                   </Box>
                   <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Button variant={showAllMarkers ? "contained" : "outlined"} onClick={() => setShowAllMarkers(!showAllMarkers)}>
-                      {showAllMarkers ? "현재 날짜 마커만" : "전체 날짜 마커"}
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => setShowAllMarkers(v => !v)}
+                    >
+                      {showAllMarkers ? '선택 일정만 보기' : '모든 일정 보기'}
                     </Button>
-                    <Button variant="outlined" size="small" onClick={() => setShowMap(v => !v)}>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => setShowMap(v => !v)}
+                    >
                       {showMap ? '지도 숨기기' : '지도 보이기'}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => setHideFlightMarkers(v => !v)}
+                      color={hideFlightMarkers ? "primary" : "inherit"}
+                    >
+                      {hideFlightMarkers ? '항공편 표시' : '항공편 숨기기'}
                     </Button>
                     <Button variant="contained" startIcon={<SearchIcon />} onClick={() => setIsSearchOpen(true)}>
                       장소 검색
@@ -863,7 +880,12 @@ const TravelPlanner = () => {
                   </Box>
                   {showMap && (
                     <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: 1, overflow: 'hidden', height: '100%' }}>
-                      <MapboxComponent travelPlans={travelPlans} selectedDay={selectedDay} showAllMarkers={showAllMarkers} />
+                      <MapboxComponent 
+                        travelPlans={travelPlans} 
+                        selectedDay={selectedDay} 
+                        showAllMarkers={showAllMarkers}
+                        hideFlightMarkers={hideFlightMarkers} 
+                      />
                     </Box>
                   )}
                 </Box>
