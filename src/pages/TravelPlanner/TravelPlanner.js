@@ -20,13 +20,13 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import useTravelPlanLoader from './hooks/useTravelPlanLoader';
 import useFlightHandlers from './hooks/useFlightHandlers';
 import usePlannerActions from './hooks/usePlannerActions';
+import useAccommodationHandlers from './hooks/useAccommodationHandlers';
 import AccommodationPlan from '../../components/AccommodationPlan';
 import FlightPlanComponent from '../../components/FlightPlan';
 import MapboxComponent from '../../components/MapboxComponent';
 import SearchPopup from '../../components/SearchPopup';
 import {
     formatPrice,
-    formatDuration,
     renderFareDetails,
     renderItineraryDetails
 } from '../../utils/flightFormatters';
@@ -69,8 +69,22 @@ const TravelPlanner = () => {
     airportInfoCache, loadingAirportInfo,
     setFlightDictionaries, setAirportInfoCache,
     originSearchQuery, setOriginSearchQuery,
-    destinationSearchQuery, setDestinationSearchQuery
+    destinationSearchQuery, setDestinationSearchQuery,
+    handleAddFlightToSchedule,
+    updateFlightScheduleDetails
   } = useFlightHandlers();
+
+  const {
+    accommodationFormData,
+    setAccommodationFormData,
+    hotelSearchResults,
+    setHotelSearchResults,
+    selectedHotel,
+    setSelectedHotel,
+    handleHotelSearchResults,
+    handleHotelSelect,
+    addAccommodationToSchedule
+  } = useAccommodationHandlers();
 
   const {
     getDayTitle: plannerGetDayTitle,
@@ -83,7 +97,16 @@ const TravelPlanner = () => {
     isSaveDialogOpen,
     planTitleForSave,
     setPlanTitleForSave,
-    isSaving
+    isSaving,
+    handleAddPlace,
+    handleEditScheduleOpen,
+    handleUpdateSchedule,
+    handleDeleteSchedule,
+    handleScheduleDragEnd,
+    editSchedule,
+    setEditSchedule,
+    editDialogOpen,
+    setEditDialogOpen
   } = usePlannerActions({
     travelPlans, setTravelPlans,
     dayOrder, setDayOrder,
@@ -95,8 +118,6 @@ const TravelPlanner = () => {
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [sidebarTab, setSidebarTab] = useState('schedule');
-  const [editSchedule, setEditSchedule] = useState(null);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [showAllMarkers, setShowAllMarkers] = useState(false);
   const [showMap, setShowMap] = useState(true);
@@ -108,17 +129,6 @@ const TravelPlanner = () => {
 
   const mainAccommodationPlanRef = useRef(null);
   const sidebarAccommodationPlanRef = useRef(null);
-
-  const [accommodationFormData, setAccommodationFormData] = useState({
-    cityName: '',
-    checkIn: new Date(),
-    checkOut: new Date(new Date().setDate(new Date().getDate() + 1)),
-    adults: '2',
-    children: '0',
-    roomConfig: [{ adults: 2, children: 0 }],
-    latitude: null,
-    longitude: null,
-  });
   
   const [selectedFlightForPlannerDialog, setSelectedFlightForPlannerDialog] = useState(null);
   const [isPlannerFlightDetailOpen, setIsPlannerFlightDetailOpen] = useState(false);
@@ -130,6 +140,15 @@ const TravelPlanner = () => {
       setTempTitle(currentPlan.title);
     }
   }, [selectedDay, currentPlan?.title]);
+
+  // travelPlans, airportInfoCache, 또는 loadedFlightInfo가 변경될 때 항공편 스케줄의 상세 정보 업데이트
+  useEffect(() => {
+    const updatedPlans = updateFlightScheduleDetails(travelPlans, airportInfoCache, loadedFlightInfo);
+    if (updatedPlans) {
+      console.log('[TravelPlanner] useEffect updated flight schedule details');
+      setTravelPlans(updatedPlans);
+    }
+  }, [travelPlans, airportInfoCache, loadedFlightInfo, updateFlightScheduleDetails, setTravelPlans]);
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
@@ -153,80 +172,6 @@ const TravelPlanner = () => {
       plannerHandleDateChange(tempStartDate);
     }
     setIsDateEditDialogOpen(false);
-  };
-
-  const handleAddPlace = (place) => {
-    if (!selectedDay) {
-      alert('날짜를 선택해주세요.');
-      return;
-    }
-    const newSchedule = {
-      id: Date.now().toString(),
-      name: place.name,
-      lat: place.lat,
-      lng: place.lng,
-      address: place.address,
-      category: place.category,
-      time: '09:00',
-      duration: '2시간',
-      notes: ''
-    };
-    setTravelPlans(prev => ({
-      ...prev,
-      [selectedDay]: {
-        ...prev[selectedDay],
-        schedules: [...(prev[selectedDay]?.schedules || []), newSchedule]
-      }
-    }));
-    setIsSearchOpen(false);
-  };
-
-  const handleEditScheduleOpen = (schedule) => {
-    setEditSchedule(schedule);
-    setEditDialogOpen(true);
-  };
-
-  const handleUpdateSchedule = () => {
-    if (!editSchedule) return;
-    setTravelPlans(prev => ({
-      ...prev,
-      [selectedDay]: {
-        ...prev[selectedDay],
-        schedules: prev[selectedDay].schedules.map(s =>
-          s.id === editSchedule.id ? editSchedule : s
-        )
-      }
-    }));
-    setEditDialogOpen(false);
-    setEditSchedule(null);
-  };
-
-  const handleDeleteSchedule = (scheduleId) => {
-    setTravelPlans(prev => ({
-      ...prev,
-      [selectedDay]: {
-        ...prev[selectedDay],
-        schedules: prev[selectedDay].schedules.filter(s => s.id !== scheduleId)
-      }
-    }));
-  };
-
-  const handleScheduleDragEnd = (result) => {
-    if (!result.destination) return;
-    const { source, destination } = result;
-    if (!travelPlans[selectedDay] || !travelPlans[selectedDay].schedules) return;
-
-    const daySchedules = [...travelPlans[selectedDay].schedules];
-    const [reorderedItem] = daySchedules.splice(source.index, 1);
-    daySchedules.splice(destination.index, 0, reorderedItem);
-
-    setTravelPlans(prev => ({
-      ...prev,
-      [selectedDay]: {
-        ...prev[selectedDay],
-        schedules: daySchedules
-      }
-    }));
   };
   
   const handleDayDragEnd = (result) => {
@@ -323,108 +268,14 @@ const TravelPlanner = () => {
     );
   };
   
-  const handleAddFlightToSchedule = useCallback((flightOffer, newDictionaries, newAirportCache) => {
-    console.log('[TravelPlanner] Adding flight to schedule:', flightOffer, newDictionaries, newAirportCache);
-    if (!flightOffer || !flightOffer.itineraries || flightOffer.itineraries.length === 0) {
-      console.error('Invalid flightOffer data for adding to schedule');
-      return;
-    }
-    
-    if (newDictionaries) {
-      setFlightDictionaries(prevDict => ({ ...prevDict, ...newDictionaries }));
-    }
-    if (newAirportCache) {
-      setAirportInfoCache(prevCache => ({ ...prevCache, ...newAirportCache }));
-    }
-    
-    const findExistingFlightSchedule = (plans, flightType) => {
-      for (const dayKey of Object.keys(plans)) {
-        const daySchedules = plans[dayKey]?.schedules || [];
-        const existingFlight = daySchedules.find(s => s.type === flightType);
-        if (existingFlight) return existingFlight;
-      }
-      return null;
-    };
+  const onAddFlightToSchedule = useCallback((flightOffer, newDictionaries, newAirportCache) => {
+    handleAddFlightToSchedule(flightOffer, newDictionaries, newAirportCache, travelPlans, dayOrder, getDayTitle, setTravelPlans);
+  }, [handleAddFlightToSchedule, travelPlans, dayOrder, getDayTitle, setTravelPlans]);
 
-    const findDayKeyForSchedule = (plans, scheduleId) => {
-      for (const dayKey of Object.keys(plans)) {
-        const daySchedules = plans[dayKey]?.schedules || [];
-        if (daySchedules.some(s => s.id === scheduleId)) return dayKey;
-      }
-      return null;
-    };
-
-    const existingDepartureSchedule = findExistingFlightSchedule(travelPlans, 'Flight_Departure');
-    const existingReturnSchedule = findExistingFlightSchedule(travelPlans, 'Flight_Return');
-    
-    const newTravelPlans = { ...travelPlans };
-    const isRoundTrip = flightOffer.itineraries.length > 1;
-    const outboundItinerary = flightOffer.itineraries[0];
-    const outboundLastSegment = outboundItinerary.segments[outboundItinerary.segments.length - 1];
-    
-    const normalizeData = (data) => JSON.parse(JSON.stringify(data, (k, v) => (typeof v === 'number' && !Number.isFinite(v)) ? null : v));
-
-    const departureSchedule = {
-      id: existingDepartureSchedule?.id || `flight-departure-${flightOffer.id}-${Date.now()}`,
-      name: `${outboundItinerary.segments[0].departure.iataCode} → ${outboundLastSegment.arrival.iataCode} 항공편`,
-      time: new Date(outboundLastSegment.arrival.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
-      address: airportInfoCache?.[outboundLastSegment.arrival.iataCode]?.koreanFullName || airportInfoCache?.[outboundLastSegment.arrival.iataCode]?.name || outboundLastSegment.arrival.iataCode,
-      category: '항공편', type: 'Flight_Departure', duration: formatDuration(outboundItinerary.duration),
-      notes: `가격: ${formatPrice(flightOffer.price.grandTotal || flightOffer.price.total, flightOffer.price.currency)}`,
-      lat: airportInfoCache?.[outboundLastSegment.arrival.iataCode]?.geoCode?.latitude || flightDictionaries?.locations?.[outboundLastSegment.arrival.iataCode]?.geoCode?.latitude || null,
-      lng: airportInfoCache?.[outboundLastSegment.arrival.iataCode]?.geoCode?.longitude || flightDictionaries?.locations?.[outboundLastSegment.arrival.iataCode]?.geoCode?.longitude || null,
-      flightOfferDetails: {
-        flightOfferData: normalizeData(flightOffer),
-        departureAirportInfo: normalizeData(airportInfoCache?.[outboundItinerary.segments[0].departure.iataCode]),
-        arrivalAirportInfo: normalizeData(airportInfoCache?.[outboundLastSegment.arrival.iataCode]),
-      }
-    };
-
-    let departureDayKey = dayOrder[0] || '1';
-    if (existingDepartureSchedule) {
-      const foundDayKey = findDayKeyForSchedule(travelPlans, existingDepartureSchedule.id);
-      if (foundDayKey) departureDayKey = foundDayKey;
-    }
-    const departureDaySchedules = [...(newTravelPlans[departureDayKey]?.schedules || [])];
-    const depIndex = departureDaySchedules.findIndex(s => s.id === existingDepartureSchedule?.id);
-    if (depIndex !== -1) departureDaySchedules[depIndex] = departureSchedule;
-    else departureDaySchedules.unshift(departureSchedule);
-    newTravelPlans[departureDayKey] = { ...(newTravelPlans[departureDayKey] || { title: getDayTitle(parseInt(departureDayKey)), schedules: [] }), schedules: departureDaySchedules };
-
-    if (isRoundTrip) {
-      const inboundItinerary = flightOffer.itineraries[1];
-      const inboundFirstSegment = inboundItinerary.segments[0];
-      const inboundLastSegment = inboundItinerary.segments[inboundItinerary.segments.length - 1];
-      const returnSchedule = {
-        id: existingReturnSchedule?.id || `flight-return-${flightOffer.id}-${Date.now()}`,
-        name: `${inboundFirstSegment.departure.iataCode} → ${inboundLastSegment.arrival.iataCode} 항공편`,
-        time: new Date(inboundFirstSegment.departure.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
-        address: airportInfoCache?.[inboundFirstSegment.departure.iataCode]?.koreanFullName || airportInfoCache?.[inboundFirstSegment.departure.iataCode]?.name || inboundFirstSegment.departure.iataCode,
-        category: '항공편', type: 'Flight_Return', duration: formatDuration(inboundItinerary.duration),
-        notes: `가격: ${formatPrice(flightOffer.price.grandTotal || flightOffer.price.total, flightOffer.price.currency)}`,
-        lat: airportInfoCache?.[inboundFirstSegment.departure.iataCode]?.geoCode?.latitude || flightDictionaries?.locations?.[inboundFirstSegment.departure.iataCode]?.geoCode?.latitude || null,
-        lng: airportInfoCache?.[inboundFirstSegment.departure.iataCode]?.geoCode?.longitude || flightDictionaries?.locations?.[inboundFirstSegment.departure.iataCode]?.geoCode?.longitude || null,
-        flightOfferDetails: {
-          flightOfferData: normalizeData(flightOffer),
-          departureAirportInfo: normalizeData(airportInfoCache?.[inboundFirstSegment.departure.iataCode]),
-          arrivalAirportInfo: normalizeData(airportInfoCache?.[inboundLastSegment.arrival.iataCode]),
-        }
-      };
-      let returnDayKey = dayOrder[dayOrder.length - 1] || '1';
-      if (existingReturnSchedule) {
-        const foundDayKey = findDayKeyForSchedule(travelPlans, existingReturnSchedule.id);
-        if (foundDayKey) returnDayKey = foundDayKey;
-      }
-      const returnDaySchedules = [...(newTravelPlans[returnDayKey]?.schedules || [])];
-      const retIndex = returnDaySchedules.findIndex(s => s.id === existingReturnSchedule?.id);
-      if (retIndex !== -1) returnDaySchedules[retIndex] = returnSchedule;
-      else returnDaySchedules.push(returnSchedule);
-      newTravelPlans[returnDayKey] = { ...(newTravelPlans[returnDayKey] || { title: getDayTitle(parseInt(returnDayKey)), schedules: [] }), schedules: returnDaySchedules };
-    }
-    
-    setTravelPlans(newTravelPlans);
-    alert(existingDepartureSchedule || existingReturnSchedule ? '기존 항공편이 새 항공편으로 교체되었습니다!' : '항공편이 여행 계획에 추가되었습니다!');
-  }, [travelPlans, dayOrder, setTravelPlans, flightDictionaries, airportInfoCache, setFlightDictionaries, setAirportInfoCache, getDayTitle]);
+  const onAddPlace = useCallback((place) => {
+    handleAddPlace(place);
+    setIsSearchOpen(false);
+  }, [handleAddPlace, setIsSearchOpen]);
 
   const handleOpenPlannerFlightDetail = useCallback((flightScheduleItem) => {
     if (flightScheduleItem?.flightOfferDetails?.flightOfferData) {
@@ -469,156 +320,10 @@ const TravelPlanner = () => {
     }
   }, []);
 
-  // 호텔 검색 결과 및 선택 관련 상태 (기존 코드 참고)
-  const [hotelSearchResults, setHotelSearchResults] = useState([]);
-  const [selectedHotel, setSelectedHotel] = useState(null);
-
-  // 호텔 검색 결과 처리 핸들러 (AccommodationPlan으로부터 받음)
-  const handleHotelSearchResults = useCallback((results) => {
-    setHotelSearchResults(results);
-  }, []);
-
-  // 호텔 선택 처리 핸들러 (AccommodationPlan으로부터 받음)
-  // 이 함수는 AccommodationPlan에서 호텔이 "선택"되었을 때 호출됨 (예: 상세 보기 클릭)
-  // 이 시점에서 바로 일정에 추가하지 않도록 수정합니다.
-  const handleHotelSelect = useCallback((hotel) => {
-    console.log('[TravelPlanner] Hotel selected for viewing details:', hotel);
-    setSelectedHotel(hotel); // TravelPlanner의 상태에만 선택된 호텔 정보 저장
-    // 일정 추가 로직은 여기에서 제거. 실제 추가는 AccommodationPlan 내부의 명시적인 액션으로 처리.
-  }, []); // 의존성 배열에서 selectedDay, setTravelPlans, getDayTitle 제거
-
-  // 실제 숙소를 일정에 추가하는 함수
-  const addAccommodationToSchedule = useCallback((hotelToAdd, dayKey) => {
-    if (!dayKey || !hotelToAdd) {
-      alert('숙소를 추가할 날짜 또는 호텔 정보가 없습니다.');
-      return;
-    }
-    const newSchedule = {
-      id: `hotel-${hotelToAdd.hotel_id || hotelToAdd.id}-${Date.now()}`,
-      name: hotelToAdd.hotel_name || hotelToAdd.name,
-      time: '체크인', 
-      address: hotelToAdd.address,
-      category: '숙소',
-      duration: '1박', 
-      notes: hotelToAdd.price ? `가격: ${hotelToAdd.price}` : (hotelToAdd.composite_price_breakdown?.gross_amount_per_night?.value ? `1박 평균: ${Math.round(hotelToAdd.composite_price_breakdown.gross_amount_per_night.value).toLocaleString()} ${hotelToAdd.composite_price_breakdown.gross_amount_per_night.currency}` : ''),
-      lat: hotelToAdd.latitude,
-      lng: hotelToAdd.longitude,
-      type: 'accommodation', 
-      hotelDetails: { ...hotelToAdd }
-    };
-
-    setTravelPlans(prevTravelPlans => {
-      const targetDayKey = dayKey.toString();
-      const currentSchedules = prevTravelPlans[targetDayKey]?.schedules || [];
-      return {
-        ...prevTravelPlans,
-        [targetDayKey]: {
-          ...(prevTravelPlans[targetDayKey] || { title: plannerGetDayTitle(targetDayKey), schedules: [] }),
-          schedules: [...currentSchedules, newSchedule]
-        }
-      };
-    });
-    alert('숙소가 선택한 날짜의 일정에 추가되었습니다.');
-
-  }, [setTravelPlans, plannerGetDayTitle]);
-
-  // travelPlans, airportInfoCache, 또는 loadedFlightInfo가 변경될 때 항공편 스케줄의 상세 정보 업데이트
-  useEffect(() => {
-    // 기본 조건: travelPlans, airportInfoCache, loadedFlightInfo 중 하나라도 없으면 실행 안 함
-    if (!travelPlans || Object.keys(travelPlans).length === 0 || 
-        !airportInfoCache || Object.keys(airportInfoCache).length === 0 || 
-        !loadedFlightInfo) {
-      return;
-    }
-
-    let plansUpdated = false;
-    // travelPlans를 직접 수정하지 않기 위해 깊은 복사 사용
-    const updatedTravelPlans = JSON.parse(JSON.stringify(travelPlans));
-
-    Object.keys(updatedTravelPlans).forEach(dayKey => {
-      const dayPlan = updatedTravelPlans[dayKey];
-      if (dayPlan && dayPlan.schedules && Array.isArray(dayPlan.schedules)) {
-        dayPlan.schedules.forEach((schedule, index) => {
-          if (schedule.type === 'Flight_Departure' || schedule.type === 'Flight_Return') {
-            const offerDetails = schedule.flightOfferDetails;
-            // offerDetails와 그 내부의 flightOfferData, itineraries가 모두 존재해야 함
-            if (offerDetails && offerDetails.flightOfferData?.itineraries) {
-              const itinerary = schedule.type === 'Flight_Departure' 
-                ? offerDetails.flightOfferData.itineraries[0]
-                : (offerDetails.flightOfferData.itineraries.length > 1 ? offerDetails.flightOfferData.itineraries[1] : offerDetails.flightOfferData.itineraries[0]);
-
-              if (itinerary && itinerary.segments && itinerary.segments.length > 0) {
-                const firstSegment = itinerary.segments[0];
-                const lastSegment = itinerary.segments[itinerary.segments.length - 1];
-                
-                const departureAirportCode = firstSegment.departure?.iataCode;
-                const arrivalAirportCode = lastSegment.arrival?.iataCode;
-
-                // airportInfoCache에서 공항 정보 가져오기
-                const departureAirport = departureAirportCode ? airportInfoCache[departureAirportCode] : null;
-                const arrivalAirport = arrivalAirportCode ? airportInfoCache[arrivalAirportCode] : null;
-
-                let changedInEffect = false;
-                // 귀국편: 출발 공항 정보 기준 (주소, 위경도)
-                if (departureAirport && schedule.type === 'Flight_Return') { 
-                  if (schedule.address !== (departureAirport.koreanName || departureAirport.name)) {
-                    updatedTravelPlans[dayKey].schedules[index].address = departureAirport.koreanName || departureAirport.name || departureAirportCode;
-                    changedInEffect = true;
-                  }
-                  if (schedule.lat !== departureAirport.geoCode?.latitude) {
-                    updatedTravelPlans[dayKey].schedules[index].lat = departureAirport.geoCode?.latitude || null;
-                    changedInEffect = true;
-                  }
-                  if (schedule.lng !== departureAirport.geoCode?.longitude) {
-                    updatedTravelPlans[dayKey].schedules[index].lng = departureAirport.geoCode?.longitude || null;
-                    changedInEffect = true;
-                  }
-                  // flightOfferDetails 내 공항 정보도 업데이트 (없거나 비어있을 경우)
-                  if (!offerDetails.departureAirportInfo || Object.keys(offerDetails.departureAirportInfo).length === 0) {
-                     updatedTravelPlans[dayKey].schedules[index].flightOfferDetails.departureAirportInfo = departureAirport;
-                     changedInEffect = true;
-                  }
-                  if (arrivalAirport && (!offerDetails.arrivalAirportInfo || Object.keys(offerDetails.arrivalAirportInfo).length === 0) ){
-                     updatedTravelPlans[dayKey].schedules[index].flightOfferDetails.arrivalAirportInfo = arrivalAirport;
-                     changedInEffect = true;
-                  }
-                // 출발편: 도착 공항 정보 기준 (주소, 위경도)
-                } else if (arrivalAirport && schedule.type === 'Flight_Departure') { 
-                  if (schedule.address !== (arrivalAirport.koreanName || arrivalAirport.name)) {
-                    updatedTravelPlans[dayKey].schedules[index].address = arrivalAirport.koreanName || arrivalAirport.name || arrivalAirportCode;
-                    changedInEffect = true;
-                  }
-                  if (schedule.lat !== arrivalAirport.geoCode?.latitude) {
-                    updatedTravelPlans[dayKey].schedules[index].lat = arrivalAirport.geoCode?.latitude || null;
-                    changedInEffect = true;
-                  }
-                  if (schedule.lng !== arrivalAirport.geoCode?.longitude) {
-                    updatedTravelPlans[dayKey].schedules[index].lng = arrivalAirport.geoCode?.longitude || null;
-                    changedInEffect = true;
-                  }
-                  // flightOfferDetails 내 공항 정보도 업데이트
-                  if (departureAirport && (!offerDetails.departureAirportInfo || Object.keys(offerDetails.departureAirportInfo).length === 0)){
-                     updatedTravelPlans[dayKey].schedules[index].flightOfferDetails.departureAirportInfo = departureAirport;
-                     changedInEffect = true;
-                  }
-                   if (!offerDetails.arrivalAirportInfo || Object.keys(offerDetails.arrivalAirportInfo).length === 0) {
-                     updatedTravelPlans[dayKey].schedules[index].flightOfferDetails.arrivalAirportInfo = arrivalAirport;
-                     changedInEffect = true;
-                  }
-                }
-                if (changedInEffect) plansUpdated = true;
-              }
-            }
-          }
-        });
-      }
-    });
-
-    if (plansUpdated) {
-      console.log('[TravelPlanner] useEffect updated flight schedule details:', updatedTravelPlans);
-      setTravelPlans(updatedTravelPlans); // 실제 변경이 있을 때만 호출
-    }
-  }, [travelPlans, airportInfoCache, loadedFlightInfo]); // setTravelPlans 의존성 제거
+  // 실제 숙소를 일정에 추가하는 함수 (useAccommodationHandlers 훅 사용)
+  const onAddAccommodationToSchedule = useCallback((hotelToAdd, dayKey) => {
+    addAccommodationToSchedule(hotelToAdd, dayKey, getDayTitle, setTravelPlans);
+  }, [addAccommodationToSchedule, getDayTitle, setTravelPlans]);
 
   if (!user && !process.env.REACT_APP_SKIP_AUTH) {
     return <Typography>로그인이 필요합니다.</Typography>;
@@ -748,7 +453,7 @@ const TravelPlanner = () => {
                   onSearchResults={handleHotelSearchResults}
                   onHotelSelect={handleHotelSelect}
                   travelPlans={travelPlans}
-                  onAddToSchedule={addAccommodationToSchedule}
+                  onAddToSchedule={onAddAccommodationToSchedule}
                   displayInMain={false}
                   dayOrderLength={dayOrder.length}
                 />
@@ -773,7 +478,7 @@ const TravelPlanner = () => {
                   isLoadingFlights={isLoadingFlights}
                   error={flightError}
                   handleFlightSearch={handleFlightSearch}
-                  onAddFlightToSchedule={handleAddFlightToSchedule}
+                  onAddFlightToSchedule={onAddFlightToSchedule}
                 />
               )}
             </Box>
@@ -899,7 +604,7 @@ const TravelPlanner = () => {
                 setFormData={setAccommodationFormData}
                 onSearchResults={handleHotelSearchResults}
                 onHotelSelect={handleHotelSelect}
-                onAddToSchedule={addAccommodationToSchedule}
+                onAddToSchedule={onAddAccommodationToSchedule}
                 travelPlans={travelPlans}
                 dayOrderLength={dayOrder.length}
               />
@@ -924,7 +629,7 @@ const TravelPlanner = () => {
                 isLoadingFlights={isLoadingFlights}
                 error={flightError}
                 handleFlightSearch={handleFlightSearch}
-                onAddFlightToSchedule={handleAddFlightToSchedule}
+                onAddFlightToSchedule={onAddFlightToSchedule}
               />
             )}
           </Box>
@@ -932,7 +637,7 @@ const TravelPlanner = () => {
 
         <Dialog open={isSearchOpen} onClose={() => setIsSearchOpen(false)} maxWidth="md" fullWidth>
           <DialogTitle>장소 검색</DialogTitle>
-          <DialogContent><SearchPopup onSelect={handleAddPlace} onClose={() => setIsSearchOpen(false)} /></DialogContent>
+          <DialogContent><SearchPopup onSelect={onAddPlace} onClose={() => setIsSearchOpen(false)} /></DialogContent>
         </Dialog>
 
         <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth>

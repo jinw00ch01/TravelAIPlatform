@@ -13,6 +13,8 @@ const usePlannerActions = ({
   const [planTitleForSave, setPlanTitleForSave] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [editSchedule, setEditSchedule] = useState(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const getDayTitle = useCallback((dayNumber) => {
     const date = new Date(startDate);
@@ -142,6 +144,80 @@ const usePlannerActions = ({
     }
   }, [travelPlans, startDate, setPlanId]);
 
+  const handleAddPlace = useCallback((place) => {
+    if (!selectedDay) {
+      alert('날짜를 선택해주세요.');
+      return;
+    }
+    const newSchedule = {
+      id: Date.now().toString(),
+      name: place.name,
+      lat: place.lat,
+      lng: place.lng,
+      address: place.address,
+      category: place.category,
+      time: '09:00',
+      duration: '2시간',
+      notes: ''
+    };
+    setTravelPlans(prev => ({
+      ...prev,
+      [selectedDay]: {
+        ...prev[selectedDay],
+        schedules: [...(prev[selectedDay]?.schedules || []), newSchedule]
+      }
+    }));
+    return newSchedule;
+  }, [selectedDay, setTravelPlans]);
+
+  const handleEditScheduleOpen = useCallback((schedule) => {
+    setEditSchedule(schedule);
+    setEditDialogOpen(true);
+  }, []);
+
+  const handleUpdateSchedule = useCallback(() => {
+    if (!editSchedule) return;
+    setTravelPlans(prev => ({
+      ...prev,
+      [selectedDay]: {
+        ...prev[selectedDay],
+        schedules: prev[selectedDay].schedules.map(s =>
+          s.id === editSchedule.id ? editSchedule : s
+        )
+      }
+    }));
+    setEditDialogOpen(false);
+    setEditSchedule(null);
+  }, [editSchedule, selectedDay, setTravelPlans]);
+
+  const handleDeleteSchedule = useCallback((scheduleId) => {
+    setTravelPlans(prev => ({
+      ...prev,
+      [selectedDay]: {
+        ...prev[selectedDay],
+        schedules: prev[selectedDay].schedules.filter(s => s.id !== scheduleId)
+      }
+    }));
+  }, [selectedDay, setTravelPlans]);
+
+  const handleScheduleDragEnd = useCallback((result) => {
+    if (!result.destination) return;
+    const { source, destination } = result;
+    if (!travelPlans[selectedDay] || !travelPlans[selectedDay].schedules) return;
+
+    const daySchedules = [...travelPlans[selectedDay].schedules];
+    const [reorderedItem] = daySchedules.splice(source.index, 1);
+    daySchedules.splice(destination.index, 0, reorderedItem);
+
+    setTravelPlans(prev => ({
+      ...prev,
+      [selectedDay]: {
+        ...prev[selectedDay],
+        schedules: daySchedules
+      }
+    }));
+  }, [travelPlans, selectedDay, setTravelPlans]);
+
   return {
     getDayTitle,
     addDay,
@@ -154,7 +230,16 @@ const usePlannerActions = ({
     planTitleForSave,
     setPlanTitleForSave,
     isSaving,
-    saveError
+    saveError,
+    handleAddPlace,
+    handleEditScheduleOpen,
+    handleUpdateSchedule,
+    handleDeleteSchedule,
+    handleScheduleDragEnd,
+    editSchedule,
+    setEditSchedule,
+    editDialogOpen,
+    setEditDialogOpen
   };
 };
 
