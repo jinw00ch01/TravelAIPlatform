@@ -1,6 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
-  Fab, Box, Paper, Typography, IconButton, TextField, Button, Divider, useTheme, Slide
+  Fab, Box, Paper, Typography, IconButton, TextField, Button, Divider, useTheme, Slide,
+  CircularProgress
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import SendIcon from '@mui/icons-material/Send';
@@ -9,6 +10,18 @@ const AIChatWidget = ({ onSendMessage }) => {
   const theme = useTheme();
   const [isOpen, setIsOpen] = useState(false);
   const [message, setMessage] = useState('');
+  const [messages, setMessages] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef(null);
+
+  // 스크롤을 항상 최신 메시지로 이동
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const toggleChat = useCallback(() => {
     setIsOpen(prev => !prev);
@@ -20,14 +33,82 @@ const AIChatWidget = ({ onSendMessage }) => {
 
   const handleSend = useCallback(() => {
     if (message.trim()) {
+      // 사용자 메시지를 채팅에 추가
+      const userMessage = { type: 'user', content: message.trim() };
+      setMessages(prev => [...prev, userMessage]);
+      
+      // 로딩 상태 설정
+      setIsLoading(true);
+      
       if (onSendMessage) {
-        onSendMessage(message.trim());
+        try {
+          // 메시지 수신 콜백 함수
+          const messageCallback = (response) => {
+            // 응답이 없거나 null인 경우 처리
+            if (!response) {
+              setMessages(prev => [...prev, {
+                type: 'error',
+                content: '응답이 없습니다. 다시 시도해주세요.'
+              }]);
+              setIsLoading(false);
+              return;
+            }
+            
+            const responseType = response.type === 'error' ? 'error' : 'ai';
+            setMessages(prev => [...prev, {
+              type: responseType,
+              content: response.content || '응답 내용이 없습니다.'
+            }]);
+            setIsLoading(false);
+          };
+          
+          // AI에 메시지 전송 (콜백 함수 전달)
+          onSendMessage(message.trim(), messageCallback);
+          
+          // 처리 중 메시지 추가
+          setMessages(prev => [...prev, {
+            type: 'ai',
+            content: '요청을 처리 중입니다...'
+          }]);
+        } catch (error) {
+          // 오류 처리
+          setMessages(prev => [...prev, {
+            type: 'error',
+            content: '메시지 전송 중 오류가 발생했습니다.'
+          }]);
+          setIsLoading(false);
+        }
       }
       setMessage('');
-      // 메시지 전송 후 채팅창을 닫을지 여부는 정책에 따라 결정
-      // setIsOpen(false); 
     }
   }, [message, onSendMessage]);
+
+  const renderMessages = () => {
+    return messages.map((msg, index) => (
+      <Box
+        key={index}
+        sx={{
+          p: 1.5,
+          mb: 1.5,
+          maxWidth: '80%',
+          borderRadius: '12px',
+          alignSelf: msg.type === 'user' ? 'flex-end' : 'flex-start',
+          bgcolor: msg.type === 'user'
+            ? theme.palette.primary.light
+            : msg.type === 'error'
+              ? theme.palette.error.light
+              : theme.palette.grey[100],
+          color: msg.type === 'user'
+            ? theme.palette.primary.contrastText
+            : msg.type === 'error'
+              ? theme.palette.error.contrastText
+              : theme.palette.text.primary
+        }}
+      >
+        <Typography variant="body2">{msg.content}</Typography>
+      </Box>
+    ));
+  };
 
   return (
     <Box sx={{ position: 'fixed', bottom: 32, right: 32, zIndex: 1050 }}>
@@ -59,25 +140,31 @@ const AIChatWidget = ({ onSendMessage }) => {
             }}
           >
             <Typography variant="subtitle1" sx={{ color: 'white', fontWeight: 'bold' }}>
-              AI 여행 비서 ✧
+              AI 여행 비서 ✦
             </Typography>
             <IconButton onClick={handleCloseChat} size="small">
               <CloseIcon sx={{ color: 'white' }} />
             </IconButton>
           </Box>
 
-          {/* Message Area (Placeholder) */}
+          {/* Message Area */}
           <Box
             sx={{
               flexGrow: 1,
               p: 2,
               overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column'
             }}
           >
-            <Typography variant="body2" color="textSecondary">
-              AI에게 여행 계획 변경을 요청해보세요. (예: "내일 일정을 좀 더 여유롭게 바꿔줘")
-            </Typography>
-            {/* 채팅 메시지 목록이 여기에 표시됩니다 */}
+            {messages.length === 0 ? (
+              <Typography variant="body2" color="textSecondary">
+                AI에게 여행 계획 변경을 요청해보세요. (예: "내일 일정을 좀 더 여유롭게 바꿔줘")
+              </Typography>
+            ) : (
+              renderMessages()
+            )}
+            <div ref={messagesEndRef} />
           </Box>
 
           <Divider />
@@ -97,12 +184,13 @@ const AIChatWidget = ({ onSendMessage }) => {
                   handleSend();
                 }
               }}
+              disabled={isLoading}
               sx={{ mr: 1 }}
             />
             <Button
               variant="contained"
               onClick={handleSend}
-              disabled={!message.trim()}
+              disabled={!message.trim() || isLoading}
               sx={{
                 backgroundColor: theme.palette.primary.main,
                 minWidth: 'auto',
@@ -112,7 +200,7 @@ const AIChatWidget = ({ onSendMessage }) => {
                 }
               }}
             >
-              <SendIcon />
+              {isLoading ? <CircularProgress size={24} color="inherit" /> : <SendIcon />}
             </Button>
           </Box>
         </Paper>
@@ -155,7 +243,7 @@ const AIChatWidget = ({ onSendMessage }) => {
             marginTop: '-16px', // 폰트 크기의 절반
             marginLeft: '-16px', // 폰트 크기의 절반
           }}>
-            ✧
+            ✦
           </Typography>
           {/* Small Star (Left-Top Diagonal) */}
           <Typography sx={{ 
@@ -167,7 +255,7 @@ const AIChatWidget = ({ onSendMessage }) => {
             left: '12px',
             transform: 'rotate(-15deg)',
           }}>
-            ✧
+            ✦
           </Typography>
           {/* Small Star (Bottom-Right Diagonal) */}
           <Typography sx={{ 
@@ -179,7 +267,7 @@ const AIChatWidget = ({ onSendMessage }) => {
             right: '12px',
             transform: 'rotate(20deg)',
           }}>
-            ✧
+            ✦
           </Typography>
         </Box>
       </Fab>
