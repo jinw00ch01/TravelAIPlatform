@@ -7,6 +7,11 @@ const API_URL = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Sta
 // Booking.com 호텔 검색 Lambda 함수를 위한 API Gateway 엔드포인트 URL
 const SEARCH_HOTELS_URL = `${API_URL}/api/Booking-com/SearchHotelsByCoordinates`;
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // 1초
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 // axios 재시도 로직 구현
 axios.interceptors.response.use(null, async (error) => {
   const config = error.config;
@@ -76,7 +81,11 @@ export const travelApi = {
   // 최신 여행 계획 또는 조건에 맞는 계획 불러오기
   loadPlan: async (params = { newest: true }) => {
     try {
-      const response = await apiClient.post('/api/travel/load', params, {
+      console.log('여행 계획 불러오기 시도 - URL:', `${API_URL}api/travel/LoadPlanFunction_NEW`, 'Params:', params);
+      
+      // 직접 axios 대신 apiClient 사용 (인터셉터에서 인증 헤더 자동 추가)
+      const response = await apiClient.post('api/travel/LoadPlanFunction_NEW', params, {
+        // 타임아웃 설정 (8초)
         timeout: 8000,
         retry: 2,
         retryDelay: 1000
@@ -150,56 +159,65 @@ export const travelApi = {
     }
   },
 
-  // 숙소 검색 함수: POST 요청으로 변경
-  searchHotels: async (searchParams) => {
-    try {
-      console.log('[API] 숙소 검색 요청 (Lambda POST):', searchParams);
-      // POST 요청으로 변경하고, searchParams를 요청 본문으로 전달
-      const response = await axios.post(SEARCH_HOTELS_URL, searchParams, {
-        // POST 요청 시 Content-Type은 기본적으로 application/json으로 설정됨
-        // Lambda에서 JSON.parse(event.body)를 사용하므로 별도 헤더 설정 불필요
-      });
-      console.log('[API] 숙소 검색 응답 (Lambda POST):', response.data);
-      return response.data; // Lambda는 Booking.com API 응답을 그대로 body에 넣어 반환
-    } catch (error) {
-      console.error('숙소 검색 실패 (Lambda POST):', error.response?.data || error.message);
-      const errorData = error.response?.data || { message: error.message || '알 수 없는 숙소 검색 오류' };
-      throw errorData;
-    }
-  },
-
-  // 인기 여행지 조회
-  getPopularDestinations: async (params = { originCityCode: 'ICN', period: '2025-03', max: 10 }) => {
-    try {
-      const response = await apiClient.post('/api/amadeus/Flight_Most_Traveled_Destinations', params);
-      return response.data;
-    } catch (error) {
-      console.error('인기 여행지 조회 실패:', error);
-      throw error;
-    }
-  },
-
-  fetchFlightInspiration: async (params) => {
-    try {
-      const response = await apiClient.post('/api/amadeus/Flight_Inspiration_Search', params);
-      return response.data;
-    } catch (error) {
-      console.error('Flight Inspiration Search API 호출 에러:', error);
-      throw error;
-    }
-  },
-
-  // 투어/액티비티 추천 조회
+  // 투어/액티비티 조회 함수 추가
   getToursAndActivities: async (params) => {
     try {
-      const response = await apiClient.post('/api/amadeus/Tours_and_Activities', params);
+      const response = await apiClient.post('api/amadeus/Tours_and_Activities', params, {
+        timeout: 10000,
+        retry: 2,
+        retryDelay: 1000
+      });
       return response.data;
     } catch (error) {
-      console.error('투어/액티비티 조회 실패:', error);
+      console.error('getToursAndActivities API 오류:', error);
       throw error;
     }
+  },
+
+  // 숙소 검색 함수: POST 요청으로 변경
+  searchHotels: async (searchParams) => {
+    let retries = 0;
+    
+    while (retries < MAX_RETRIES) {
+      try {
+        console.log(`[API] 숙소 검색 요청 (Lambda POST) - 시도 ${retries + 1}:`, searchParams);
+        
+        const response = await axios.post(
+          `${SEARCH_HOTELS_URL}`,
+          searchParams,
+          {
+            timeout: 10000, // 10초 타임아웃
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        console.log('[API] 숙소 검색 응답:', response.data);
+        return response.data;
+      } catch (error) {
+        retries++;
+        console.error(`[API] 숙소 검색 실패 (시도 ${retries}/${MAX_RETRIES}):`, {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          error: error.message,
+          details: error.response?.data
+        });
+
+        if (retries === MAX_RETRIES) {
+          const errorMessage = {
+            error: error.message,
+            details: error.response?.data,
+            message: '서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.'
+          };
+          throw errorMessage;
+        }
+
+        // 재시도 전 대기
+        await sleep(RETRY_DELAY * retries);
+      }
+    }
   }
-  
 };
 
 export default apiClient;

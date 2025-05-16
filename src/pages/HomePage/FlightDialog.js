@@ -45,6 +45,7 @@ const FlightDialog = ({
   onSelectFlight,
   initialAdultCount = 1,
   initialChildCount = 0,
+  initialInfantCount = 0,
   defaultStartDate = null,
   defaultEndDate = null,
 }) => {
@@ -62,7 +63,7 @@ const FlightDialog = ({
   const [endDate, setEndDate] = useState(defaultEndDate);
   const [adultCount, setAdultCount] = useState(initialAdultCount);
   const [childCount, setChildCount] = useState(initialChildCount);
-  const [infantCount, setInfantCount] = useState(0);
+  const [infantCount, setInfantCount] = useState(initialInfantCount);
 
   // 추가 조건
   const [travelClass, setTravelClass] = useState("");
@@ -96,9 +97,14 @@ const FlightDialog = ({
       if (defaultEndDate) {
         setEndDate(defaultEndDate);
       }
+
+      // 인원 수 동기화
+      setAdultCount(initialAdultCount);
+      setChildCount(initialChildCount);
+      setInfantCount(initialInfantCount);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, defaultStartDate, defaultEndDate]);
+  }, [isOpen, defaultStartDate, defaultEndDate, initialAdultCount, initialChildCount, initialInfantCount]);
 
   /* ----------------------------- API 호출 ----------------------------- */
   const handleCitySearch = async (value, type) => {
@@ -232,6 +238,16 @@ const FlightDialog = ({
       const merged = resultsArr.reduce((acc, cur) => ({ ...acc, ...cur }), {});
       setAirportInfoCache((prev) => ({ ...prev, ...merged }));
     });
+  };
+
+  // 결과 렌더링 내 항공편 선택 버튼 클릭 핸들러 업데이트
+  const handleFlightSelect = (flight) => {
+    // 선택한 항공편 ID를 로컬 상태에 저장 (UI 강조 표시용)
+    setSelectedFlightIdLocal(flight.id);
+    
+    // 부모 컴포넌트로 항공편 정보와 함께 dictionaries와 airportInfoCache도 전달
+    // 이를 통해 공항 위경도 정보가 함께 전달됨
+    onSelectFlight(flight, dictionaries, airportInfoCache);
   };
 
   // isOpen이 false 일 때 다이얼로그를 렌더링하지 않음
@@ -529,12 +545,12 @@ const FlightDialog = ({
 
                   return (
                     <div
-                      key={index}
-                      className={`rounded-lg shadow p-4 transition-shadow ${
-                        flight.id === selectedFlightIdLocal
-                          ? "bg-blue-50 border border-blue-400"
-                          : "bg-white hover:shadow-md"
-                      }`}
+                      key={flight.id}
+                      onClick={() => handleFlightSelect(flight)}
+                      className={cn(
+                        "flex flex-col p-4 mb-4 border cursor-pointer hover:border-blue-500 rounded-lg shadow",
+                        selectedFlightIdLocal === flight.id ? "border-2 border-blue-600 bg-blue-50" : "border-gray-200"
+                      )}
                     >
                       <div className="flex justify-between items-center mb-2">
                         <div className="text-lg font-bold">
@@ -589,20 +605,6 @@ const FlightDialog = ({
                           </div>
                         </div>
                       )}
-
-                      <div className="flex justify-end mt-2">
-                        <Button
-                          variant="outline"
-                          className="border-blue-500 text-blue-500 hover:bg-blue-50"
-                          onClick={() => {
-                            alert("선택했습니다!");
-                            setSelectedFlightIdLocal(flight.id);
-                            onSelectFlight(flight, dictionaries);
-                          }}
-                        >
-                          선택
-                        </Button>
-                      </div>
                     </div>
                   );
                 })}
