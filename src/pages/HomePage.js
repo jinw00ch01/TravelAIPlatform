@@ -13,6 +13,7 @@ import { travelApi } from "../services/api";
 import TravelInfoSection from "./HomePage/TravelInfoSection";
 import FlightDialog from "./HomePage/FlightDialog";
 import amadeusApi from "../utils/amadeusApi";
+import ToursAndActivity from "./HomePage/ToursAndActivity";
 
 export const HomePage = () => {
   const navigate = useNavigate();
@@ -218,18 +219,16 @@ export const HomePage = () => {
         <div className="relative h-[900px]">
           {/* Hero background section */}
           <div 
-            className="absolute w-full h-[820px] top-0 left-0 bg-cover bg-center"
+            className="absolute w-full h-[820px] top-0 left-0 bg-gradient-to-b from-sky-300 via-sky-200 to-white"
             style={{
-              backgroundImage: "url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-1.2.1&auto=format&fit=crop&w=1920&q=80')",
               position: 'relative'
             }}
           >
-            {/* 배경 이미지 위에 어두운 오버레이 추가 */}
-            <div className="absolute inset-0 bg-black/40"></div>
+            {/* 배경 이미지 위에 어두운 오버레이 제거 */}
           </div>
 
           {/* Main heading - 위로 올림 */}
-          <h1 className="w-full max-w-[507px] top-[120px] left-1/2 -translate-x-1/2 text-white text-[50px] leading-[50px] absolute font-jua text-center">
+          <h1 className="w-full max-w-[507px] top-[120px] left-1/2 -translate-x-1/2 text-sky-900 text-[50px] leading-[50px] absolute font-jua text-center">
             여행을 떠나시나요?
           </h1>
 
@@ -519,6 +518,12 @@ export const HomePage = () => {
         
         {/* 여행 정보 탭 섹션 */}
         <TravelInfoSection />
+
+        {/* 수평선 */}
+        <hr className="my-12 border-gray-200" />
+
+        {/* 투어/액티비티 추천 섹션 */}
+        <ToursAndActivity />
 
         {/* 항공편 검색 다이얼로그 */}
         <FlightDialog
