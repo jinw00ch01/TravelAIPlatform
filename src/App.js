@@ -21,6 +21,7 @@ import ResetPassword from './components/auth/ResetPassword';
 import AuthCallback from './components/auth/AuthCallback';
 import TravelPlanner from './pages/TravelPlanner';
 import HotelSearchTest from './components/HotelSearchTest';
+import SimpleListPage from './pages/SimpleListPage';
 
 const queryClient = new QueryClient();
 
@@ -46,7 +47,7 @@ function App() {
                 <Route path="/planner/newest" element={<ProtectedRoute><TravelPlanner /></ProtectedRoute>} />
                 <Route path="/planner/none" element={<ProtectedRoute><TravelPlanner loadMode="none" /></ProtectedRoute>} />
                 <Route path="/planner/:planId" element={<ProtectedRoute><TravelPlanner /></ProtectedRoute>} />
-                <Route path="/list" element={<ProtectedRoute><TravelPlanner loadMode="none" /></ProtectedRoute>} />
+                <Route path="/list" element={<ProtectedRoute><SimpleListPage /></ProtectedRoute>} />
                 <Route path="/itinerary" element={<ProtectedRoute><ItineraryManager /></ProtectedRoute>} />
                 <Route path="/itinerary/:id" element={<ProtectedRoute><ViewItinerary /></ProtectedRoute>} />
                 <Route path="/cart" element={<ProtectedRoute><Cart /></ProtectedRoute>} />
