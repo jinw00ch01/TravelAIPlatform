@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { cn } from "../lib/utils";
-import { CalendarIcon, Minus, Plus, Plane, Loader2, X } from "lucide-react";
+import { CalendarIcon, Minus, Plus, Loader2, X } from "lucide-react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { travelApi } from "../services/api";
@@ -14,6 +14,7 @@ import TravelInfoSection from "./HomePage/TravelInfoSection";
 import FlightDialog from "./HomePage/FlightDialog";
 import amadeusApi from "../utils/amadeusApi";
 import ToursAndActivity from "./HomePage/ToursAndActivity";
+import AccomodationDialog from "./HomePage/AccomodationDialog";
 
 export const HomePage = () => {
   const navigate = useNavigate();
@@ -27,11 +28,14 @@ export const HomePage = () => {
   const [infantCount, setInfantCount] = useState(0);
   const [showPeopleSelector, setShowPeopleSelector] = useState(false);
   
-  // 비행 계획 관련 팝업 상태
+  // -------------------- 다이얼로그/선택 상태 --------------------
   const [isFlightDialogOpen, setIsFlightDialogOpen] = useState(false);
+  const [isAccommodationDialogOpen, setIsAccommodationDialogOpen] = useState(false);
   
   // 선택한 항공편 정보 저장
   const [selectedFlight, setSelectedFlight] = useState(null);
+  // 선택한 숙소(호텔+객실) 정보 저장
+  const [selectedAccommodation, setSelectedAccommodation] = useState(null);
   // 선택한 항공편의 dictionaries(항공사 등)와 공항 정보 캐시
   const [selectedFlightDictionaries, setSelectedFlightDictionaries] = useState({});
   const [airportInfoCache, setAirportInfoCache] = useState({});
@@ -146,14 +150,17 @@ export const HomePage = () => {
     });
   }, [selectedFlight, airportInfoCache]);
 
-  // 공항 정보가 업데이트 되면 선택된 항공편 정보도 업데이트
+  // 공항 정보가 업데이트 되면 선택된 항공편 정보도 업데이트 (무한 루프 방지)
   useEffect(() => {
-    if (selectedFlight && Object.keys(airportInfoCache).length > 0) {
-      // 이미 선택된 항공편이 있고 공항 정보가 업데이트 된 경우, 항공편 정보도 업데이트
-      const updatedFlight = enrichFlightWithAirportInfo(selectedFlight);
-      setSelectedFlight(updatedFlight);
+    if (!selectedFlight) return;
+    if (Object.keys(airportInfoCache).length === 0) return;
+
+    const enriched = enrichFlightWithAirportInfo(selectedFlight);
+    // 변경 사항이 있을 때만 업데이트(문자열 비교 단순 사용)
+    if (JSON.stringify(enriched) !== JSON.stringify(selectedFlight)) {
+      setSelectedFlight(enriched);
     }
-  }, [airportInfoCache, selectedFlight, enrichFlightWithAirportInfo]);
+  }, [airportInfoCache]);
 
   const processTextFile = async (file) => {
     return new Promise((resolve, reject) => {
@@ -289,6 +296,14 @@ export const HomePage = () => {
     setInfantCount(prev => Math.max(0, prev + increment));
   };
 
+  // 숙소 선택 핸들러
+  const selectAccommodation = useCallback((accom) => {
+    if (!accom) return;
+    console.log('[HomePage] Selected accommodation:', accom);
+    setSelectedAccommodation(accom);
+    setIsAccommodationDialogOpen(false);
+  }, []);
+
   const CustomInput = React.forwardRef(({ value, onClick, placeholder }, ref) => (
     <Button
       variant="outline"
@@ -320,7 +335,7 @@ export const HomePage = () => {
 
           {/* Main heading - 위로 올림 */}
           <h1 className="w-full max-w-[507px] top-[120px] left-1/2 -translate-x-1/2 text-sky-900 text-[50px] leading-[50px] absolute font-jua text-center">
-            여행을 떠나시나요?
+            여행계획을 도와드릴까요?
           </h1>
 
           {/* Stack View Container - 모든 입력 요소를 포함하는 컨테이너 */}
@@ -487,130 +502,164 @@ export const HomePage = () => {
                 </div>
               </div>
               
-              {/* 비행기 모양 원형 버튼 추가 */}
-              <div className="flex justify-start mt-2">
-                <Button 
-                  variant="outline" 
-                  size="icon" 
-                  className="rounded-full w-10 h-10 bg-blue-500 hover:bg-blue-600 border-none shadow-md"
-                  onClick={() => setIsFlightDialogOpen(true)}
-                >
-                  <Plane className="h-5 w-5 text-white" />
-                </Button>
+              {/* 항공편/숙박 검색 버튼 및 선택 요약 */}
+              <div className="flex flex-wrap items-start gap-4 mt-2">
+                {/* 검색 버튼들 */}
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    className="bg-blue-500 hover:bg-blue-600 text-white" 
+                    onClick={() => setIsFlightDialogOpen(true)}
+                  >
+                    항공편 검색
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    className="bg-green-500 hover:bg-green-600 text-white" 
+                    onClick={() => setIsAccommodationDialogOpen(true)}
+                  >
+                    숙박 검색
+                  </Button>
+                </div>
+
+                {/* 선택된 항공편/숙박 요약 카드 */}
+                <div className="flex flex-wrap gap-4 w-full">
+                  {selectedFlight && (
+                    <Card className="relative p-4 shadow bg-white flex-1 min-w-[260px]">
+                      {/* 기존 항공편 요약 내용 유지 */}
+                      {(() => {
+                        const formatDuration = (durationStr) => {
+                          if (!durationStr) return "-";
+                          return durationStr.replace("PT", "").replace("H", "시간 ").replace("M", "분").trim();
+                        };
+
+                        const getCityLabel = (code) => {
+                          const info = airportInfoCache[code] || {};
+                          return (
+                            info.koreanMunicipalityName ||
+                            info.koreanFullName ||
+                            info.koreanName ||
+                            info.name ||
+                            code
+                          );
+                        };
+
+                        const isRoundTrip = selectedFlight.itineraries.length > 1;
+                        const outbound = selectedFlight.itineraries[0];
+                        const outFirst = outbound.segments[0];
+                        const outLast = outbound.segments[outbound.segments.length - 1];
+                        const outCarrierName =
+                          selectedFlightDictionaries?.carriers?.[outFirst.carrierCode] ||
+                          outFirst.carrierCode;
+                        const outStops = outbound.segments.length - 1;
+                        const outStopsText = outStops === 0 ? "직항" : `${outStops}회 경유`;
+                        const outDuration = formatDuration(outbound.duration);
+
+                        let inboundSection = null;
+                        if (isRoundTrip) {
+                          const inbound = selectedFlight.itineraries[1];
+                          const inFirst = inbound.segments[0];
+                          const inLast = inbound.segments[inbound.segments.length - 1];
+                          const inCarrierName =
+                            selectedFlightDictionaries?.carriers?.[inFirst.carrierCode] ||
+                            inFirst.carrierCode;
+                          const inStops = inbound.segments.length - 1;
+                          const inStopsText = inStops === 0 ? "직항" : `${inStops}회 경유`;
+                          const inDuration = formatDuration(inbound.duration);
+
+                          inboundSection = (
+                            <div className="mt-3 text-sm">
+                              <div className="font-medium text-gray-600 mb-0.5">오는 편</div>
+                              <div className="text-sm mb-0.5">
+                                {new Date(inFirst.departure.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                                <span className="text-gray-400 mx-1">→</span>
+                                {new Date(inLast.arrival.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {inCarrierName} | {inStopsText} | 총 소요시간: {inDuration}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        const price = parseInt(selectedFlight.price.grandTotal || selectedFlight.price.total).toLocaleString();
+
+                        return (
+                          <>
+                            <div className="flex justify-between items-center mb-3">
+                              <div className="text-sm font-semibold">
+                                {isRoundTrip ? "왕복" : "편도"}: {getCityLabel(outFirst.departure.iataCode)} → {getCityLabel(outLast.arrival.iataCode)}
+                              </div>
+                              <div className="text-sm font-bold text-blue-600">{price}원</div>
+                            </div>
+                            <div className="text-sm">
+                              <div className="font-medium text-gray-600 mb-0.5">가는 편</div>
+                              <div className="text-sm mb-0.5">
+                                {new Date(outFirst.departure.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                                <span className="text-gray-400 mx-1">→</span>
+                                {new Date(outLast.arrival.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {outCarrierName} | {outStopsText} | 총 소요시간: {outDuration}
+                              </div>
+                            </div>
+                            {inboundSection}
+
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="absolute top-2 right-2"
+                              onClick={() => {
+                                setSelectedFlight(null);
+                                setSelectedFlightDictionaries({});
+                              }}
+                            >
+                              <X className="h-4 w-4 text-gray-500" />
+                            </Button>
+                          </>
+                        );
+                      })()}
+                    </Card>
+                  )}
+
+                  {selectedAccommodation && (
+                    <Card className="relative p-4 shadow bg-white flex-1 min-w-[260px]">
+                      {(() => {
+                        const { hotel, room } = selectedAccommodation;
+                        return (
+                          <>
+                            <div className="flex justify-between items-center mb-3">
+                              <div className="text-sm font-semibold">숙소: {hotel.hotel_name_trans || hotel.hotel_name}</div>
+                              {room.price && (
+                                <div className="text-sm font-bold text-green-600">{room.price.toLocaleString()} {room.currency}</div>
+                              )}
+                            </div>
+                            <div className="text-sm text-gray-700">{room.name}</div>
+                            {(() => {
+                              const dIn = selectedAccommodation.checkIn ? format(new Date(selectedAccommodation.checkIn), 'yyyy/MM/dd') : '';
+                              const dOut = selectedAccommodation.checkOut ? format(new Date(selectedAccommodation.checkOut), 'yyyy/MM/dd') : '';
+                              return (
+                                <>
+                                  <div className="text-xs text-gray-500">체크인 {dIn} {selectedAccommodation.hotel.checkin_from}{selectedAccommodation.hotel.checkin_until !== '정보 없음' ? ` ~ ${selectedAccommodation.hotel.checkin_until}` : ''}</div>
+                                  <div className="text-xs text-gray-500 mb-1">체크아웃 {dOut} {selectedAccommodation.hotel.checkout_from !== '정보 없음' ? `${selectedAccommodation.hotel.checkout_from} ~ ` : ''}{selectedAccommodation.hotel.checkout_until}</div>
+                                </>
+                              );
+                            })()}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="absolute top-2 right-2"
+                              onClick={() => setSelectedAccommodation(null)}
+                            >
+                              <X className="h-4 w-4 text-gray-500" />
+                            </Button>
+                          </>
+                        );
+                      })()}
+                    </Card>
+                  )}
+                </div>
               </div>
-
-              {/* 선택한 항공편 요약 표시 */}
-              {selectedFlight && (
-                <Card className="relative ml-4 p-4 shadow bg-white max-w-sm w-full sm:w-auto">
-                  {(() => {
-                    // Helper: 기간 문자열 "PT24H10M" → "24시간 10분"
-                    const formatDuration = (durationStr) => {
-                      if (!durationStr) return "-";
-                      return durationStr
-                        .replace("PT", "")
-                        .replace("H", "시간 ")
-                        .replace("M", "분")
-                        .trim();
-                    };
-
-                    // Helper: 공항 IATA 코드 → 도시/공항 한글명
-                    const getCityLabel = (code) => {
-                      const info = airportInfoCache[code] || {};
-                      return (
-                        info.koreanMunicipalityName ||
-                        info.koreanFullName ||
-                        info.koreanName ||
-                        info.name ||
-                        code
-                      );
-                    };
-
-                    const isRoundTrip = selectedFlight.itineraries.length > 1;
-
-                    // --- 가는 편 ---
-                    const outbound = selectedFlight.itineraries[0];
-                    const outFirst = outbound.segments[0];
-                    const outLast = outbound.segments[outbound.segments.length - 1];
-                    const outCarrierName =
-                      selectedFlightDictionaries?.carriers?.[outFirst.carrierCode] ||
-                      outFirst.carrierCode;
-                    const outStops = outbound.segments.length - 1;
-                    const outStopsText = outStops === 0 ? "직항" : `${outStops}회 경유`;
-                    const outDuration = formatDuration(outbound.duration);
-
-                    // --- 오는 편 (왕복인 경우) ---
-                    let inboundSection = null;
-                    if (isRoundTrip) {
-                      const inbound = selectedFlight.itineraries[1];
-                      const inFirst = inbound.segments[0];
-                      const inLast = inbound.segments[inbound.segments.length - 1];
-                      const inCarrierName =
-                        selectedFlightDictionaries?.carriers?.[inFirst.carrierCode] ||
-                        inFirst.carrierCode;
-                      const inStops = inbound.segments.length - 1;
-                      const inStopsText = inStops === 0 ? "직항" : `${inStops}회 경유`;
-                      const inDuration = formatDuration(inbound.duration);
-
-                      inboundSection = (
-                        <div className="mt-3 text-sm">
-                          <div className="font-medium text-gray-600 mb-0.5">오는 편</div>
-                          <div className="text-sm mb-0.5">
-                            {new Date(inFirst.departure.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: true })}
-                            <span className="text-gray-400 mx-1">→</span>
-                            {new Date(inLast.arrival.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: true })}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {inCarrierName} | {inStopsText} | 총 소요시간: {inDuration}
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    const price = parseInt(selectedFlight.price.grandTotal || selectedFlight.price.total).toLocaleString();
-
-                    return (
-                      <>
-                        {/* 상단 정보 */}
-                        <div className="flex justify-between items-center mb-3">
-                          <div className="text-sm font-semibold">
-                            {isRoundTrip ? "왕복" : "편도"}: {getCityLabel(outFirst.departure.iataCode)} → {getCityLabel(outLast.arrival.iataCode)}
-                          </div>
-                          <div className="text-sm font-bold text-blue-600">{price}원</div>
-                        </div>
-
-                        {/* 가는 편 */}
-                        <div className="text-sm">
-                          <div className="font-medium text-gray-600 mb-0.5">가는 편</div>
-                          <div className="text-sm mb-0.5">
-                            {new Date(outFirst.departure.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: true })}
-                            <span className="text-gray-400 mx-1">→</span>
-                            {new Date(outLast.arrival.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: true })}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {outCarrierName} | {outStopsText} | 총 소요시간: {outDuration}
-                          </div>
-                        </div>
-
-                        {/* 오는 편 (있을 때) */}
-                        {inboundSection}
-
-                        {/* 닫기 버튼 */}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="absolute top-2 right-2"
-                          onClick={() => {
-                            setSelectedFlight(null);
-                            setSelectedFlightDictionaries({});
-                          }}
-                        >
-                          <X className="h-4 w-4 text-gray-500" />
-                        </Button>
-                      </>
-                    );
-                  })()}
-                </Card>
-              )}
             </div>
           </div>
         </div>
@@ -634,6 +683,18 @@ export const HomePage = () => {
           initialInfantCount={infantCount}
           defaultStartDate={startDate}
           defaultEndDate={endDate}
+        />
+
+        {/* 숙박 검색 다이얼로그 */}
+        <AccomodationDialog
+          isOpen={isAccommodationDialogOpen}
+          onClose={() => setIsAccommodationDialogOpen(false)}
+          onSelectAccommodation={selectAccommodation}
+          defaultCheckIn={startDate}
+          defaultCheckOut={endDate}
+          initialAdults={adultCount}
+          initialChildren={childCount}
+          selectedAccommodation={selectedAccommodation}
         />
       </div>
     </div>
