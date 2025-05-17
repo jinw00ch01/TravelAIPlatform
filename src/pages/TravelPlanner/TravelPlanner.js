@@ -33,6 +33,7 @@ import {
 import AIChatWidget from './components/AIChatWidget';
 import axios from 'axios';
 import { fetchAuthSession } from 'aws-amplify/auth';
+import { useParams } from 'react-router-dom';
 
 // API_URL - API 엔드포인트 기본 URL
 const API_URL = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage';
@@ -52,19 +53,21 @@ const StrictModeDroppable = ({ children, ...props }) => {
   return <Droppable {...props}>{children}</Droppable>;
 };
 
-const TravelPlanner = () => {
+const TravelPlanner = ({ loadMode }) => {
   const { user } = useAuth();
+  const { planId: planIdFromUrl } = useParams();
+
   const {
     travelPlans, setTravelPlans,
     dayOrder, setDayOrder,
     selectedDay, setSelectedDay,
     startDate, setStartDate,
     planId, setPlanId,
-    isLoadingPlan, loadTravelPlan,
+    isLoadingPlan,
     loadedFlightInfo,
     isRoundTrip,
     loadError
-  } = useTravelPlanLoader(user);
+  } = useTravelPlanLoader(user, planIdFromUrl, loadMode);
 
   const {
     flightSearchParams, setFlightSearchParams,

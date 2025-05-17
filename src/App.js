@@ -43,7 +43,10 @@ function App() {
                 <Route path="/auth/callback" element={<AuthCallback />} />
                 <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                 <Route path="/plan" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
-                <Route path="/planner" element={<ProtectedRoute><TravelPlanner /></ProtectedRoute>} />
+                <Route path="/planner/newest" element={<ProtectedRoute><TravelPlanner /></ProtectedRoute>} />
+                <Route path="/planner/none" element={<ProtectedRoute><TravelPlanner loadMode="none" /></ProtectedRoute>} />
+                <Route path="/planner/:planId" element={<ProtectedRoute><TravelPlanner /></ProtectedRoute>} />
+                <Route path="/list" element={<ProtectedRoute><TravelPlanner loadMode="none" /></ProtectedRoute>} />
                 <Route path="/itinerary" element={<ProtectedRoute><ItineraryManager /></ProtectedRoute>} />
                 <Route path="/itinerary/:id" element={<ProtectedRoute><ViewItinerary /></ProtectedRoute>} />
                 <Route path="/cart" element={<ProtectedRoute><Cart /></ProtectedRoute>} />
