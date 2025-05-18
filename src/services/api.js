@@ -81,15 +81,57 @@ export const travelApi = {
   // 최신 여행 계획 또는 조건에 맞는 계획 불러오기
   loadPlan: async (params = { newest: true }) => {
     try {
-      console.log('여행 계획 불러오기 시도 - URL:', `${API_URL}api/travel/LoadPlanFunction_NEW`, 'Params:', params);
+      // planId가 유효한 숫자인지 확인하고 적절한 API 엔드포인트 선택
+      const hasPlanId = params.planId !== undefined && params.planId !== null;
       
-      // 직접 axios 대신 apiClient 사용 (인터셉터에서 인증 헤더 자동 추가)
-      const response = await apiClient.post('api/travel/LoadPlanFunction_NEW', params, {
-        // 타임아웃 설정 (8초)
+      // planId가 숫자인지 확인
+      const isNumericId = hasPlanId && !isNaN(Number(params.planId)) && params.planId !== 'newest';
+      
+      // 요청 본문 준비
+      let requestParams = { ...params };
+
+      // API 엔드포인트 결정 (planId가 숫자면 checkplan, 그 외에는 LoadPlanFunction_NEW)
+      let endpoint = 'api/travel/LoadPlanFunction_NEW';
+      
+      // planId가 숫자인 경우 checkplan API 사용 (키 이름도 plan_id로 변환)
+      if (isNumericId) {
+        endpoint = 'api/travel/checkplan';
+        // planId를 plan_id로 변환 (스네이크 케이스로 변경)
+        requestParams = {
+          ...requestParams,
+          plan_id: requestParams.planId
+        };
+        // 원래 planId 필드는 제거 (중복 방지)
+        delete requestParams.planId;
+        
+        console.log(`특정 계획(ID: ${requestParams.plan_id}) 불러오기 - URL: ${API_URL}/${endpoint}`);
+      } 
+      // planId가 'newest'인 경우나 다른 경우는 LoadPlanFunction_NEW 사용
+      else {
+        // planId가 'newest'인 경우 이를 newest=true로 변환
+        if (hasPlanId && params.planId === 'newest') {
+          requestParams = {
+            ...requestParams,
+            newest: true
+          };
+          // 원래 planId 필드는 제거
+          delete requestParams.planId;
+          
+          console.log(`최신 계획 불러오기 - URL: ${API_URL}/${endpoint}`);
+        } else {
+          console.log(`여행 계획 불러오기 - URL: ${API_URL}/${endpoint}`);
+        }
+      }
+      
+      console.log('요청 파라미터:', requestParams);
+      
+      // API 호출
+      const response = await apiClient.post(endpoint, requestParams, {
         timeout: 8000,
         retry: 2,
         retryDelay: 1000
       });
+      
       return response.data;
     } catch (error) {
       throw error;
