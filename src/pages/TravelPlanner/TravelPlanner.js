@@ -159,6 +159,43 @@ const TravelPlanner = ({ loadMode }) => {
     }
   }, [travelPlans, airportInfoCache, loadedFlightInfo, updateFlightScheduleDetails, setTravelPlans]);
 
+  /* ---------- 날짜 동기화 ---------- */
+  useEffect(() => {
+    if (!startDate) return;
+
+    // 체크아웃 = 시작일 + (일정 일수 - 1)
+    const calcCheckOut = () => {
+      const days = dayOrder?.length || 1;
+      const d = new Date(startDate);
+      d.setDate(d.getDate() + Math.max(days - 1, 0));
+      return d;
+    };
+
+    // 숙소 계획 폼 날짜 동기화
+    setAccommodationFormData(prev => {
+      if (!prev) return prev;
+      const newCheckIn = prev.checkIn instanceof Date ? prev.checkIn : new Date(prev.checkIn || startDate);
+      const newCheckOut = prev.checkOut instanceof Date ? prev.checkOut : new Date(prev.checkOut || calcCheckOut());
+
+      const needUpdate = newCheckIn.getTime() !== startDate.getTime() || newCheckOut.getTime() !== calcCheckOut().getTime();
+      if (!needUpdate) return prev;
+      return { ...prev, checkIn: startDate, checkOut: calcCheckOut() };
+    });
+
+    // 비행 검색 파라미터 날짜 동기화
+    setFlightSearchParams(prev => {
+      if (!prev) return prev;
+      const newDeparture = prev.departureDate instanceof Date ? prev.departureDate : (prev.departureDate ? new Date(prev.departureDate) : null);
+      const newReturn = prev.returnDate instanceof Date ? prev.returnDate : (prev.returnDate ? new Date(prev.returnDate) : null);
+      const targetReturn = dayOrder.length > 1 ? calcCheckOut() : null;
+      const needUpdate = !newDeparture || newDeparture.getTime() !== startDate.getTime() || (
+        (targetReturn && !newReturn) || (targetReturn && newReturn && newReturn.getTime() !== targetReturn.getTime()) || (!targetReturn && newReturn)
+      );
+      if (!needUpdate) return prev;
+      return { ...prev, departureDate: startDate, returnDate: targetReturn };
+    });
+  }, [startDate, dayOrder, setAccommodationFormData, setFlightSearchParams]);
+
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
   };
