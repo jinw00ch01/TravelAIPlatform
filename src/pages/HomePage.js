@@ -274,16 +274,19 @@ export const HomePage = () => {
 
       // 성공 시 플래너 페이지로 이동 (생성된 데이터 전달)
       if (result && result.plan) {
-         navigate('/planner', { state: { planData: result.plan, flightData: selectedFlight } });
+         // AI가 생성한 최신 계획을 로드하기 위해 /planner/newest로 이동
+         // state는 여전히 전달하여 TravelPlanner가 필요시 사용할 수 있도록 함
+         navigate('/planner/newest', { state: { planData: result.plan, flightData: selectedFlight } });
       } else {
          console.warn('[PlanTravel] 생성 응답에 plan 데이터가 없거나 유효하지 않음:', result);
-         alert('AI 여행 계획 생성 응답 형식이 올바르지 않습니다. 수동 플래너로 이동합니다.');
-         navigate('/planner', { state: { flightData: selectedFlight } }); 
+         alert("오류가 발생했습니다. 잠시후 '최근 생성된 계획 보기' 버튼을 누르시거나 다시 생성해주세요.");
+         navigate('/list'); // 오류 발생 시 /list 페이지로 이동
       }
 
     } catch (error) {
       console.error('[PlanTravel] AI 여행 계획 생성 오류:', error);
-      alert('AI 여행 계획 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+      alert("오류가 발생했습니다. 잠시후 '최근 생성된 계획 보기' 버튼을 누르시거나 다시 생성해주세요.");
+      navigate('/list'); // 예외 발생 시 /list 페이지로 이동
     } finally {
       setIsProcessing(false); // 로딩 종료
     }
