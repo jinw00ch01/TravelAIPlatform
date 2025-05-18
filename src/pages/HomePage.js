@@ -257,9 +257,14 @@ export const HomePage = () => {
         // 확장된 항공편 데이터를 사용 (위경도 포함)
         planDetails.flightInfo = selectedFlight;
         
-        console.log('[PlanTravel] 선택한 항공편 정보를 포함하여 AI 여행 계획 생성 요청:', planDetails);
+        console.log('[HomePage] 선택한 항공편 정보를 포함하여 AI 여행 계획 생성 요청:', planDetails);
       } else {
-        console.log('[PlanTravel] AI 여행 계획 생성 요청 (항공편 미선택):', planDetails);
+        console.log('[HomePage] AI 여행 계획 생성 요청 (항공편 미선택):', planDetails);
+      }
+
+      // 선택한 숙박 정보가 있으면 추가
+      if (selectedAccommodation) {
+        planDetails.accommodationInfo = selectedAccommodation;
       }
 
       // travelApi.createTravelPlan 호출

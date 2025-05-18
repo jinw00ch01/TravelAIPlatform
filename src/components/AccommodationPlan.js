@@ -206,10 +206,8 @@ const AccommodationPlan = forwardRef(({
         }))
       };
 
-      console.log('[검색] API 요청 파라미터:', apiParams);
       
       const responseData = await travelApi.searchHotels(apiParams);
-      console.log('[검색] API 응답:', responseData);
 
       if (!responseData || !responseData.result) {
         throw new Error('검색 결과를 가져오는데 실패했습니다.');

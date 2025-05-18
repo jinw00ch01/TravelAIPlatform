@@ -65,7 +65,8 @@ def lambda_handler(event, context):
         # JWT 토큰에서 사용자 이메일 추출
         auth_header = event.get('headers', {}).get('Authorization') or event.get('headers', {}).get('authorization')
         user_id = 'anonymous'
-        
+        is_round_trip = False  # <--- 여기에 기본값 선언!
+
         if auth_header and auth_header.startswith('Bearer '):
             token = auth_header[7:]  # 'Bearer ' 이후 부분 추출
             decoded_token = decode_jwt(token)
@@ -86,6 +87,13 @@ def lambda_handler(event, context):
         adults = body.get('adults', 1)
         children = body.get('children', 0) 
         flight_info = body.get('flightInfo', None)
+        accommodation_info = body.get('accommodationInfo', None)
+
+        # Geo 정보 기본값 초기화
+        out_arrival_geo_lat = None
+        out_arrival_geo_lng = None
+        in_depart_geo_lat = None
+        in_depart_geo_lng = None
 
         # 항공편 정보가 있으면 추가
         if flight_info:
@@ -93,7 +101,6 @@ def lambda_handler(event, context):
             if 'itineraries' in flight_info:
                 # 왕복 항공편인지 확인
                 is_round_trip = len(flight_info.get('itineraries', [])) > 1
-                flight_info['isRoundTrip'] = is_round_trip
                 
                 # 첫 번째 여정 정보 추출 (프롬프트 구성용)
                 first_itinerary = flight_info['itineraries'][0]
@@ -108,6 +115,10 @@ def lambda_handler(event, context):
                 
                 arrival_date = last_segment['arrival']['at']
                 arrival_time = arrival_date.split('T')[1][:5] if 'T' in arrival_date else arrival_date
+                
+                # GeoCode 정보 추출 (가는 편 도착 공항)
+                out_arrival_geo_lat = last_segment.get('arrival', {}).get('geoCode', {}).get('latitude')
+                out_arrival_geo_lng = last_segment.get('arrival', {}).get('geoCode', {}).get('longitude')
                 
                 # 왕복 정보 처리
                 return_departure_time = None
@@ -130,6 +141,10 @@ def lambda_handler(event, context):
                     
                     return_arrival_date = return_last_segment['arrival']['at']
                     return_arrival_time = return_arrival_date.split('T')[1][:5] if 'T' in return_arrival_date else return_arrival_date
+                    
+                    # GeoCode 정보 추출 (오는 편 출발 공항)
+                    in_depart_geo_lat = return_first_segment.get('departure', {}).get('geoCode', {}).get('latitude')
+                    in_depart_geo_lng = return_first_segment.get('departure', {}).get('geoCode', {}).get('longitude')
                 
                 # 개발 디버그용 로그
                 print("항공편 정보 처리됨:", json.dumps(flight_info, cls=DecimalEncoder))
@@ -166,13 +181,13 @@ def lambda_handler(event, context):
                         
                         return_arrival_date = flight_info['returnInfo'].get('arrivalDate', '')
                         return_arrival_time = return_arrival_date.split('T')[1][:5] if 'T' in return_arrival_date else return_arrival_date
-                    # 레거시 방식 (returnDate 필드)
-                    elif flight_info.get('returnDate', None):
-                        return_departure_date = flight_info.get('returnDate', '')
-                        return_departure_time = return_departure_date.split('T')[1][:5] if 'T' in return_departure_date else return_departure_date
-                        
-                        return_arrival_date = flight_info.get('returnArrivalDate', '')
-                        return_arrival_time = return_arrival_date.split('T')[1][:5] if 'T' in return_arrival_date else return_arrival_date
+
+                    # GeoCode 정보 추출 시도 (레거시 구조에서는 제공되지 않을 수 있음)
+                    try:
+                        in_depart_geo_lat = flight_info['returnInfo'].get('geoCode', {}).get('latitude')
+                        in_depart_geo_lng = flight_info['returnInfo'].get('geoCode', {}).get('longitude')
+                    except:  # noqa
+                        pass
 
         # 프롬프트 구성 시작
         prompt_text = ""
@@ -186,32 +201,54 @@ def lambda_handler(event, context):
 도착지: {1}
 출발 시간: {2}
 도착 시간: {3}
+도착 공항 위도/경도: {4}/{5}
 
-*** 중요: 항공편 도착 시간({3})을 첫 일정의 시작 시간으로 고려하세요. 첫 일정은 항공편 도착 후 최소 1시간 이후에 시작되어야 합니다. ***
-""".format(origin_code, destination_code, departure_time, arrival_time)
+*** 중요: 항공편 도착 시간({3})을 첫 일정의 시작 시간으로 고려하세요. 첫 일정은 항공편 도착 후 최소 1시간 이후에 시작되어야 합니다. 모든 시간은 해당 공항의 현지 시간대입니다. ***
+""".format(origin_code, destination_code, departure_time, arrival_time, out_arrival_geo_lat or 'Unknown', out_arrival_geo_lng or 'Unknown')
 
             # 왕복 항공편 정보 추가
             if is_round_trip:
                 try:
-                    # 왕복 정보를 JSON 문자열로 다시 변환
-                    flight_info_str = json.dumps(flight_info)
-                    
                     prompt_text += """
 <복귀 항공편 정보>
 출발지: {0}
 도착지: {1}
 출발 시간: {2}
+출발 공항 위도/경도: {4}/{5}
 도착 시간: {3}
 
-*** 중요: 마지막 일정은 복귀 항공편 출발 시간({2}) 최소 2시간 전에 종료되어야 합니다. ***
-그 전까지는 뭐 아무거나 해도 됨.
-""".format(destination_code, origin_code, return_departure_time, return_arrival_time)
-                    
-                    print("왕복 항공편 정보 처리됨:", 
-                          {"출발지": destination_code, "도착지": origin_code, 
-                           "출발시간": return_departure_time, "도착시간": return_arrival_time})
+*** 중요: 마지막 일정은 복귀 항공편 출발 시간({2}) 최소 2시간 전에 종료되어야 합니다. 모든 시간은 해당 공항의 현지 시간대입니다. ***
+""".format(destination_code, origin_code, return_departure_time, return_arrival_time, in_depart_geo_lat or 'Unknown', in_depart_geo_lng or 'Unknown')
+
+                    print("왕복 항공편 정보 처리됨:",
+                          {"출발지": destination_code, "도착지": origin_code,
+                           "출발시간": return_departure_time, "도착시간": return_arrival_time,
+                           "위도": in_depart_geo_lat, "경도": in_depart_geo_lng})
                 except Exception as e:
                     print("왕복 항공편 정보 처리 중 오류:", str(e))
+
+        # 숙박 정보가 있으면 추가
+        if accommodation_info:
+            try:
+                hotel = accommodation_info.get('hotel', {})
+                hotel_name = hotel.get('hotel_name_trans') or hotel.get('hotel_name') or hotel.get('name') or 'Unknown Hotel'
+                hotel_lat = hotel.get('latitude') or hotel.get('lat') or hotel.get('latitude_raw') or 'Unknown'
+                hotel_lng = hotel.get('longitude') or hotel.get('lng') or hotel.get('longitude_raw') or 'Unknown'
+
+                checkin_dt = accommodation_info.get('checkIn')
+                checkout_dt = accommodation_info.get('checkOut')
+
+                prompt_text += """
+<숙박 정보>
+호텔명: {0}
+체크인 시간: {1}
+체크아웃 시간: {2}
+호텔 위도/경도: {3}/{4}
+
+*** 중요: 첫날 일정에 호텔 체크인을 포함하고, 매일 일정은 호텔에서 시작하여 호텔로 돌아오는 구조로 작성하세요. 마지막 날 일정은 호텔 체크아웃 이후, 복귀 항공편 출발 공항으로 이동하는 루트를 포함해야 합니다. 모든 시간은 호텔 위치의 현지 시간대입니다. ***
+""".format(hotel_name, checkin_dt, checkout_dt, hotel_lat, hotel_lng)
+            except Exception as e:
+                print("숙박 정보 처리 중 오류:", str(e))
 
         # 기본 요구사항 추가
         prompt_text += """
@@ -234,8 +271,8 @@ def lambda_handler(event, context):
 그런데 장소와 장소 사이가 너무 가까워도 안됨.
 
 <답변형식>
-하루치 일정은 "(장소)-(식당)-(장소)-(장소)-(장소)-(식당)-(마지막 장소)" 이렇게 잡아줘.
-장소 : 지도 상에 존재하는 명소나, 구경거리 (제외 : 호텔, 지하철역 등등..) 만 넣어야해.
+하루치 일정은 \"(관광지)-(식당)-(관광지)-(관광지)-(관광지)-(관광지)-(마지막 관광지)\" 이렇게 잡아줘.
+관광지 : 지도 상에 존재하는 명소나, 구경거리 (제외 : 호텔, 지하철역,항공 등등..) 만 넣어야해.
 추가로, 하루 일정의 마지막 장소의 위도(latitude)와 경도(longitude) 정보를 포함해야 해.
 
 
@@ -248,7 +285,7 @@ JSON 예시
             adults, 
             children,
             """
-{"title":"ㅁㅁ ㅁ박 ㅁ일 여행","days":[{"day":1,"date":"2025-05-12","title":"1일차: ㅁㅁ 방문","schedules":[{"id":"1-1","name":"장소이름","time":"14:00","lat":123.1234,"lng":123.1234,"category":"장소","duration":"1시간","notes":"ㅁㅁ","cost":"50000","address":"ㅁㅁ 주소"},{"id":"1-2","name":"ㅁㅁ","time":"17:00","lat":35.6936,"lng":139.7071,"category":"식당","duration":"1시간","notes":"현지 이자카야에서 다양한 음식 즐기기","cost":"3000","address":"ㅁㅁ 주소"}]},{"day":2,"date":"2025-05-13","title":"2일차: ㅁㅁ 여행","schedules":[{"id":"2-1","name":"ㅁㅁ 타워","time":"10:00","lat":35.6586,"lng":139.7454,"category":"장소","duration":"1시간","notes":"ㅁㅁ 시내 전경을 감상할 수 있는 명소","cost":"1200","address":"ㅁㅁ 주소"},{"id":"2-2","name":"ㅁㅁ 멘치","time":"13:00","lat":35.7148,"lng":139.7967,"category":"식당","duration":"1시간","notes":"유명한 ㅁㅁ 멘치카츠 맛보기","cost":"800","address":"ㅁㅁ 주소"}]},{"day":3,"date":"2025-05-14","title":"3일차: ㅁㅁ 온천 여행","schedules":[{"id":"3-1","name":"ㅁㅁ 역","time":"09:00","lat":35.6896,"lng":139.7006,"category":"장소","duration":"2시간","notes":"ㅁㅁ에서 ㅁㅁ 온천 지역으로 이동","cost":"2500","address":"ㅁㅁ 주소"},{"id":"3-2","name":"ㅁㅁ 유모토","time":"11:00","lat":35.2329,"lng":139.1056,"category":"장소","duration":"1시간","notes":"온천 마을 ㅁㅁ 유모토 도착 후 휴식","cost":"0","address":"ㅁㅁ 주소"},{"id":"3-3","name":"ㅁㅁ 소바집","time":"12:00","lat":35.2351,"lng":139.1082,"category":"식당","duration":"1시간","notes":"ㅁㅁ 지역의 유명한 소바 맛집","cost":"1500","address":"ㅁㅁ 주소"},{"id":"3-4","name":"ㅁㅁ 로프웨이","time":"14:00","lat":35.2484,"lng":139.0203,"category":"장소","duration":"1시간","notes":"ㅁㅁ 로프웨이를 타고 산 정상에서 경치 감상","cost":"1300","address":"ㅁㅁ 주소"},{"id":"3-5","name":"ㅁㅁ 호수","time":"16:00","lat":35.2066,"lng":139.0260,"category":"장소","duration":"1시간","notes":"ㅁㅁ 호수에서 유람선을 타고 경치 감상","cost":"1000","address":"ㅁㅁ 주소"}]}]}
+{\"title\":\"ㅁㅁ ㅁ박 ㅁ일 여행\",\"days\":[{\"day\":1,\"date\":\"2025-05-12\",\"title\":\"1일차: ㅁㅁ 방문\",\"schedules\":[{\"id\":\"1-1\",\"name\":\"장소이름\",\"time\":\"14:00\",\"lat\":123.1234,\"lng\":123.1234,\"category\":\"장소\",\"duration\":\"1시간\",\"notes\":\"ㅁㅁ\",\"cost\":\"50000\",\"address\":\"ㅁㅁ 주소\"},{\"id\":\"1-2\",\"name\":\"ㅁㅁ\",\"time\":\"17:00\",\"lat\":35.6936,\"lng\":139.7071,\"category\":\"식당\",\"duration\":\"1시간\",\"notes\":\"현지 이자카야에서 다양한 음식 즐기기\",\"cost\":\"3000\",\"address\":\"ㅁㅁ 주소\"}]},{\"day\":2,\"date\":\"2025-05-13\",\"title\":\"2일차: ㅁㅁ 여행\",\"schedules\":[{\"id\":\"2-1\",\"name\":\"ㅁㅁ 타워\",\"time\":\"10:00\",\"lat\":35.6586,\"lng\":139.7454,\"category\":\"장소\",\"duration\":\"1시간\",\"notes\":\"ㅁㅁ 시내 전경을 감상할 수 있는 명소\",\"cost\":\"1200\",\"address\":\"ㅁㅁ 주소\"},{\"id\":\"2-2\",\"name\":\"ㅁㅁ 멘치\",\"time\":\"13:00\",\"lat\":35.7148,\"lng\":139.7967,\"category\":\"식당\",\"duration\":\"1시간\",\"notes\":\"유명한 ㅁㅁ 멘치카츠 맛보기\",\"cost\":\"800\",\"address\":\"ㅁㅁ 주소\"}]},{\"day\":3,\"date\":\"2025-05-14\",\"title\":\"3일차: ㅁㅁ 온천 여행\",\"schedules\":[{\"id\":\"3-1\",\"name\":\"ㅁㅁ 역\",\"time\":\"09:00\",\"lat\":35.6896,\"lng\":139.7006,\"category\":\"장소\",\"duration\":\"2시간\",\"notes\":\"ㅁㅁ에서 ㅁㅁ 온천 지역으로 이동\",\"cost\":\"2500\",\"address\":\"ㅁㅁ 주소\"},{\"id\":\"3-2\",\"name\":\"ㅁㅁ 유모토\",\"time\":\"11:00\",\"lat\":35.2329,\"lng\":139.1056,\"category\":\"장소\",\"duration\":\"1시간\",\"notes\":\"온천 마을 ㅁㅁ 유모토 도착 후 휴식\",\"cost\":\"0\",\"address\":\"ㅁㅁ 주소\"},{\"id\":\"3-3\",\"name\":\"ㅁㅁ 소바집\",\"time\":\"12:00\",\"lat\":35.2351,\"lng\":139.1082,\"category\":\"식당\",\"duration\":\"1시간\",\"notes\":\"ㅁㅁ 지역의 유명한 소바 맛집\",\"cost\":\"1500\",\"address\":\"ㅁㅁ 주소\"},{\"id\":\"3-4\",\"name\":\"ㅁㅁ 로프웨이\",\"time\":\"14:00\",\"lat\":35.2484,\"lng\":139.0203,\"category\":\"장소\",\"duration\":\"1시간\",\"notes\":\"ㅁㅁ 로프웨이를 타고 산 정상에서 경치 감상\",\"cost\":\"1300\",\"address\":\"ㅁㅁ 주소\"},{\"id\":\"3-5\",\"name\":\"ㅁㅁ 호수\",\"time\":\"16:00\",\"lat\":35.2066,\"lng\":139.0260,\"category\":\"장소\",\"duration\":\"1시간\",\"notes\":\"ㅁㅁ 호수에서 유람선을 타고 경치 감상\",\"cost\":\"1000\",\"address\":\"ㅁㅁ 주소\"}]}]}
 저 구조로만 반환하세요.
 """
         )
@@ -303,6 +340,13 @@ JSON 예시
             if is_round_trip:
                 print("왕복 항공편 정보가 flight_info에 모두 포함됨")
                 
+        # 숙박 정보가 있으면 추가
+        if accommodation_info:
+            try:
+                save_item['accmo_info'] = json.dumps(accommodation_info)
+            except Exception:
+                save_item['accmo_info'] = str(accommodation_info)
+
         print("저장할 항목:", json.dumps(save_item, cls=DecimalEncoder))
         
         table.put_item(Item=save_item)
@@ -339,4 +383,4 @@ JSON 예시
                 'message': '오류가 발생했습니다.',
                 'error': str(e)
             })
-        } 
+        }

@@ -4,7 +4,6 @@ import { ko } from "date-fns/locale";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { Button } from "../../components/ui/button";
-import { Input } from "../../components/ui/input";
 import { Loader2, BedDouble, ChevronDown, ChevronUp, X } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { travelApi } from "../../services/api";
