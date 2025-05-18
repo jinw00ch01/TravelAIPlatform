@@ -35,7 +35,7 @@ Wind Road는 Gemini AI 에이전트를 활용하여 사용자 맞춤형 여행 �
     *   `axios`
     *   `dotenv`
     *   `uuid`
-*   Python (AI 모듈 및 일부 백엔드 로직 - 상세 설정 필요 시 아래 참고)
+*   Python
 
 ### AI/ML 서비스
 *   Google Gemini API
