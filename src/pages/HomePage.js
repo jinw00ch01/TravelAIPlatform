@@ -344,7 +344,7 @@ export const HomePage = () => {
             <div className="flex justify-end mb-4">
               <div 
                 className="text-white text-base font-medium cursor-pointer hover:underline flex items-center"
-                onClick={() => navigate("/planner")}
+                onClick={() => navigate("/planner/none")}
               >
                 <span>AI의 도움없이 일정 만들기</span>
                 <svg 

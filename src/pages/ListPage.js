@@ -102,10 +102,10 @@ function ListPage() {
             새로고침
           </button>
           <Link 
-            to="/planner/none" 
-            className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-dark"
+            to="/planner/newest" 
+            className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
           >
-            새 여행 계획 만들기
+            최근 생성된 계획 보기
           </Link>
         </div>
       </div>
@@ -120,7 +120,7 @@ function ListPage() {
         <div className="bg-gray-50 p-8 rounded-lg text-center">
           <p className="text-gray-600 mb-4">아직 저장된 여행 계획이 없습니다.</p>
           <Link 
-            to="/planner/none" 
+            to="/planner/newest"
             className="text-primary hover:text-primary-dark font-medium"
           >
             첫 번째 여행 계획을 만들어보세요!
