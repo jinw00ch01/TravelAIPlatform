@@ -15,7 +15,7 @@ const docClient = DynamoDBDocumentClient.from(client, {
 const headers = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-  "Access-Control-Allow-Methods": "GET,OPTIONS",
+  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
   "Content-Type": "application/json"
 };
 
@@ -27,10 +27,17 @@ export const handler = async (event) => {
   console.log("GetPlans Lambda 시작");
   console.log("event:", JSON.stringify(event));
 
+  // OPTIONS 메서드 처리 개선
   if (event.httpMethod === "OPTIONS") {
+    console.log("OPTIONS 요청 처리 중");
     return {
       statusCode: 200,
-      headers,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({ message: "CORS preflight OK" })
     };
   }
