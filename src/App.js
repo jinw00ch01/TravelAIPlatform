@@ -20,7 +20,6 @@ import SignUp from './components/auth/SignUp';
 import ResetPassword from './components/auth/ResetPassword';
 import AuthCallback from './components/auth/AuthCallback';
 import TravelPlanner from './pages/TravelPlanner';
-import HotelSearchTest from './components/HotelSearchTest';
 import ListPage from './pages/ListPage';
 
 const queryClient = new QueryClient();
@@ -52,7 +51,6 @@ function App() {
                 <Route path="/itinerary/:id" element={<ProtectedRoute><ViewItinerary /></ProtectedRoute>} />
                 <Route path="/cart" element={<ProtectedRoute><Cart /></ProtectedRoute>} />
                 <Route path="/mypage" element={<ProtectedRoute><MyPage /></ProtectedRoute>} />
-                <Route path="/hoteltest" element={<HotelSearchTest />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </main>
