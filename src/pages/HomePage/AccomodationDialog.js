@@ -196,6 +196,9 @@ const AccomodationDialog = ({
         bedInfo: room.bed_configurations,
         roomSize: room.room_size,
         photos: room.photos,
+        description: room.description,
+        facilities: room.facilities,
+        highlights: room.highlights
       };
     });
   };
@@ -404,6 +407,21 @@ const AccomodationDialog = ({
                                         <p>
                                           침대 구성: {room.bedInfo[0].bed_types.map((b) => `${b.name}(${b.count})`).join(', ')}
                                         </p>
+                                      )}
+                                      {room.description && (
+                                        <p className="text-xs text-gray-500 mt-1 italic">
+                                          "{room.description}"
+                                        </p>
+                                      )}
+                                      {room.facilities && room.facilities.length > 0 && (
+                                        <div className="mt-1">
+                                          <p className="text-xs font-medium text-gray-700">주요 편의시설:</p>
+                                          <ul className="list-disc list-inside text-xs text-gray-500 pl-2">
+                                            {room.facilities.slice(0, 7).map(facility => (
+                                              <li key={facility.id}>{facility.name}</li>
+                                            ))}
+                                          </ul>
+                                        </div>
                                       )}
                                       <Button size="sm" className="mt-1" onClick={() => handleRoomSelect(hotel, room)}>
                                         이 객실 선택

@@ -1,6 +1,4 @@
-import React, {
-  useState, useEffect, useRef, useCallback
-} from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../components/auth/AuthContext';
 import {
   Box, Button, Typography, Dialog, DialogTitle, DialogContent, DialogActions,
