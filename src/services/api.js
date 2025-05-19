@@ -70,7 +70,7 @@ export const travelApi = {
   createTravelPlan: async (planDetails) => {
     try {
       const response = await apiClient.post('/api/travel/python-plan', planDetails, {
-        timeout: 60000,
+        timeout: 150000,
       });
       return response.data;
     } catch (error) {

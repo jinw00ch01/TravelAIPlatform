@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../components/auth/AuthContext';
 import {
   Box, Button, Typography, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Paper, IconButton, Tabs, Tab, List, ListItem, ListItemText, Divider
+  TextField, Paper, IconButton, Tabs, Tab, List, ListItem, ListItemText, Divider,
+  Grid, Rating
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
@@ -64,7 +65,8 @@ const TravelPlanner = ({ loadMode }) => {
     isLoadingPlan,
     loadedFlightInfo,
     isRoundTrip,
-    loadError
+    loadError,
+    loadedAccommodationInfo
   } = useTravelPlanLoader(user, planIdFromUrl, loadMode);
 
   const {
@@ -140,6 +142,10 @@ const TravelPlanner = ({ loadMode }) => {
   const [selectedFlightForPlannerDialog, setSelectedFlightForPlannerDialog] = useState(null);
   const [isPlannerFlightDetailOpen, setIsPlannerFlightDetailOpen] = useState(false);
 
+  // 숙박 상세 팝업용 상태 추가
+  const [selectedAccommodationForDialog, setSelectedAccommodationForDialog] = useState(null);
+  const [isAccommodationDetailOpen, setIsAccommodationDetailOpen] = useState(false);
+
   const currentPlan = travelPlans[selectedDay] || { title: '', schedules: [] };
 
   useEffect(() => {
@@ -148,7 +154,6 @@ const TravelPlanner = ({ loadMode }) => {
     }
   }, [selectedDay, currentPlan?.title]);
 
-  // travelPlans, airportInfoCache, 또는 loadedFlightInfo가 변경될 때 항공편 스케줄의 상세 정보 업데이트
   useEffect(() => {
     const updatedPlans = updateFlightScheduleDetails(travelPlans, airportInfoCache, loadedFlightInfo);
     if (updatedPlans) {
@@ -243,70 +248,70 @@ const TravelPlanner = ({ loadMode }) => {
   };
 
   const renderScheduleItem = (schedule, index) => {
-    const isFlightItem = schedule.type === 'Flight_Departure' || schedule.type === 'Flight_Return';
-    const isAccommodationItem = schedule.type === 'accommodation';
+    const dragHandleStyle = { 
+        display:'flex', 
+        alignItems:'center', 
+        marginRight: '8px',
+        cursor:'grab' 
+    };
 
+    // 일반 일정 항목 (Paper와 Grid 사용)
     return (
       <Draggable key={schedule.id || `${selectedDay}-${index}`} draggableId={schedule.id || `${selectedDay}-${index}`} index={index}>
         {(provided) => (
-          <ListItem
+          <Box // Draggable 루트 요소
             ref={provided.innerRef}
             {...provided.draggableProps}
-            onClick={() => isFlightItem && handleOpenPlannerFlightDetail(schedule)}
-            sx={{
-                p: 2,
-                bgcolor: isFlightItem ? '#e3f2fd' : (isAccommodationItem ? '#fff0e6' : 'background.paper'),
-                borderRadius: 1, border: 1, borderColor: 'divider',
-                '&:hover': { bgcolor: 'action.hover', cursor: isFlightItem ? 'pointer' : 'grab' },
+            sx={{ 
+              display: 'flex', 
+              alignItems: 'stretch', 
+              mb: 1 
             }}
-            secondaryAction={
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <IconButton edge="end" aria-label="edit" onClick={(e) => { e.stopPropagation(); handleEditScheduleOpen(schedule); }} sx={{ mr: 1 }}>
-                        <EditIcon />
-                    </IconButton>
-                    <IconButton edge="end" aria-label="delete" onClick={(e) => { e.stopPropagation(); handleDeleteSchedule(schedule.id); }}>
-                        <DeleteIcon />
-                    </IconButton>
-                </Box>
-            }
           >
-            <div {...provided.dragHandleProps} style={{ marginRight: 8, cursor: isFlightItem ? 'pointer' : 'grab' }}>
+            <div {...provided.dragHandleProps} style={dragHandleStyle}>
               <DragIndicatorIcon color="action" />
             </div>
-            <ListItemText
-              primary={
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Typography variant="subtitle1">
-                    {schedule.time}
+            <Paper // 일반 일정 콘텐츠 영역
+              sx={{ 
+                p: 1.5, 
+                flexGrow: 1, 
+                border: 1, borderColor: 'divider', borderRadius: 1,
+                bgcolor: 'background.paper',
+                '&:hover': { boxShadow: 3, borderColor: 'primary.main' },
+                // 일반 일정은 Paper 전체 클릭 이벤트 없음 (필요 시 추가)
+              }}
+            >
+              <Grid container spacing={1} alignItems="center" sx={{ height: '100%' }}>
+                <Grid item xs sm={8} md={9}> 
+                  <Typography variant="subtitle1" sx={{ fontWeight: schedule.category === 'UserAdded' || schedule.type === 'custom' ? 'normal': 'bold' }}>
+                    {schedule.time} {schedule.name}
                   </Typography>
-                  <Typography variant="subtitle1" sx={{ ml: 2, color: isFlightItem ? '#0277bd' : 'inherit', fontWeight: isFlightItem ? 'bold' : 'normal' }}>
-                    {schedule.name}
-                  </Typography>
-                </Box>
-              }
-              secondary={
-                <React.Fragment>
-                  <Typography component="span" variant="body2" color={isFlightItem ? 'info.main' : 'text.primary'}>
-                    {schedule.address}
-                  </Typography>
-                  <br />
-                  <Typography component="span" variant="body2" color="text.secondary">
+                  {schedule.address && (
+                      <Typography variant="body2" color="text.primary" sx={{fontSize: '0.8rem'}}>
+                          {schedule.address}
+                      </Typography>
+                  )}
+                  <Typography variant="body2" color="text.secondary" sx={{fontSize: '0.8rem'}}>
                     {schedule.category}
                     {schedule.duration && ` • ${schedule.duration}`}
-                    {isFlightItem && schedule.flightOfferDetails?.flightOfferData?.price && 
-                      ` • ${formatPrice(schedule.flightOfferDetails.flightOfferData.price.grandTotal || 
-                      schedule.flightOfferDetails.flightOfferData.price.total, 
-                      schedule.flightOfferDetails.flightOfferData.price.currency)}`}
                   </Typography>
-                  {(isFlightItem || isAccommodationItem) && schedule.notes && (
-                    <Typography component="span" variant="body2" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                      {schedule.notes}
-                    </Typography>
+                  {schedule.notes && (
+                      <Typography component="span" variant="body2" color="text.secondary" sx={{ display: 'block', mt: 0.5, whiteSpace: 'pre-line', fontSize: '0.75rem' }}>
+                      📝 {schedule.notes}
+                      </Typography>
                   )}
-                </React.Fragment>
-              }
-            />
-          </ListItem>
+                </Grid>
+                <Grid item xs="auto" sm={4} md={3} sx={{ textAlign: 'right' }}> 
+                  <IconButton edge="end" aria-label="edit" onClick={(e) => { e.stopPropagation(); handleEditScheduleOpen(schedule); }} sx={{ mb: 0.5, p:0.5 }}>
+                      <EditIcon fontSize="small"/>
+                  </IconButton>
+                  <IconButton edge="end" aria-label="delete" onClick={(e) => { e.stopPropagation(); handleDeleteSchedule(schedule.id); }} sx={{p:0.5}}>
+                      <DeleteIcon fontSize="small"/>
+                  </IconButton>
+                </Grid>
+              </Grid>
+            </Paper>
+          </Box>
         )}
       </Draggable>
     );
@@ -333,6 +338,19 @@ const TravelPlanner = ({ loadMode }) => {
   const handleClosePlannerFlightDetail = useCallback(() => {
     setIsPlannerFlightDetailOpen(false);
     setSelectedFlightForPlannerDialog(null);
+  }, []);
+
+  // 숙박 상세 팝업 핸들러 추가
+  const handleOpenAccommodationDetail = useCallback(() => {
+    if (loadedAccommodationInfo) {
+      setSelectedAccommodationForDialog(loadedAccommodationInfo);
+      setIsAccommodationDetailOpen(true);
+    }
+  }, [loadedAccommodationInfo]);
+
+  const handleCloseAccommodationDetail = useCallback(() => {
+    setIsAccommodationDetailOpen(false);
+    setSelectedAccommodationForDialog(null);
   }, []);
 
   // 사이드바 <-> 메인 AccommodationPlan 연동 핸들러
@@ -749,11 +767,120 @@ const TravelPlanner = ({ loadMode }) => {
                 <Box sx={{ flex: 1, display: 'grid', gridTemplateColumns: showMap ? { xs: '1fr', md: '1fr 1fr' } : '1fr', gap: 2, overflow: 'hidden' }}>
                   <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: 1, p: 2, overflow: 'auto' }}>
                     <Typography variant="h6" sx={{ mb: 2 }}>일정 목록</Typography>
+                    
+                    {/* 고정된 숙박 정보 박스 */}
+                    {loadedAccommodationInfo && loadedAccommodationInfo.hotel && (
+                      <Paper 
+                        elevation={1}
+                        sx={{ 
+                          p: 1.5, 
+                          mb: 1, 
+                          bgcolor: '#fff0e6', 
+                          border: 1, borderColor: 'divider', borderRadius: 1,      
+                          cursor: 'pointer',
+                          '&:hover': { boxShadow: 3, borderColor: 'primary.main' }
+                        }}
+                        onClick={() => handleOpenAccommodationDetail(loadedAccommodationInfo)} // 여기서는 loadedAccommodationInfo 직접 사용
+                      >
+                        <Grid container spacing={1} alignItems="center">
+                          {loadedAccommodationInfo.hotel.main_photo_url && (
+                            <Grid item xs={12} sm={3}>
+                              <Box
+                                component="img"
+                                src={loadedAccommodationInfo.hotel.main_photo_url}
+                                alt={loadedAccommodationInfo.hotel.hotel_name_trans || loadedAccommodationInfo.hotel.hotel_name}
+                                sx={{ width: '100%', height: 80, objectFit: 'cover', borderRadius: 1 }}
+                              />
+                            </Grid>
+                          )}
+                          <Grid item xs sm={loadedAccommodationInfo.hotel.main_photo_url ? 9 : 12}>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: '#5D4037', fontSize: '0.9rem' }}>
+                              {loadedAccommodationInfo.hotel.hotel_name_trans || loadedAccommodationInfo.hotel.hotel_name || '숙소 정보'}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" gutterBottom sx={{fontSize: '0.8rem'}}>
+                              {loadedAccommodationInfo.hotel.address || loadedAccommodationInfo.hotel.address_trans || '주소 정보 없음'}
+                            </Typography>
+                            {(loadedAccommodationInfo.checkIn || loadedAccommodationInfo.checkOut) && (
+                                <Typography component="div" variant="body2" color="text.secondary" sx={{mt: 0.5, fontSize: '0.8rem'}}>\
+                                  체크인: {loadedAccommodationInfo.checkIn ? formatDateFns(new Date(loadedAccommodationInfo.checkIn), 'MM/dd') : '-'}\
+                                  {' ~ '}\
+                                  체크아웃: {loadedAccommodationInfo.checkOut ? formatDateFns(new Date(loadedAccommodationInfo.checkOut), 'MM/dd') : '-'}\
+                                </Typography>
+                            )}
+                            {loadedAccommodationInfo.room?.name && (
+                                <Typography component="div" variant="body2" color="text.secondary" sx={{mt: 0.5, fontSize: '0.8rem'}}>\
+                                객실: {loadedAccommodationInfo.room.name}\
+                                </Typography>
+                            )}
+                            {loadedAccommodationInfo.hotel.price && (
+                                <Typography variant="subtitle2" color="primary" sx={{ mt: 0.5, fontWeight: 'bold', fontSize: '0.9rem' }}>\
+                                {loadedAccommodationInfo.hotel.price}\
+                                </Typography>
+                            )}
+                          </Grid>
+                        </Grid>
+                      </Paper>
+                    )}
+
+                    {/* 고정된 항공편 정보 박스 */}
+                    {currentPlan.schedules
+                      .filter(schedule => schedule.type === 'Flight_Departure' || schedule.type === 'Flight_Return')
+                      .map((flightSchedule, index) => (
+                        <Paper
+                          key={`fixed-flight-${flightSchedule.id || index}`}
+                          elevation={1}
+                          sx={{
+                            p: 1.5,
+                            mb: 1,
+                            bgcolor: '#e3f2fd', // 항공편 배경색
+                            border: 1, borderColor: 'divider', borderRadius: 1,
+                            cursor: 'pointer',
+                            '&:hover': { boxShadow: 3, borderColor: 'primary.main' }
+                          }}
+                          onClick={() => flightSchedule.flightOfferDetails && handleOpenPlannerFlightDetail(flightSchedule)} // flightSchedule 객체를 그대로 전달
+                        >
+                          <Grid container spacing={1} alignItems="center">
+                            <Grid item xs={12}>
+                              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: '#0277bd' }}>
+                                {flightSchedule.time} {flightSchedule.name}
+                              </Typography>
+                              <Typography variant="body2" color="info.main" sx={{fontSize: '0.8rem'}}>
+                                {flightSchedule.address} {/* 출발지 -> 도착지 공항 코드 등 */}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary" sx={{fontSize: '0.8rem'}}>
+                                {flightSchedule.category} {/* 항공사 및 편명 */}
+                                {flightSchedule.flightOfferDetails?.flightOfferData?.price && 
+                                  ` • ${formatPrice(flightSchedule.flightOfferDetails.flightOfferData.price.grandTotal || 
+                                  flightSchedule.flightOfferDetails.flightOfferData.price.total, 
+                                  flightSchedule.flightOfferDetails.flightOfferData.price.currency)}`}
+                              </Typography>
+                              {flightSchedule.notes && (
+                                <Typography component="span" variant="body2" color="text.secondary" sx={{ display: 'block', mt: 0.5, whiteSpace: 'pre-line', fontSize: '0.75rem' }}>
+                                  {flightSchedule.notes}
+                                </Typography>
+                              )}
+                            </Grid>
+                          </Grid>
+                        </Paper>
+                      ))
+                    }
+
                     <DragDropContext onDragEnd={handleScheduleDragEnd}>
                       <StrictModeDroppable droppableId="schedules-main">
                         {(providedList) => (
-                          <List ref={providedList.innerRef} {...providedList.droppableProps} sx={{ minHeight: '100px', bgcolor: providedList.isDraggingOver ? 'action.hover' : 'transparent', transition: 'background-color 0.2s ease', '& > *:not(:last-child)': { mb: 1 } }}>
-                            {currentPlan.schedules?.map((schedule, index) => renderScheduleItem(schedule, index))}
+                          <List 
+                            ref={providedList.innerRef} 
+                            {...providedList.droppableProps} 
+                            sx={{ 
+                              minHeight: '100px', // 드롭 영역 확보
+                              bgcolor: providedList.isDraggingOver ? 'action.hover' : 'transparent', 
+                              transition: 'background-color 0.2s ease', 
+                              // '& > *:not(:last-child)': { mb: 1 } // 각 Draggable 항목에서 mb로 처리
+                            }}
+                          >
+                            {currentPlan.schedules
+                              .filter(schedule => schedule.type !== 'Flight_Departure' && schedule.type !== 'Flight_Return' && schedule.type !== 'accommodation') // 항공편과 숙박 제외
+                              .map((schedule, index) => renderScheduleItem(schedule, index))}
                             {providedList.placeholder}
                           </List>
                         )}
@@ -935,6 +1062,91 @@ const TravelPlanner = ({ loadMode }) => {
                    <Button onClick={handleClosePlannerFlightDetail}>닫기</Button>
         </DialogActions>
       </Dialog>
+        )}
+
+        {/* 숙박 상세 정보 팝업 추가 */}
+        {selectedAccommodationForDialog && (
+          <Dialog 
+            open={isAccommodationDetailOpen} 
+            onClose={handleCloseAccommodationDetail} 
+            fullWidth 
+            maxWidth="md"
+            scroll="paper"
+          >
+            <DialogTitle sx={{ m: 0, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              숙소 상세 정보
+              <IconButton aria-label="close" onClick={handleCloseAccommodationDetail} sx={{ position: 'absolute', right: 8, top: 8 }}>
+                <CloseIcon />
+              </IconButton>
+            </DialogTitle>
+            <DialogContent dividers>
+              {/* 호텔 정보 */} 
+              <Typography variant="h6" gutterBottom>
+                {selectedAccommodationForDialog.hotel?.hotel_name_trans || selectedAccommodationForDialog.hotel?.hotel_name || '호텔 이름 정보 없음'}
+              </Typography>
+              <Typography variant="body1" gutterBottom>
+                주소: {selectedAccommodationForDialog.hotel?.address || selectedAccommodationForDialog.hotel?.address_trans || '주소 정보 없음'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                도시: {selectedAccommodationForDialog.hotel?.city_trans || selectedAccommodationForDialog.hotel?.city || '도시 정보 없음'}
+                 ({selectedAccommodationForDialog.hotel?.countrycode || '국가 코드 없음'})
+              </Typography>
+              {selectedAccommodationForDialog.hotel?.checkin_from && (
+                <Typography variant="body2" color="text.secondary">
+                  체크인 시간: {selectedAccommodationForDialog.hotel.checkin_from}
+                  {selectedAccommodationForDialog.hotel.checkin_until && selectedAccommodationForDialog.hotel.checkin_until !== "00:00" ? ` ~ ${selectedAccommodationForDialog.hotel.checkin_until}` : ''}
+                </Typography>
+              )}
+              {selectedAccommodationForDialog.hotel?.checkout_until && (
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  체크아웃 시간: {selectedAccommodationForDialog.hotel.checkout_from && selectedAccommodationForDialog.hotel.checkout_from !== "00:00" ? `${selectedAccommodationForDialog.hotel.checkout_from} ~ ` : ''}
+                  {selectedAccommodationForDialog.hotel.checkout_until}
+                </Typography>
+              )}
+              {selectedAccommodationForDialog.hotel?.hotel_description && (
+                <Box sx={{my: 2}}>
+                  <Typography variant="subtitle2" sx={{fontWeight: 'bold'}}>호텔 설명</Typography>
+                  <Typography variant="body2" paragraph sx={{whiteSpace: 'pre-line'}}>
+                    {selectedAccommodationForDialog.hotel.hotel_description}
+                  </Typography>
+                </Box>
+              )}
+
+              <Divider sx={{ my: 2 }} />
+
+              {/* 객실 정보 */} 
+              <Typography variant="h6" gutterBottom>선택된 객실 정보</Typography>
+              {selectedAccommodationForDialog.room ? (
+                <Box>
+                  <Typography variant="subtitle1">{selectedAccommodationForDialog.room.name || '객실 이름 정보 없음'}</Typography>
+                  {selectedAccommodationForDialog.room.price && selectedAccommodationForDialog.room.currency && (
+                     <Typography variant="body1" sx={{fontWeight: 'bold', color: 'primary.main'}}>
+                       가격: {formatPrice(selectedAccommodationForDialog.room.price, selectedAccommodationForDialog.room.currency)}
+                     </Typography>
+                  )}
+                  {selectedAccommodationForDialog.room.bed_configurations && selectedAccommodationForDialog.room.bed_configurations.length > 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      침대: {selectedAccommodationForDialog.room.bed_configurations.map(bc => `${bc.count} ${bc.name}(s)`).join(', ')}
+                    </Typography>
+                  )}
+                  {selectedAccommodationForDialog.room.room_surface_in_m2 && (
+                     <Typography variant="body2" color="text.secondary">크기: {selectedAccommodationForDialog.room.room_surface_in_m2} m²</Typography>
+                  )}
+                  {selectedAccommodationForDialog.room.description && (
+                    <Typography variant="body2" paragraph sx={{whiteSpace: 'pre-line', mt:1}}>
+                      {selectedAccommodationForDialog.room.description}
+                    </Typography>
+                  )}
+                  {/* 추가적인 객실 편의시설 등 표시 가능 */}
+                </Box>
+              ) : (
+                <Typography>선택된 객실 정보가 없습니다.</Typography>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={handleCloseAccommodationDetail}>닫기</Button>
+            </DialogActions>
+          </Dialog>
         )}
 
         <AIChatWidget onSendMessage={handleAISendMessage} />

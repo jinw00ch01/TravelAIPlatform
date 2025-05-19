@@ -238,13 +238,15 @@ export const HomePage = () => {
 
   const handleSearch = async () => {
     if (!searchText.trim()) {
-      alert('여행 관련 정보를 입력해주세요. (예: 3박 4일 도쿄 여행)');
+      console.warn('Search text is empty');
       return;
     }
 
     setIsProcessing(true); // 로딩 시작
+    let planSuccessfullyCreated = false; // 성공 플래그
+    let generatedPlanId = null;
+
     try {
-      // Lambda 함수에 전달할 정보 구성
       const planDetails = {
         query: searchText,
         startDate: startDate ? format(startDate, 'yyyy-MM-dd', { locale: ko }) : null,
@@ -252,43 +254,32 @@ export const HomePage = () => {
         adults: adultCount,
       };
       
-      // 선택한 항공편 정보가 있으면 추가
       if (selectedFlight) {
-        // 확장된 항공편 데이터를 사용 (위경도 포함)
         planDetails.flightInfo = selectedFlight;
-        
-        console.log('[HomePage] 선택한 항공편 정보를 포함하여 AI 여행 계획 생성 요청:', planDetails);
-      } else {
-        console.log('[HomePage] AI 여행 계획 생성 요청 (항공편 미선택):', planDetails);
       }
-
-      // 선택한 숙박 정보가 있으면 추가
       if (selectedAccommodation) {
         planDetails.accommodationInfo = selectedAccommodation;
       }
 
-      // travelApi.createTravelPlan 호출
       const result = await travelApi.createTravelPlan(planDetails);
 
-      console.log('[PlanTravel] AI 여행 계획 생성 성공:', result);
-
-      // 성공 시 플래너 페이지로 이동 (생성된 데이터 전달)
-      if (result && result.plan) {
-         // AI가 생성한 최신 계획을 로드하기 위해 /planner/newest로 이동
-         // state는 여전히 전달하여 TravelPlanner가 필요시 사용할 수 있도록 함
-         navigate('/planner/newest', { state: { planData: result.plan, flightData: selectedFlight } });
+      if (result && result.planId) {
+        console.log('[HomePage] AI 여행 계획 생성 성공 (ID 수신):', result.planId);
+        planSuccessfullyCreated = true;
+        generatedPlanId = result.planId;
       } else {
-         console.warn('[PlanTravel] 생성 응답에 plan 데이터가 없거나 유효하지 않음:', result);
-         alert("오류가 발생했습니다. 잠시후 '최근 생성된 계획 보기' 버튼을 누르시거나 다시 생성해주세요.");
-         navigate('/list'); // 오류 발생 시 /list 페이지로 이동
+         console.warn('[HomePage] 생성 응답에 planId가 없거나 유효하지 않음:', result);
       }
 
     } catch (error) {
       console.error('[PlanTravel] AI 여행 계획 생성 오류:', error);
-      alert("오류가 발생했습니다. 잠시후 '최근 생성된 계획 보기' 버튼을 누르시거나 다시 생성해주세요.");
-      navigate('/list'); // 예외 발생 시 /list 페이지로 이동
     } finally {
       setIsProcessing(false); // 로딩 종료
+      if (planSuccessfullyCreated && generatedPlanId) {
+        navigate(`/planner/${generatedPlanId}`, { state: { flightData: selectedFlight, isNewPlan: true } });
+      } else {
+        console.log('[HomePage] 여행 계획 생성 요청이 완료되었으나, 성공적으로 ID를 받지 못했거나 오류가 발생했습니다.');
+      }
     }
   };
 

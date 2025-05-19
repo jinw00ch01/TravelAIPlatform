@@ -5,6 +5,7 @@ import time
 import os
 from decimal import Decimal
 import jwt  # pyjwt 라이브러리 import
+import urllib.error # URLError, HTTPError를 잡기 위해 추가
 
 # Decimal을 JSON으로 직렬화할 수 있게 도와주는 함수
 class DecimalEncoder(json.JSONEncoder):
@@ -38,6 +39,9 @@ def lambda_handler(event, context):
         }
 
     print("이벤트:", json.dumps(event))
+
+    # --- 전체 함수 실행 시작 시간 기록 ---
+    lambda_start_time = time.time()
 
     try:
         # 요청 본문 파싱
@@ -201,29 +205,55 @@ def lambda_handler(event, context):
 도착지: {1}
 출발 시간: {2}
 도착 시간: {3}
+도착 공항 이름: {6} (공항 코드는 {1})
 도착 공항 위도/경도: {4}/{5}
 
-*** 중요: 항공편 도착 시간({3})을 첫 일정의 시작 시간으로 고려하세요. 첫 일정은 항공편 도착 후 최소 1시간 이후에 시작되어야 합니다. 모든 시간은 해당 공항의 현지 시간대입니다. ***
-""".format(origin_code, destination_code, departure_time, arrival_time, out_arrival_geo_lat or 'Unknown', out_arrival_geo_lng or 'Unknown')
+*** 중요: 첫날 첫 번째 일정은 반드시 <항공편 정보>의 '도착지' 공항에 '도착 시간'에 도착하는 것으로 생성하고, 해당 공항의 이름, 위도, 경도를 `schedules`에 포함하세요. 이 도착 일정 후 다음 실제 활동(예: 호텔 체크인)은 최소 1시간 이후에 시작되어야 합니다. 모든 시간은 해당 공항의 현지 시간대입니다. ***
+""".format(origin_code, destination_code, departure_time, arrival_time, out_arrival_geo_lat or 'Unknown', out_arrival_geo_lng or 'Unknown', flight_info.get('itineraries', [{}])[0].get('segments', [{}])[-1].get('arrival', {}).get('airportInfo', {}).get('koreanName', destination_code)) # 도착 공항 이름 추가
 
             # 왕복 항공편 정보 추가
             if is_round_trip:
                 try:
+                    # 왕복 항공편의 경우, 도착 공항 이름 (출발지가 됨)
+                    return_origin_airport_name = destination_code # 기본값
+                    
+                    # 안전하게 값을 가져오기 위한 다중 .get() 사용 및 기본값 설정
+                    itineraries = flight_info.get('itineraries', [])
+                    if len(itineraries) > 1:
+                        segments = itineraries[1].get('segments', [])
+                        if segments:
+                            departure_info = segments[0].get('departure', {})
+                            airport_info = departure_info.get('airportInfo', {})
+                            # airport_info가 존재하고, 그 안에 koreanName이 있으면 해당 값을 사용, 없으면 destination_code 사용
+                            return_origin_airport_name = airport_info.get('koreanName', destination_code) if isinstance(airport_info, dict) else destination_code
+
                     prompt_text += """
+
 <복귀 항공편 정보>
 출발지: {0}
 도착지: {1}
 출발 시간: {2}
+출발 공항 이름: {6} (공항 코드는 {0})
 출발 공항 위도/경도: {4}/{5}
 도착 시간: {3}
 
-*** 중요: 마지막 일정은 복귀 항공편 출발 시간({2}) 최소 2시간 전에 종료되어야 합니다. 모든 시간은 해당 공항의 현지 시간대입니다. ***
-""".format(destination_code, origin_code, return_departure_time, return_arrival_time, in_depart_geo_lat or 'Unknown', in_depart_geo_lng or 'Unknown')
+*** 중요: 마지막 날 마지막 일정은 복귀 항공편 출발 시간({2}) 최소 2시간 전에 해당 공항({6})에서 출발 준비를 마치는 것으로 생성하고, `schedules`에 해당 공항 정보를 포함해야 합니다. 모든 시간은 해당 공항의 현지 시간대입니다. ***
+""".format(destination_code, origin_code, return_departure_time, return_arrival_time, 
+           str(in_depart_geo_lat) if in_depart_geo_lat is not None else 'Unknown', 
+           str(in_depart_geo_lng) if in_depart_geo_lng is not None else 'Unknown', 
+           return_origin_airport_name)
 
-                    print("왕복 항공편 정보 처리됨:",
-                          {"출발지": destination_code, "도착지": origin_code,
-                           "출발시간": return_departure_time, "도착시간": return_arrival_time,
-                           "위도": in_depart_geo_lat, "경도": in_depart_geo_lng})
+                    # 로깅 데이터 구성 시 위도/경도 값을 문자열로 변환
+                    log_data = {
+                        "출발지": destination_code, 
+                        "도착지": origin_code,
+                        "출발시간": return_departure_time, 
+                        "도착시간": return_arrival_time,
+                        "위도": str(in_depart_geo_lat) if in_depart_geo_lat is not None else 'Unknown',
+                        "경도": str(in_depart_geo_lng) if in_depart_geo_lng is not None else 'Unknown',
+                        "출발공항이름": return_origin_airport_name
+                    }
+                    print("왕복 항공편 정보 처리됨 (json):", json.dumps(log_data, ensure_ascii=False, cls=DecimalEncoder))
                 except Exception as e:
                     print("왕복 항공편 정보 처리 중 오류:", str(e))
 
@@ -269,11 +299,14 @@ def lambda_handler(event, context):
 그리고, 다음날의 첫 일정에는 전날의 호텔과 가까이 있는 걸로 해줘.
 이어지는 흐름으로 갈 수 있도록.
 그런데 장소와 장소 사이가 너무 가까워도 안됨.
+항공편 정보가 제공된 경우, 첫날 첫 번째 일정은 반드시 제공된 '가는 편' 항공편의 도착 공항에, 명시된 '도착 시간'에 도착하는 것으로 생성해야 하며, 해당 공항의 이름, 위도, 경도를 `schedules`에 포함해야 한다.
+마찬가지로, 복귀 항공편 정보가 제공된 경우, 마지막 날 마지막 일정은 제공된 '오는 편' 항공편의 출발 공항에서, 명시된 '출발 시간' 이전에 출발 준비를 마치는 것으로 생성하고, 해당 공항 이름, 위도, 경도를 `schedules`에 포함해야 한다.
 
 <답변형식>
-하루치 일정은 \"(관광지)-(식당)-(관광지)-(관광지)-(관광지)-(관광지)-(마지막 관광지)\" 이렇게 잡아줘.
+하루치 일정은 \\"(관광지)-(식당)-(관광지)-(관광지)-(관광지)-(관광지)-(마지막 관광지)\\" 이렇게 잡아줘.
 관광지 : 지도 상에 존재하는 명소나, 구경거리 (제외 : 호텔, 지하철역,항공 등등..) 만 넣어야해.
 추가로, 하루 일정의 마지막 장소의 위도(latitude)와 경도(longitude) 정보를 포함해야 해.
+항공편 도착/출발 공항도 '장소'로 취급하여 일정에 포함해야 한다.
 
 
 JSON 예시
@@ -285,7 +318,7 @@ JSON 예시
             adults, 
             children,
             """
-{\"title\":\"ㅁㅁ ㅁ박 ㅁ일 여행\",\"days\":[{\"day\":1,\"date\":\"2025-05-12\",\"title\":\"1일차: ㅁㅁ 방문\",\"schedules\":[{\"id\":\"1-1\",\"name\":\"장소이름\",\"time\":\"14:00\",\"lat\":123.1234,\"lng\":123.1234,\"category\":\"장소\",\"duration\":\"1시간\",\"notes\":\"ㅁㅁ\",\"cost\":\"50000\",\"address\":\"ㅁㅁ 주소\"},{\"id\":\"1-2\",\"name\":\"ㅁㅁ\",\"time\":\"17:00\",\"lat\":35.6936,\"lng\":139.7071,\"category\":\"식당\",\"duration\":\"1시간\",\"notes\":\"현지 이자카야에서 다양한 음식 즐기기\",\"cost\":\"3000\",\"address\":\"ㅁㅁ 주소\"}]},{\"day\":2,\"date\":\"2025-05-13\",\"title\":\"2일차: ㅁㅁ 여행\",\"schedules\":[{\"id\":\"2-1\",\"name\":\"ㅁㅁ 타워\",\"time\":\"10:00\",\"lat\":35.6586,\"lng\":139.7454,\"category\":\"장소\",\"duration\":\"1시간\",\"notes\":\"ㅁㅁ 시내 전경을 감상할 수 있는 명소\",\"cost\":\"1200\",\"address\":\"ㅁㅁ 주소\"},{\"id\":\"2-2\",\"name\":\"ㅁㅁ 멘치\",\"time\":\"13:00\",\"lat\":35.7148,\"lng\":139.7967,\"category\":\"식당\",\"duration\":\"1시간\",\"notes\":\"유명한 ㅁㅁ 멘치카츠 맛보기\",\"cost\":\"800\",\"address\":\"ㅁㅁ 주소\"}]},{\"day\":3,\"date\":\"2025-05-14\",\"title\":\"3일차: ㅁㅁ 온천 여행\",\"schedules\":[{\"id\":\"3-1\",\"name\":\"ㅁㅁ 역\",\"time\":\"09:00\",\"lat\":35.6896,\"lng\":139.7006,\"category\":\"장소\",\"duration\":\"2시간\",\"notes\":\"ㅁㅁ에서 ㅁㅁ 온천 지역으로 이동\",\"cost\":\"2500\",\"address\":\"ㅁㅁ 주소\"},{\"id\":\"3-2\",\"name\":\"ㅁㅁ 유모토\",\"time\":\"11:00\",\"lat\":35.2329,\"lng\":139.1056,\"category\":\"장소\",\"duration\":\"1시간\",\"notes\":\"온천 마을 ㅁㅁ 유모토 도착 후 휴식\",\"cost\":\"0\",\"address\":\"ㅁㅁ 주소\"},{\"id\":\"3-3\",\"name\":\"ㅁㅁ 소바집\",\"time\":\"12:00\",\"lat\":35.2351,\"lng\":139.1082,\"category\":\"식당\",\"duration\":\"1시간\",\"notes\":\"ㅁㅁ 지역의 유명한 소바 맛집\",\"cost\":\"1500\",\"address\":\"ㅁㅁ 주소\"},{\"id\":\"3-4\",\"name\":\"ㅁㅁ 로프웨이\",\"time\":\"14:00\",\"lat\":35.2484,\"lng\":139.0203,\"category\":\"장소\",\"duration\":\"1시간\",\"notes\":\"ㅁㅁ 로프웨이를 타고 산 정상에서 경치 감상\",\"cost\":\"1300\",\"address\":\"ㅁㅁ 주소\"},{\"id\":\"3-5\",\"name\":\"ㅁㅁ 호수\",\"time\":\"16:00\",\"lat\":35.2066,\"lng\":139.0260,\"category\":\"장소\",\"duration\":\"1시간\",\"notes\":\"ㅁㅁ 호수에서 유람선을 타고 경치 감상\",\"cost\":\"1000\",\"address\":\"ㅁㅁ 주소\"}]}]}
+{{\\"title\\":\\"ㅁㅁ ㅁ박 ㅁ일 여행\\",\\"days\\":[{{\\"day\\":1,\\"date\\":\\"2025-05-12\\",\\"title\\":\\"1일차: 공항 도착 및 ㅁㅁ 방문\\",\\"schedules\\":[{{\\"id\\":\\"1-0\\",\\"name\\":\\"도착 공항 이름 (예: 인천 국제공항)\\",\\"time\\":\\"14:00\\",\\"lat\\":37.45584,\\"lng\\":126.4453,\\"category\\":\\"장소\\",\\"duration\\":\\"0.5시간\\",\\"notes\\":\\"공항 도착 및 입국 수속\\",\\"cost\\":\\"0\\",\\"address\\":\\"공항 주소\\"}},{{\\"id\\":\\"1-1\\",\\"name\\":\\"장소이름\\",\\"time\\":\\"15:30\\",\\"lat\\":123.1234,\\"lng\\":123.1234,\\"category\\":\\"장소\\",\\"duration\\":\\"1시간\\",\\"notes\\":\\"ㅁㅁ\\",\\"cost\\":\\"50000\\",\\"address\\":\\"ㅁㅁ 주소\\"}},{{\\"id\\":\\"1-2\\",\\"name\\":\\"ㅁㅁ\\",\\"time\\":\\"17:00\\",\\"lat\\":35.6936,\\"lng\\":139.7071,\\"category\\":\\"식당\\",\\"duration\\":\\"1시간\\",\\"notes\\":\\"현지 이자카야에서 다양한 음식 즐기기\\",\\"cost\\":\\"3000\\",\\"address\\":\\"ㅁㅁ 주소\\"}}]}},{{\\"day\\":2,\\"date\\":\\"2025-05-13\\",\\"title\\":\\"2일차: ㅁㅁ 여행\\",\\"schedules\\":[{{\\"id\\":\\"2-1\\",\\"name\\":\\"ㅁㅁ 타워\\",\\"time\\":\\"10:00\\",\\"lat\\":35.6585805,\\"lng\\":139.7454329,\\"category\\":\\"장소\\",\\"duration\\":\\"1시간\\",\\"notes\\":\\"ㅁㅁ 시내 전경을 감상할 수 있는 명소\\",\\"cost\\":\\"1200\\",\\"address\\":\\"ㅁㅁ 주소\\"}},{{\\"id\\":\\"2-2\\",\\"name\\":\\"ㅁㅁ 멘치\\",\\"time\\":\\"13:00\\",\\"lat\\":35.714765,\\"lng\\":139.79669,\\"category\\":\\"식당\\",\\"duration\\":\\"1시간\\",\\"notes\\":\\"유명한 ㅁㅁ 멘치카츠 맛보기\\",\\"cost\\":\\"800\\",\\"address\\":\\"ㅁㅁ 주소\\"}}]}},{{\\"day\\":3,\\"date\\":\\"2025-05-14\\",\\"title\\":\\"3일차: ㅁㅁ 온천 여행 및 출국\\",\\"schedules\\":[{{\\"id\\":\\"3-1\\",\\"name\\":\\"ㅁㅁ 역\\",\\"time\\":\\"09:00\\",\\"lat\\":35.6896342,\\"lng\\":139.700627,\\"category\\":\\"장소\\",\\"duration\\":\\"2시간\\",\\"notes\\":\\"ㅁㅁ에서 ㅁㅁ 온천 지역으로 이동\\",\\"cost\\":\\"2500\\",\\"address\\":\\"ㅁㅁ 주소\\"}},{{\\"id\\":\\"3-2\\",\\"name\\":\\"ㅁㅁ 유모토\\",\\"time\\":\\"11:00\\",\\"lat\\":35.232916,\\"lng\\":139.105582,\\"category\\":\\"장소\\",\\"duration\\":\\"1시간\\",\\"notes\\":\\"온천 마을 ㅁㅁ 유모토 도착 후 휴식\\",\\"cost\\":\\"0\\",\\"address\\":\\"ㅁㅁ 주소\\"}},{{\\"id\\":\\"3-3\\",\\"name\\":\\"ㅁㅁ 소바집\\",\\"time\\":\\"12:00\\",\\"lat\\":35.235083,\\"lng\\":139.108167,\\"category\\":\\"식당\\",\\"duration\\":\\"1시간\\",\\"notes\\":\\"ㅁㅁ 지역의 유명한 소바 맛집\\",\\"cost\\":\\"1500\\",\\"address\\":\\"ㅁㅁ 주소\\"}},{{\\"id\\":\\"3-4\\",\\"name\\":\\"출발 공항 이름 (예: 나리타 국제공항)\\",\\"time\\":\\"16:00\\",\\"lat\\":35.771987,\\"lng\\":140.392903,\\"category\\":\\"장소\\",\\"duration\\":\\"2시간\\",\\"notes\\":\\"출국 수속\\",\\"cost\\":\\"0\\",\\"address\\":\\"공항 주소\\"}}]}}]\n}}
 저 구조로만 반환하세요.
 """
         )
@@ -293,7 +326,8 @@ JSON 예시
         # Gemini API 호출
         api_key = os.environ.get('GEMINI_API_KEY')
         if not api_key:
-            raise Exception("환경변수 'GEMINI_API_KEY'가 설정되지 않았습니다.")
+            print("환경변수 'GEMINI_API_KEY'가 설정되지 않았습니다.") # 로그 강화
+            raise Exception("환경변수 'GEMINI_API_KEY'가 설정되지 않았습니다.") # 명시적 예외 발생
             
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
 
@@ -310,13 +344,45 @@ JSON 예시
             "Content-Type": "application/json"
         }
 
-        req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers)
-        with urllib.request.urlopen(req) as res:
-            gemini_result = json.loads(res.read().decode(), parse_float=Decimal)
+        gemini_request_start_time = time.time() # Gemini API 호출 시작 시간
+        print(f"[Gemini API] 요청 시작. URL: {url}")
+        print(f"[Gemini API] 요청 페이로드 (일부): {json.dumps(payload, cls=DecimalEncoder)[:500]}...") # 페이로드 일부 로깅
 
-        print('Gemini 응답:', json.dumps(gemini_result, ensure_ascii=False, cls=DecimalEncoder))
+        req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers) # 인코딩 명시
+        gemini_result_text = None
+        try:
+            # urlopen에 timeout 설정 (예: 50초)
+            with urllib.request.urlopen(req, timeout=50) as res: # timeout 초 단위
+                gemini_response_status = res.status
+                gemini_result_text = res.read().decode('utf-8') # 디코딩 명시
+            gemini_request_end_time = time.time() # Gemini API 호출 종료 시간
+            print(f"[Gemini API] 응답 수신 완료. 상태 코드: {gemini_response_status}, 소요 시간: {gemini_request_end_time - gemini_request_start_time:.2f}초")
+            
+            gemini_result = json.loads(gemini_result_text, parse_float=Decimal)
+
+        except urllib.error.HTTPError as e:
+            gemini_request_end_time = time.time()
+            print(f"[Gemini API] HTTPError 발생. 상태 코드: {e.code}, 소요 시간: {gemini_request_end_time - gemini_request_start_time:.2f}초, 이유: {e.reason}")
+            print(f"[Gemini API] HTTPError 내용: {e.read().decode('utf-8', errors='replace')}") # 오류 내용 디코딩 시도
+            raise Exception(f"Gemini API HTTPError: {e.code} - {e.reason}")
+        except urllib.error.URLError as e:
+            gemini_request_end_time = time.time()
+            print(f"[Gemini API] URLError 발생. 소요 시간: {gemini_request_end_time - gemini_request_start_time:.2f}초, 이유: {e.reason}")
+            # e.reason이 문자열이 아닌 경우 처리 (예: socket.timeout 객체)
+            reason_str = str(e.reason) if hasattr(e.reason, '__str__') else repr(e.reason)
+            raise Exception(f"Gemini API URLError: {reason_str}")
+        except Exception as e: # 그 외 예외 (json.loads 등)
+            gemini_request_end_time = time.time()
+            print(f"[Gemini API] 처리 중 기타 오류 발생. 소요 시간: {gemini_request_end_time - gemini_request_start_time:.2f}초, 오류: {str(e)}")
+            if gemini_result_text: # 응답이 있었지만 파싱 실패한 경우 로그
+                 print(f"[Gemini API] 오류 발생 시 응답 텍스트 (일부): {gemini_result_text[:500]}...")
+            raise Exception(f"Gemini API 응답 처리 중 오류: {str(e)}")
+
+
+        print('Gemini 응답 (일부):', json.dumps(gemini_result, ensure_ascii=False, cls=DecimalEncoder)[:500] + "...") # 로그 길이 제한
 
         # DynamoDB에 저장
+        dynamodb_write_start_time = time.time() # DynamoDB 저장 시작 시간
         dynamodb = boto3.resource('dynamodb')
         table = dynamodb.Table('travel-plans')
 
@@ -350,37 +416,66 @@ JSON 예시
         print("저장할 항목:", json.dumps(save_item, cls=DecimalEncoder))
         
         table.put_item(Item=save_item)
+        dynamodb_write_end_time = time.time() # DynamoDB 저장 종료 시간
+        print(f"DynamoDB 저장 완료. 소요 시간: {dynamodb_write_end_time - dynamodb_write_start_time:.2f}초")
+
+        # --- 전체 함수 실행 종료 시간 기록 ---
+        lambda_end_time = time.time()
+        total_lambda_duration = lambda_end_time - lambda_start_time
+        print(f"Lambda 함수 총 실행 시간: {total_lambda_duration:.2f}초")
+
+        # 클라이언트에게 반환할 최종 응답 본문
+        client_response_body = {
+            'message': '여행 계획이 성공적으로 생성되었으며, ID로 조회 가능합니다.',
+            'planId': plan_id
+        }
+
+        # (선택 사항) Gemini 결과 파싱 시도 및 경고 추가
+        final_parsed_plan_for_warning_check = None
+        if gemini_result and 'candidates' in gemini_result and gemini_result['candidates']:
+            try:
+                plan_text_content = gemini_result['candidates'][0]['content']['parts'][0]['text']
+                cleaned_plan_text = plan_text_content.strip()
+                if cleaned_plan_text.startswith("```json"):
+                    cleaned_plan_text = cleaned_plan_text[7:]
+                if cleaned_plan_text.endswith("```"):
+                    cleaned_plan_text = cleaned_plan_text[:-3]
+                final_parsed_plan_for_warning_check = json.loads(cleaned_plan_text.strip(), parse_float=Decimal)
+            except Exception as e:
+                print(f"Error parsing Gemini response content (for warning check only): {str(e)}")
+        
+        if not final_parsed_plan_for_warning_check:
+             client_response_body['warning'] = '계획 내용이 백엔드에서 완전히 파싱되지 않았을 수 있습니다. ID로 조회하여 확인하세요.'
 
         return {
             'statusCode': 200,
             'headers': {
-                'Content-Type': 'application/json',
+                'Content-Type': 'application/json; charset=utf-8',
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
                 'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
             },
-            'body': json.dumps({
-                'message': '여행 계획이 성공적으로 생성되었습니다.',
-                'planId': plan_id,
-                'plan': gemini_result,
-                'flightInfo': flight_info,
-                'isRoundTrip': is_round_trip
-            }, ensure_ascii=False, cls=DecimalEncoder)
+            'body': json.dumps(client_response_body, ensure_ascii=False, cls=DecimalEncoder)
         }
 
     except Exception as e:
-        print('오류 발생:', str(e))
+        # --- 전체 함수 실행 종료 시간 기록 (오류 시) ---
+        lambda_end_time = time.time()
+        total_lambda_duration = lambda_end_time - lambda_start_time
+        error_message = str(e)
+        print(f'Lambda 함수 총 실행 시간 (오류 발생): {total_lambda_duration:.2f}초, 오류: {error_message}')
 
+        # 오류 응답에도 CORS 헤더 포함
         return {
-            'statusCode': 500,
+            'statusCode': 500, # 또는 구체적인 오류 코드
             'headers': {
-                'Content-Type': 'application/json',
+                'Content-Type': 'application/json; charset=utf-8', # charset=utf-8 추가
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Methods': 'OPTIONS,POST,GET',
                 'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'
             },
             'body': json.dumps({
                 'message': '오류가 발생했습니다.',
-                'error': str(e)
-            })
+                'error': error_message 
+            }, ensure_ascii=False) # cls=DecimalEncoder 불필요할 수 있음
         }

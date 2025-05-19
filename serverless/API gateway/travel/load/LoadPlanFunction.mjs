@@ -112,13 +112,28 @@ export const handler = async (event) => {
       }
       const planItem = result.Item;
       const processedData = processItemData(planItem);
+      
+      let accommodationInfo = null;
+      if (planItem.accmo_info) {
+        try {
+          accommodationInfo = typeof planItem.accmo_info === 'string'
+            ? JSON.parse(planItem.accmo_info)
+            : planItem.accmo_info;
+          console.log('숙박 정보 처리 완료 (ID 조회):', accommodationInfo);
+        } catch (error) {
+          console.error('숙박 정보 파싱 오류 (ID 조회):', error);
+          accommodationInfo = planItem.accmo_info; // 파싱 실패 시 원본 유지
+        }
+      }
+
       return {
         statusCode: 200,
         headers: responseHeaders,
         body: JSON.stringify({
           message: '여행 계획을 성공적으로 불러왔습니다.',
           plan: [processedData],
-          originalData: planItem
+          originalData: planItem,
+          accommodationInfo: accommodationInfo // 숙박 정보 추가
         })
       };
     } catch (err) {
@@ -174,6 +189,20 @@ export const handler = async (event) => {
           flightInfo = null;
         }
       }
+
+      let accommodationInfo = null;
+      if (planItem.accmo_info) {
+        try {
+          accommodationInfo = typeof planItem.accmo_info === 'string'
+            ? JSON.parse(planItem.accmo_info)
+            : planItem.accmo_info;
+          console.log('숙박 정보 처리 완료 (newest 조회):', accommodationInfo);
+        } catch (error) {
+          console.error('숙박 정보 파싱 오류 (newest 조회):', error);
+          accommodationInfo = planItem.accmo_info; // 파싱 실패 시 원본 유지
+        }
+      }
+
       return {
         statusCode: 200,
         headers: responseHeaders,
@@ -182,7 +211,8 @@ export const handler = async (event) => {
           plan: [processedData],
           flightInfo: flightInfo,
           isRoundTrip: isRoundTrip,
-          originalData: planItem
+          originalData: planItem,
+          accommodationInfo: accommodationInfo // 숙박 정보 추가
         })
       };
     } catch (err) {
@@ -272,6 +302,7 @@ function processItemData(item) {
       console.error('[LoadPlanFunction] flight_info 파싱 오류:', e);
     }
   }
+  // accmo_info는 최상위에서 이미 처리하므로 여기서 별도 처리 안 함. 필요시 원본 item.accmo_info 참조.
   console.log('[LoadPlanFunction] processItemData - processedItem:', JSON.stringify(processedItem, null, 2)); // 최종 processedItem 로깅 추가
   return processedItem;
 }

@@ -20,6 +20,7 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
   const [loadedFlightInfo, setLoadedFlightInfo] = useState(null);
   const [isRoundTrip, setIsRoundTrip] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [loadedAccommodationInfo, setLoadedAccommodationInfo] = useState(null);
   
   const { createFlightSchedules } = useFlightHandlers();
 
@@ -35,6 +36,7 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
     setLoadedFlightInfo(null);
     setIsRoundTrip(false);
     setLoadError(null);
+    setLoadedAccommodationInfo(null);
     setIsLoadingPlan(false);
   }, []);
 
@@ -78,6 +80,7 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
     let isDataProcessed = false;
     let parsedFlightInfo = null;
     let roundTripFlag = false;
+    let parsedAccommodationInfo = null;
 
     // checkplanfunction API에서 받은 데이터 구조 확인 및 처리 (plan이 배열이 아니라 객체인 경우)
     if (data?.plan?.itinerary_schedules && typeof data.plan.itinerary_schedules === 'string') {
@@ -118,8 +121,13 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
             roundTripFlag = parsedFlightInfo.some(f => f.type === 'Flight_Return');
             console.log('[useTravelPlanLoader] 항공편 정보 파싱 완료', { parsedFlightInfo, roundTripFlag });
           }
+          // 여기서 accommodationInfo도 파싱 시도 (checkplan API가 반환한다면)
+          if (data.plan.accommodation_details) { // 필드명이 accommodation_details라고 가정
+            parsedAccommodationInfo = JSON.parse(data.plan.accommodation_details);
+            console.log('[useTravelPlanLoader] 숙박 정보 파싱 완료 (checkplan API)', parsedAccommodationInfo);
+          }
         } catch (e) {
-          console.error('[useTravelPlanLoader] 항공편 정보 파싱 실패:', e);
+          console.error('[useTravelPlanLoader] 항공편 또는 숙박 정보 파싱 실패:', e);
         }
         
         console.log('[useTravelPlanLoader] checkplanfunction API 데이터 처리 완료');
@@ -167,6 +175,12 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
         } catch (e) {
           console.error('[useTravelPlanLoader] flight_info 파싱 실패:', e);
         }
+      }
+
+      // LoadPlanFunction_NEW 응답에서 accommodationInfo 처리 (최상위 레벨에 추가됨)
+      if (data?.accommodationInfo) {
+        parsedAccommodationInfo = data.accommodationInfo;
+        console.log('[useTravelPlanLoader] LoadPlanFunction_NEW 응답에서 accommodationInfo 설정', parsedAccommodationInfo);
       }
 
       if (data?.plannerData && Object.keys(data.plannerData).length > 0) {
@@ -424,7 +438,8 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
       planId: newPlanId,
       startDate: newStartDate || potentialStartDate,
       loadedFlightInfo: parsedFlightInfo,
-      isRoundTrip: roundTripFlag
+      isRoundTrip: roundTripFlag,
+      loadedAccommodationInfo: parsedAccommodationInfo
     };
   }, []);
 
@@ -475,6 +490,7 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
     setLoadError(null);
     setLoadedFlightInfo(null);
     setIsRoundTrip(false);
+    setLoadedAccommodationInfo(null);
     
     const potentialStartDate = startDate || new Date(); 
 
@@ -509,6 +525,7 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
       setStartDate(result.startDate);
       setLoadedFlightInfo(result.loadedFlightInfo);
       setIsRoundTrip(result.isRoundTrip);
+      setLoadedAccommodationInfo(result.loadedAccommodationInfo);
       
       console.log('[useTravelPlanLoader] 최종 상태 업데이트 완료. newStartDate:', result.startDate);
 
@@ -545,7 +562,8 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
     isLoadingPlan,
     loadedFlightInfo,
     isRoundTrip,
-    loadError
+    loadError,
+    loadedAccommodationInfo
   };
 };
 
