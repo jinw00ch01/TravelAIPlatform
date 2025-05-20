@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Card, CardContent } from "../../components/ui/card";
 import { format, differenceInDays } from "date-fns";
 import { Loader2, MapPin, Plane, Hotel, Star, ExternalLink } from "lucide-react";
@@ -113,6 +113,8 @@ const TravelInfoSection = () => {
   const [allHotels, setAllHotels] = useState([]); // 모든 호텔 데이터 저장
   const [flightInspiration, setFlightInspiration] = useState([]);
   const [isLoadingInspiration, setIsLoadingInspiration] = useState(false);
+
+  const scrollRef = useRef(); // 스크롤 컨테이너 참조 추가
 
   // 컴포넌트 마운트 시 데이터 로드
   useEffect(() => {
@@ -401,6 +403,12 @@ const TravelInfoSection = () => {
     }
   }, [activeTab]);
 
+  // 스크롤 함수 추가
+  const scroll = (dir) => {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollBy({ left: dir * 300, behavior: "smooth" });
+  };
+
   if (isLoadingData) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
@@ -461,23 +469,53 @@ const TravelInfoSection = () => {
 
       {/* 인기 여행지 섹션 */}
       {activeTab === "destinations" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {popularDestinations.map((destination) => (
-            <Card key={destination.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-              <div className="h-48 w-200 flex items-center justify-center bg-gray-100">
-                <img
-                  src={`/city-images/${destination.code}.jpg`}
-                  alt={destination.name}
-                  className="max-w-full max-h-full object-contain"
-                  onError={e => { e.target.onerror = null; e.target.src = '/city-images/default.jpg'; }}
-                />
-              </div>
-              <CardContent className="p-4">
-                <h3 className="text-xl font-bold mb-2">{destination.name}</h3>
-                <p className="text-gray-600">{destination.description}</p>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="relative">
+          {/* 왼쪽 화살표 */}
+          <button
+            className="absolute left-[-20px] top-[40%] -translate-y-1/2 z-10 bg-white border rounded-full w-10 h-10 flex items-center justify-center shadow hover:bg-gray-100"
+            onClick={() => scroll(-1)}
+            aria-label="왼쪽으로 스크롤"
+            type="button"
+          >
+            <span className="text-2xl">←</span>
+          </button>
+          
+          {/* 카드 리스트 */}
+          <div
+            ref={scrollRef}
+            className="flex gap-6 overflow-x-auto pb-4 scrollbar-hide"
+            style={{ scrollBehavior: "smooth" }}
+          >
+            {popularDestinations.map((destination) => (
+              <Card key={destination.id} className="overflow-hidden hover:shadow-lg transition-shadow min-w-[300px] max-w-[300px] flex-shrink-0">
+                <div className="h-48 w-200 flex items-center justify-center bg-gray-100 relative">
+                  {/* 순위 뱃지 추가 - 좌상단에 파란색 박스 */}
+                  <div className="absolute top-0 left-0 bg-blue-500 text-white px-3 py-1 rounded-br-md font-semibold shadow-md z-10">
+                    {destination.description}
+                  </div>
+                  <img
+                    src={`/city-images/${destination.code}.jpg`}
+                    alt={destination.name}
+                    className="max-w-full max-h-full object-contain"
+                    onError={e => { e.target.onerror = null; e.target.src = '/city-images/default.jpg'; }}
+                  />
+                </div>
+                <CardContent className="p-4">
+                  <h3 className="text-xl font-bold mb-2">{destination.name}</h3>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          
+          {/* 오른쪽 화살표 */}
+          <button
+            className="absolute right-[-20px] top-[40%] -translate-y-1/2 z-10 bg-white border rounded-full w-10 h-10 flex items-center justify-center shadow hover:bg-gray-100"
+            onClick={() => scroll(1)}
+            aria-label="오른쪽으로 스크롤"
+            type="button"
+          >
+            <span className="text-2xl">→</span>
+          </button>
         </div>
       )}
 
