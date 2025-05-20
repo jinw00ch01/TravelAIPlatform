@@ -135,6 +135,7 @@ const TravelPlanner = ({ loadMode }) => {
   const [editTitleMode, setEditTitleMode] = useState(false);
   const [tempTitle, setTempTitle] = useState('');
   const [loadedAccommodationInfo, setLoadedAccommodationInfo] = useState(null);
+  const [mapResizeTrigger, setMapResizeTrigger] = useState(0);
 
   const mainAccommodationPlanRef = useRef(null);
   const sidebarAccommodationPlanRef = useRef(null);
@@ -694,6 +695,10 @@ const TravelPlanner = ({ loadMode }) => {
     }
   }, [sidebarTab]);
 
+  useEffect(() => {
+    setMapResizeTrigger(v => v + 1);
+  }, [isSidebarOpen]);
+
   if (!user && !process.env.REACT_APP_SKIP_AUTH) {
     return <Typography>로그인이 필요합니다.</Typography>;
   }
@@ -826,6 +831,7 @@ const TravelPlanner = ({ loadMode }) => {
                   displayInMain={false}
                   dayOrderLength={dayOrder.length}
                   onForceRefreshDay={forceRefreshSelectedDay}
+                  isSidebarOpen={isSidebarOpen}
                 />
               )}
               {sidebarTab === 'flight' && (
@@ -1070,6 +1076,7 @@ const TravelPlanner = ({ loadMode }) => {
                         showAllMarkers={showAllMarkers}
                         hideFlightMarkers={hideFlightMarkers}
                         selectedLocation={selectedLocation}
+                        resizeTrigger={mapResizeTrigger}
                       />
                     </Box>
                   )}
@@ -1088,6 +1095,7 @@ const TravelPlanner = ({ loadMode }) => {
                 travelPlans={travelPlans}
                 dayOrderLength={dayOrder.length}
                 onForceRefreshDay={forceRefreshSelectedDay}
+                isSidebarOpen={isSidebarOpen}
               />
             )}
             {sidebarTab === 'flight' && (

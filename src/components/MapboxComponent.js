@@ -63,7 +63,7 @@ const isJapanLocation = (coord) => {
          coord[1] <= JAPAN_BOUNDS.north;
 };
 
-const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightMarkers = false, selectedLocation = null }) => {
+const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightMarkers = false, selectedLocation = null, resizeTrigger }) => {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const markers = useRef([]);
@@ -995,6 +995,16 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightM
       });
     }
   }, [selectedLocation]);
+
+  useEffect(() => {
+    if (map.current) {
+      map.current.resize();
+      const timeout = setTimeout(() => {
+        if (map.current) map.current.resize();
+      }, 350);
+      return () => clearTimeout(timeout);
+    }
+  }, [resizeTrigger]);
 
   return (
     <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>

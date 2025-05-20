@@ -67,7 +67,8 @@ const AccommodationPlan = forwardRef(({
   travelPlans,
   onAddToSchedule,
   dayOrderLength,
-  onForceRefreshDay
+  onForceRefreshDay,
+  isSidebarOpen
 }, ref) => {
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -89,6 +90,7 @@ const AccommodationPlan = forwardRef(({
   const [roomConfig, setRoomConfig] = useState([{ adults: '', children: '' }]);
   const [roomData, setRoomData] = useState(null);
   const [selectedHotelId, setSelectedHotelId] = useState(null);
+  const [hotelMapResizeTrigger, setHotelMapResizeTrigger] = useState(0);
 
   const handleDateChange = (field, date) => {
     console.log(`${field} 날짜 변경:`, date);
@@ -742,6 +744,22 @@ const AccommodationPlan = forwardRef(({
     }
   }, [travelPlans]);
 
+  // AccommodationPlan이 displayInMain으로 메인에 표시될 때, 윈도우 크기/사이드바 등 변동에 따라 트리거 증가
+  useEffect(() => {
+    if (!displayInMain) return;
+    const handleResize = () => setHotelMapResizeTrigger(v => v + 1);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [displayInMain]);
+
+  // 사이드바 열림/닫힘(isSidebarOpen) 변화 시 즉시 + 350ms 후 두 번 트리거
+  useEffect(() => {
+    if (!displayInMain) return;
+    setHotelMapResizeTrigger(v => v + 1);
+    const timeout = setTimeout(() => setHotelMapResizeTrigger(v => v + 1), 350);
+    return () => clearTimeout(timeout);
+  }, [isSidebarOpen, displayInMain]);
+
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {!displayInMain && (
@@ -1099,6 +1117,7 @@ const AccommodationPlan = forwardRef(({
                     : [126.9779692, 37.5662952]
                   }
                   zoom={searchResults.length > 0 ? 12 : 10}
+                  resizeTrigger={hotelMapResizeTrigger}
                 />
               </Box>
             )}

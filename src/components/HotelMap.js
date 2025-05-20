@@ -5,7 +5,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 // Mapbox 토큰 설정
 mapboxgl.accessToken = 'pk.eyJ1IjoibWlua2ltIiwiYSI6ImNsdWJ0d2J0YzBkY2QyaW1zN2R0dWJ0dW8ifQ.0QZQZQZQZQZQZQZQZQZQZQ';
 
-const HotelMap = ({ hotels, center, zoom = 12, selectedHotelId = null, searchLocation = null }) => {
+const HotelMap = ({ hotels, center, zoom = 12, selectedHotelId = null, searchLocation = null, resizeTrigger }) => {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const markers = useRef([]);
@@ -31,6 +31,12 @@ const HotelMap = ({ hotels, center, zoom = 12, selectedHotelId = null, searchLoc
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (map.current) {
+      map.current.resize();
+    }
+  }, [resizeTrigger]);
 
   useEffect(() => {
     if (!map.current || !hotels) return;
