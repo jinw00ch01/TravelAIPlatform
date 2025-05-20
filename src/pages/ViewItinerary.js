@@ -48,91 +48,126 @@ function ViewItinerary() {
         setPaidPlans(filteredPaidPlans);
         console.log('ViewItinerary - 결제된 계획 목록:', filteredPaidPlans);
         
-        // 3. 모든 결제된 계획의 상세 정보 가져오기
-        const planDetailsPromises = filteredPaidPlans.map(plan => {
-          console.log(`%c[DEBUG] 체크플랜 함수 호출 시작 - plan_id: ${plan.plan_id}`, 'background: #ffc107; color: black; font-weight: bold;');
+        // 3. 일괄 조회 방식으로 모든 결제된 계획의 상세 정보 가져오기
+        try {
+          const planIds = filteredPaidPlans.map(plan => plan.plan_id);
+          console.log(`ViewItinerary - 모든 계획 일괄 조회 시작 (총 ${planIds.length}개):`, planIds);
           
-          // API URL과 파라미터 로깅
-          const apiUrl = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/travel/checkplan';
-          const apiParams = { plan_id: plan.plan_id.toString(), mode: 'detail' };
-          console.log('체크플랜 API URL:', apiUrl);
-          console.log('체크플랜 API 파라미터:', apiParams);
+          // 일괄 조회 API 호출
+          const bulkResponse = await travelApi.invokeCheckplans(planIds);
+          console.log('ViewItinerary - 일괄 조회 응답:', bulkResponse);
           
-          return travelApi.invokeCheckplan(plan.plan_id.toString())
-            .then(response => {
-              console.log(`%c[DEBUG] 체크플랜 응답 (${plan.plan_id}):`, 'background: #4caf50; color: white; font-weight: bold;', response);
-              if (response && response.success && response.plan) {
-                console.log(`[DEBUG] Plan ${plan.plan_id} 상세 정보:`, response.plan);
-                return { [plan.plan_id]: response.plan };
+          if (bulkResponse && bulkResponse.success && Array.isArray(bulkResponse.plans)) {
+            // 키-값 맵으로 변환하여 조회 효율성 향상
+            const plansMap = bulkResponse.plans.reduce((acc, plan) => {
+              if (plan && plan.plan_id) {
+                acc[plan.plan_id] = plan;
               }
-              console.error(`[DEBUG] Plan ${plan.plan_id} 상세 정보 실패:`, response);
-              return null;
-            })
-            .catch(err => {
-              console.error(`%c[DEBUG] Plan ${plan.plan_id} 상세 정보 오류:`, 'background: #f44336; color: white; font-weight: bold;', err);
-              // 추가 디버깅을 위한 네트워크 직접 요청
-              console.log('[DEBUG] 네트워크 요청 직접 시도...');
+              return acc;
+            }, {});
+            
+            console.log('ViewItinerary - 계획 맵 생성:', plansMap);
+            setAllPlanDetails(plansMap);
+            
+            // 4. URL의 ID와 일치하는 항목 상세 정보 설정
+            const currentPlanId = planIdFromUrl || filteredPaidPlans[0]?.plan_id;
+            if (currentPlanId && plansMap[currentPlanId]) {
+              const planDetail = plansMap[currentPlanId];
               
-              // 일반 fetch로 직접 시도
-              fetch('https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/travel/checkplan', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ plan_id: plan.plan_id.toString(), mode: 'detail' })
+              // 계획 데이터 처리 (필요한 경우 JSON 문자열을 파싱)
+              const processedPlan = {
+                id: planDetail.plan_id,
+                name: planDetail.name,
+                itinerary_schedules: typeof planDetail.itinerary_schedules === 'string' 
+                  ? JSON.parse(planDetail.itinerary_schedules) 
+                  : planDetail.itinerary_schedules,
+                flight_details: typeof planDetail.flight_details === 'string'
+                  ? JSON.parse(planDetail.flight_details)
+                  : planDetail.flight_details,
+                accommodation_details: typeof planDetail.accommodation_details === 'string'
+                  ? JSON.parse(planDetail.accommodation_details)
+                  : planDetail.accommodation_details
+              };
+              
+              setTravelPlan(processedPlan);
+              
+              // 첫 번째 일자를 활성화 탭으로 설정
+              if (processedPlan.itinerary_schedules) {
+                const days = Object.keys(processedPlan.itinerary_schedules);
+                if (days.length > 0) {
+                  setActiveTab(`day-${days[0]}`);
+                }
+              }
+            }
+          } else {
+            throw new Error('일괄 계획 조회 실패: 응답이 유효하지 않습니다.');
+          }
+        } catch (error) {
+          console.error('일괄 계획 조회 실패:', error);
+          
+          // 대체 방식: 개별 조회
+          console.log('ViewItinerary - 개별 계획 조회 방식으로 전환');
+          
+          const planDetailsPromises = filteredPaidPlans.map(plan => 
+            travelApi.invokeCheckplan(plan.plan_id.toString())
+              .then(response => {
+                if (response && response.success && response.plan) {
+                  console.log(`Plan ${plan.plan_id} 상세 정보:`, response.plan);
+                  return { [plan.plan_id]: response.plan };
+                }
+                console.error(`Plan ${plan.plan_id} 상세 정보 실패:`, response);
+                return null;
               })
-                .then(res => {
-                  console.log(`[DEBUG] 직접 fetch 상태: ${res.status} ${res.statusText}`);
-                  return res.json();
-                })
-                .then(data => console.log('[DEBUG] 직접 fetch 결과:', data))
-                .catch(fetchErr => console.error('[DEBUG] 직접 fetch 오류:', fetchErr));
-                
-              return null;
-            });
-        });
-        
-        const planDetailsResults = await Promise.all(planDetailsPromises);
-        const planDetailsMap = planDetailsResults
-          .filter(result => result !== null)
-          .reduce((acc, curr) => ({ ...acc, ...curr }), {});
-        
-        setAllPlanDetails(planDetailsMap);
-        console.log('ViewItinerary - 모든 계획 상세 정보:', planDetailsMap);
-        
-        // 4. URL의 ID와 일치하는 항목 상세 정보 설정
-        const currentPlanId = planIdFromUrl || filteredPaidPlans[0]?.plan_id;
-        if (currentPlanId && planDetailsMap[currentPlanId]) {
-          const planDetail = planDetailsMap[currentPlanId];
+              .catch(err => {
+                console.error(`Plan ${plan.plan_id} 상세 정보 오류:`, err);
+                return null;
+              })
+          );
           
-          // 계획 데이터 처리 (필요한 경우 JSON 문자열을 파싱)
-          const processedPlan = {
-            id: planDetail.plan_id,
-            name: planDetail.name,
-            itinerary_schedules: typeof planDetail.itinerary_schedules === 'string' 
-              ? JSON.parse(planDetail.itinerary_schedules) 
-              : planDetail.itinerary_schedules,
-            flight_details: typeof planDetail.flight_details === 'string'
-              ? JSON.parse(planDetail.flight_details)
-              : planDetail.flight_details,
-            accommodation_details: typeof planDetail.accommodation_details === 'string'
-              ? JSON.parse(planDetail.accommodation_details)
-              : planDetail.accommodation_details
-          };
+          const planDetailsResults = await Promise.all(planDetailsPromises);
+          const planDetailsMap = planDetailsResults
+            .filter(result => result !== null)
+            .reduce((acc, curr) => ({ ...acc, ...curr }), {});
           
-          setTravelPlan(processedPlan);
+          setAllPlanDetails(planDetailsMap);
+          console.log('ViewItinerary - 개별 조회 방식 결과:', planDetailsMap);
           
-          // 첫 번째 일자를 활성화 탭으로 설정
-          if (processedPlan.itinerary_schedules) {
-            const days = Object.keys(processedPlan.itinerary_schedules);
-            if (days.length > 0) {
-              setActiveTab(`day-${days[0]}`);
+          // URL의 ID와 일치하는 항목 상세 정보 설정
+          const currentPlanId = planIdFromUrl || filteredPaidPlans[0]?.plan_id;
+          if (currentPlanId && planDetailsMap[currentPlanId]) {
+            const planDetail = planDetailsMap[currentPlanId];
+            
+            // 계획 데이터 처리 (필요한 경우 JSON 문자열을 파싱)
+            const processedPlan = {
+              id: planDetail.plan_id,
+              name: planDetail.name,
+              itinerary_schedules: typeof planDetail.itinerary_schedules === 'string' 
+                ? JSON.parse(planDetail.itinerary_schedules) 
+                : planDetail.itinerary_schedules,
+              flight_details: typeof planDetail.flight_details === 'string'
+                ? JSON.parse(planDetail.flight_details)
+                : planDetail.flight_details,
+              accommodation_details: typeof planDetail.accommodation_details === 'string'
+                ? JSON.parse(planDetail.accommodation_details)
+                : planDetail.accommodation_details
+            };
+            
+            setTravelPlan(processedPlan);
+            
+            // 첫 번째 일자를 활성화 탭으로 설정
+            if (processedPlan.itinerary_schedules) {
+              const days = Object.keys(processedPlan.itinerary_schedules);
+              if (days.length > 0) {
+                setActiveTab(`day-${days[0]}`);
+              }
             }
           }
+        } finally {
+          setLoading(false);
         }
       } catch (error) {
         console.error('여행 계획 불러오기 실패:', error);
         setError('여행 계획을 불러오는데 실패했습니다: ' + error.message);
-      } finally {
-        setLoading(false);
       }
     }
     
@@ -502,7 +537,7 @@ function ViewItinerary() {
                         </li>
                       ))}
                     </ul>
-            </div>
+                  </div>
                 ))}
               </div>
             </div>

@@ -397,6 +397,50 @@ export const travelApi = {
       throw error;
     }
   },
+
+  // invokeCheckplans: 여러 계획을 한 번에 조회하는 함수
+  invokeCheckplans: async (planIds) => {
+    if (!Array.isArray(planIds) || planIds.length === 0) {
+      const errorMsg = 'invokeCheckplans: 유효한 planIds 배열이 필요합니다.';
+      console.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+    
+    try {
+      console.log(`[API] invokeCheckplans 호출 시작 (planIds: ${planIds.join(', ')})`);
+      
+      // 인증 토큰 가져오기
+      const token = await getTokenForAPI();
+      
+      // 모든 plan_id를 숫자 문자열로 변환
+      const normalizedPlanIds = planIds.map(id => id.toString());
+      
+      // fetch를 사용하여 API 호출
+      const response = await fetch(`${API_URL}/api/travel/checkplan`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          plan_ids: normalizedPlanIds,
+          mode: 'detail'
+        })
+      });
+      
+      // 응답 확인
+      if (!response.ok) {
+        throw new Error(`API 요청 실패: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log(`[API] invokeCheckplans 응답 (총 ${data.plans?.length || 0}개 계획):`, data);
+      return data;
+    } catch (error) {
+      console.error(`[API] invokeCheckplans 오류:`, error.message);
+      throw error;
+    }
+  },
 };
 
 export default apiClient;
