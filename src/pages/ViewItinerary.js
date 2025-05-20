@@ -6,15 +6,19 @@ import { travelApi } from '../services/api';
 
 function ViewItinerary() {
   const [travelPlan, setTravelPlan] = useState(null);
+  const [paidPlans, setPaidPlans] = useState([]); // 결제된 여행 계획 목록
+  const [allPlanDetails, setAllPlanDetails] = useState({}); // 모든 계획의 상세 정보
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState('day-1'); // 활성화된 일자 탭
+  const [calendarView, setCalendarView] = useState(false); // 캘린더 뷰 상태
   const { id: planIdFromUrl } = useParams();
   const { currentUser } = useAuth();
   const navigate = useNavigate();
 
-  // 여행 계획 조회
+  // 여행 계획 목록 조회
   useEffect(() => {
-    async function fetchAndDisplayPlan() {
+    async function fetchPlanList() {
       if (!currentUser) {
         navigate('/login');
         return;
@@ -26,65 +30,104 @@ function ViewItinerary() {
       try {
         // 1. checklistfunction 호출하여 여행 계획 목록 가져오기
         const checklistResponse = await travelApi.invokeChecklist();
-        console.log('ViewItinerary - invokeChecklist 응답:', checklistResponse);
+        console.log('ViewItinerary - 여행 계획 목록 응답:', checklistResponse);
 
         if (!checklistResponse || !checklistResponse.success || !Array.isArray(checklistResponse.plans)) {
           throw new Error('사용자의 여행 계획 목록을 불러오는데 실패했습니다.');
         }
 
-        // 2. URL의 ID와 일치하는 항목 찾기
-        const targetPlanOverview = checklistResponse.plans.find(p => 
-          p.plan_id?.toString() === planIdFromUrl
-        );
-
-        if (!targetPlanOverview) {
-          setError(`ID ${planIdFromUrl}에 해당하는 여행 계획을 찾을 수 없습니다.`);
-          setLoading(false);
-          return;
+        // 2. 유료 계획만 필터링
+        const filteredPaidPlans = checklistResponse.plans.filter(plan => plan.paid_plan === 1 || plan.paid_plan === true);
+        
+        if (filteredPaidPlans.length === 0) {
+          setError('결제된 여행 계획이 없습니다.');
+            setLoading(false);
+            return;
+          }
+          
+        setPaidPlans(filteredPaidPlans);
+        console.log('ViewItinerary - 결제된 계획 목록:', filteredPaidPlans);
+        
+        // 3. 모든 결제된 계획의 상세 정보 가져오기
+        const planDetailsPromises = filteredPaidPlans.map(plan => {
+          console.log(`%c[DEBUG] 체크플랜 함수 호출 시작 - plan_id: ${plan.plan_id}`, 'background: #ffc107; color: black; font-weight: bold;');
+          
+          // API URL과 파라미터 로깅
+          const apiUrl = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/travel/checkplan';
+          const apiParams = { plan_id: plan.plan_id.toString(), mode: 'detail' };
+          console.log('체크플랜 API URL:', apiUrl);
+          console.log('체크플랜 API 파라미터:', apiParams);
+          
+          return travelApi.invokeCheckplan(plan.plan_id.toString())
+            .then(response => {
+              console.log(`%c[DEBUG] 체크플랜 응답 (${plan.plan_id}):`, 'background: #4caf50; color: white; font-weight: bold;', response);
+              if (response && response.success && response.plan) {
+                console.log(`[DEBUG] Plan ${plan.plan_id} 상세 정보:`, response.plan);
+                return { [plan.plan_id]: response.plan };
+              }
+              console.error(`[DEBUG] Plan ${plan.plan_id} 상세 정보 실패:`, response);
+              return null;
+            })
+            .catch(err => {
+              console.error(`%c[DEBUG] Plan ${plan.plan_id} 상세 정보 오류:`, 'background: #f44336; color: white; font-weight: bold;', err);
+              // 추가 디버깅을 위한 네트워크 직접 요청
+              console.log('[DEBUG] 네트워크 요청 직접 시도...');
+              
+              // 일반 fetch로 직접 시도
+              fetch('https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/travel/checkplan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plan_id: plan.plan_id.toString(), mode: 'detail' })
+              })
+                .then(res => {
+                  console.log(`[DEBUG] 직접 fetch 상태: ${res.status} ${res.statusText}`);
+                  return res.json();
+                })
+                .then(data => console.log('[DEBUG] 직접 fetch 결과:', data))
+                .catch(fetchErr => console.error('[DEBUG] 직접 fetch 오류:', fetchErr));
+                
+              return null;
+            });
+        });
+        
+        const planDetailsResults = await Promise.all(planDetailsPromises);
+        const planDetailsMap = planDetailsResults
+          .filter(result => result !== null)
+          .reduce((acc, curr) => ({ ...acc, ...curr }), {});
+        
+        setAllPlanDetails(planDetailsMap);
+        console.log('ViewItinerary - 모든 계획 상세 정보:', planDetailsMap);
+        
+        // 4. URL의 ID와 일치하는 항목 상세 정보 설정
+        const currentPlanId = planIdFromUrl || filteredPaidPlans[0]?.plan_id;
+        if (currentPlanId && planDetailsMap[currentPlanId]) {
+          const planDetail = planDetailsMap[currentPlanId];
+          
+          // 계획 데이터 처리 (필요한 경우 JSON 문자열을 파싱)
+          const processedPlan = {
+            id: planDetail.plan_id,
+            name: planDetail.name,
+            itinerary_schedules: typeof planDetail.itinerary_schedules === 'string' 
+              ? JSON.parse(planDetail.itinerary_schedules) 
+              : planDetail.itinerary_schedules,
+            flight_details: typeof planDetail.flight_details === 'string'
+              ? JSON.parse(planDetail.flight_details)
+              : planDetail.flight_details,
+            accommodation_details: typeof planDetail.accommodation_details === 'string'
+              ? JSON.parse(planDetail.accommodation_details)
+              : planDetail.accommodation_details
+          };
+          
+          setTravelPlan(processedPlan);
+          
+          // 첫 번째 일자를 활성화 탭으로 설정
+          if (processedPlan.itinerary_schedules) {
+            const days = Object.keys(processedPlan.itinerary_schedules);
+            if (days.length > 0) {
+              setActiveTab(`day-${days[0]}`);
+            }
+          }
         }
-
-        // 3. paid_plan 확인하여 유료 계획만 불러오기
-        if (!targetPlanOverview.paid_plan) {
-          setError(`ID ${planIdFromUrl}에 해당하는 계획은 유료 계획이 아닙니다.`);
-          setLoading(false);
-          return;
-        }
-
-        // 4. checkplanfunction 호출하여 상세 정보 가져오기
-        const checkplanResponse = await travelApi.invokeCheckplan(targetPlanOverview.plan_id.toString());
-        console.log(`ViewItinerary - invokeCheckplan 응답 (plan_id: ${targetPlanOverview.plan_id}):`, checkplanResponse);
-
-        if (!checkplanResponse || !checkplanResponse.success || !checkplanResponse.plan) {
-          throw new Error('여행 계획의 상세 정보를 불러오는데 실패했습니다.');
-        }
-
-        const planDetail = checkplanResponse.plan;
-
-        // 5. 소유권 확인
-        if (planDetail.user_id !== currentUser.email) {
-          console.warn(`소유권 불일치: Plan user_id (${planDetail.user_id}), Token user_email (${currentUser.email})`);
-          setError('해당 여행 계획에 접근할 권한이 없습니다.');
-          setLoading(false);
-          return;
-        }
-
-        // 6. 계획 데이터 처리 (필요한 경우 JSON 문자열을 파싱)
-        const processedPlan = {
-          id: planDetail.plan_id,
-          name: planDetail.name,
-          itinerary_schedules: typeof planDetail.itinerary_schedules === 'string' 
-            ? JSON.parse(planDetail.itinerary_schedules) 
-            : planDetail.itinerary_schedules,
-          flight_details: typeof planDetail.flight_details === 'string'
-            ? JSON.parse(planDetail.flight_details)
-            : planDetail.flight_details,
-          accommodation_details: typeof planDetail.accommodation_details === 'string'
-            ? JSON.parse(planDetail.accommodation_details)
-            : planDetail.accommodation_details
-        };
-
-        // 7. 상태 업데이트
-        setTravelPlan(processedPlan);
       } catch (error) {
         console.error('여행 계획 불러오기 실패:', error);
         setError('여행 계획을 불러오는데 실패했습니다: ' + error.message);
@@ -92,9 +135,24 @@ function ViewItinerary() {
         setLoading(false);
       }
     }
-
-    fetchAndDisplayPlan();
+    
+    fetchPlanList();
   }, [planIdFromUrl, currentUser, navigate]);
+
+  // 선택한 여행 계획 변경 처리 함수
+  const handlePlanChange = (planId) => {
+    navigate(`/itinerary/${planId}`);
+  };
+  
+  // 일자 탭 변경 처리 함수 
+  const handleTabChange = (tabId) => {
+    setActiveTab(tabId);
+  };
+  
+  // 캘린더 뷰 토글 함수
+  const toggleCalendarView = () => {
+    setCalendarView(!calendarView);
+  };
 
   // 여행 계획 저장
   const handleSaveItinerary = async (updatedItinerary) => {
@@ -115,6 +173,28 @@ function ViewItinerary() {
       console.error('여행 계획 저장 실패:', err);
       alert('여행 계획 저장에 실패했습니다.');
     }
+  };
+
+  // 여행 일정 데이터를 렌더링 가능한 형태로 변환
+  const getProcessedScheduleData = (planData) => {
+    if (!planData || !planData.itinerary_schedules) return null;
+    
+    // 이미 객체 형태면 그대로 사용
+    if (typeof planData.itinerary_schedules === 'object' && !Array.isArray(planData.itinerary_schedules)) {
+      return planData.itinerary_schedules;
+    }
+    
+    // 문자열이면 파싱
+    if (typeof planData.itinerary_schedules === 'string') {
+      try {
+        return JSON.parse(planData.itinerary_schedules);
+      } catch (e) {
+        console.error('일정 데이터 파싱 실패:', e);
+        return null;
+      }
+    }
+    
+    return null;
   };
 
   // 더미 일정 생성 (실제 프로젝트에서는 AI API 응답으로 대체)
@@ -208,6 +288,9 @@ function ViewItinerary() {
     });
   }
 
+  // 현재 선택된 계획의 일정 정보
+  const scheduleData = travelPlan ? getProcessedScheduleData(travelPlan) : null;
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="md:flex md:items-center md:justify-between mb-6">
@@ -229,6 +312,31 @@ function ViewItinerary() {
           </div>
         </div>
         <div className="mt-4 flex md:mt-0 md:ml-4">
+          {/* 여행 계획 선택 드롭다운 */}
+          {paidPlans.length > 1 && (
+            <div className="relative inline-block text-left mr-3">
+              <select 
+                className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 rounded-md focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
+                value={planIdFromUrl || paidPlans[0]?.plan_id}
+                onChange={(e) => handlePlanChange(e.target.value)}
+              >
+                {paidPlans.map(plan => (
+                  <option key={plan.plan_id} value={plan.plan_id}>
+                    {plan.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          
+          {/* 캘린더/목록 뷰 전환 버튼 */}
+          <button 
+            onClick={toggleCalendarView}
+            className="mr-3 inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+          >
+            {calendarView ? '목록 보기' : '캘린더 보기'}
+          </button>
+          
           <Link
             to="/plan"
             className="ml-3 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
@@ -314,41 +422,90 @@ function ViewItinerary() {
                     요청 내용
                   </dt>
                   <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                    {travelPlan.prompt}
+                    {travelPlan.prompt || '정보 없음'}
                   </dd>
                 </div>
               </dl>
             </div>
           </div>
           
-          {/* 상태에 따른 다른 내용 표시 */}
-          {travelPlan.status === 'pending' ? (
-            <div className="bg-white shadow sm:rounded-lg p-6 text-center">
-              <svg className="animate-spin h-10 w-10 text-primary mx-auto" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <h3 className="mt-4 text-lg font-medium text-gray-900">AI가 여행 계획을 생성하고 있습니다</h3>
-              <p className="mt-2 text-sm text-gray-500">잠시만 기다려 주세요. 일반적으로 30초에서 1분 정도 소요됩니다.</p>
+          {/* 일자별 여행 계획 */}
+          {scheduleData ? (
+            <div className="bg-white shadow sm:rounded-lg mb-6">
+              <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
+                <h3 className="text-lg leading-6 font-medium text-gray-900">
+                  일자별 여행 일정
+                </h3>
+              </div>
+              
+              {/* 일자 선택 탭 */}
+              <div className="border-b border-gray-200">
+                <nav className="flex overflow-x-auto" aria-label="Tabs">
+                  {Object.keys(scheduleData).map((day) => (
+                    <button
+                      key={`day-${day}`}
+                      onClick={() => handleTabChange(`day-${day}`)}
+                      className={`
+                        px-3 py-2 text-sm font-medium whitespace-nowrap
+                        ${activeTab === `day-${day}` 
+                          ? 'border-primary text-primary border-b-2' 
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 border-b-2'}
+                      `}
+                    >
+                      {scheduleData[day].title || `${day}일차`}
+                    </button>
+                  ))}
+                </nav>
+              </div>
+              
+              {/* 일자별 일정 내용 */}
+              <div className="px-4 py-5 sm:p-6">
+                {Object.keys(scheduleData).map((day) => (
+                  <div 
+                    key={`schedule-${day}`} 
+                    className={activeTab === `day-${day}` ? 'block' : 'hidden'}
+                  >
+                    <h4 className="text-lg font-medium text-gray-900 mb-4">
+                      {scheduleData[day].title || `${day}일차`}
+                    </h4>
+                    
+                    <ul className="space-y-4">
+                      {scheduleData[day].schedules && scheduleData[day].schedules.map((schedule, index) => (
+                        <li key={schedule.id || `${day}-${index}`} className="bg-gray-50 p-4 rounded-md">
+                          <div className="flex items-start">
+                            <div className="min-w-16 text-sm font-medium text-gray-900">
+                              {schedule.time}
+                            </div>
+                            <div className="ml-4">
+                              <p className="text-sm font-medium text-gray-900">{schedule.name}</p>
+                              <p className="text-sm text-gray-500">{schedule.notes}</p>
+                              <div className="mt-1 flex items-center text-xs text-gray-500">
+                                <span className="bg-gray-100 px-2 py-0.5 rounded">
+                                  {schedule.category || '기타'}
+                                </span>
+                                {schedule.duration && (
+                                  <span className="ml-2 bg-gray-100 px-2 py-0.5 rounded">
+                                    소요 시간: {schedule.duration}
+                                  </span>
+                                )}
+                                {schedule.cost && (
+                                  <span className="ml-2 bg-gray-100 px-2 py-0.5 rounded">
+                                    비용: {Number(schedule.cost).toLocaleString()}원
+                                  </span>
+                                )}
+                              </div>
+                              {schedule.address && (
+                                <p className="mt-1 text-xs text-gray-500">{schedule.address}</p>
+                              )}
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
             </div>
-          ) : travelPlan.status === 'failed' ? (
-            <div className="bg-white shadow sm:rounded-lg p-6 text-center">
-              <svg className="h-10 w-10 text-red-500 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <h3 className="mt-4 text-lg font-medium text-gray-900">여행 계획 생성에 실패했습니다</h3>
-              <p className="mt-2 text-sm text-gray-500">다시 시도하거나 다른 검색어로 시도해 보세요.</p>
-              <div className="mt-6">
-                <Link to="/plan" className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">
-                  다시 시도하기
-                </Link>
+                ))}
               </div>
             </div>
-          ) : travelPlan.itinerary ? (
-            <TravelItinerary 
-              itinerary={travelPlan.itinerary} 
-              onSave={handleSaveItinerary}
-            />
           ) : (
             <div className="bg-white shadow sm:rounded-lg p-6 text-center">
               <p className="text-gray-500">여행 일정이 아직 없습니다.</p>

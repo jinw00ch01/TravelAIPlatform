@@ -30,14 +30,54 @@ const ItineraryManager = () => {
           setError('유료 여행 계획이 없습니다.');
           setItineraries([]);
         } else {
-          setItineraries(paidPlans);
+          // 각 유료 계획에 대해 상세 정보 가져오기
+          console.log('[ItineraryManager] 유료 계획 상세 정보 가져오기 시작');
+          
+          const planDetailsPromises = paidPlans.map(plan => {
+            console.log(`[ItineraryManager] planId ${plan.plan_id}에 대해 checkplanfunction 호출`);
+            return travelApi.invokeCheckplan(plan.plan_id.toString())
+              .then(detailResponse => {
+                console.log(`[ItineraryManager] planId ${plan.plan_id} 상세 정보 응답:`, detailResponse);
+                if (detailResponse && detailResponse.success && detailResponse.plan) {
+                  // 기존 계획 정보에 상세 정보 병합
+                  return {
+                    ...plan,
+                    ...detailResponse.plan,
+                    // itinerary_schedules 데이터 파싱 (필요한 경우)
+                    itinerary_schedules: detailResponse.plan.itinerary_schedules && 
+                      typeof detailResponse.plan.itinerary_schedules === 'string'
+                        ? JSON.parse(detailResponse.plan.itinerary_schedules)
+                        : detailResponse.plan.itinerary_schedules
+                  };
+                }
+                // 상세 정보 가져오기 실패 시 기존 정보만 반환
+                console.warn(`[ItineraryManager] planId ${plan.plan_id} 상세 정보 없음`);
+                return plan;
+              })
+              .catch(err => {
+                console.error(`[ItineraryManager] planId ${plan.plan_id} 상세 정보 오류:`, err);
+                return plan; // 오류 발생 시 기존 정보만 반환
+              });
+          });
+          
+          // 모든 상세 정보 요청이 완료되면 최종 결과 설정
+          Promise.all(planDetailsPromises)
+            .then(detailedPlans => {
+              console.log('[ItineraryManager] 모든 계획 상세 정보 로드 완료:', detailedPlans);
+              setItineraries(detailedPlans);
+            })
+            .catch(err => {
+              console.error('[ItineraryManager] 상세 정보 처리 오류:', err);
+              setItineraries(paidPlans); // 오류 발생 시 기본 정보만 설정
+            })
+            .finally(() => setLoading(false));
         }
       })
       .catch(err => {
         console.error('[ItineraryManager] 여행 계획 불러오기 오류:', err);
         setError('여행 계획을 불러오는데 문제가 발생했습니다: ' + err.message);
-      })
-      .finally(() => setLoading(false));
+        setLoading(false);
+      });
   }, []);
 
   const handleTitleUpdate = (itineraryId, newTitle) => {

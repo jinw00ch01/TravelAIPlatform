@@ -26,7 +26,6 @@ export const handler = async (event) => {
   console.log("event:", JSON.stringify(event));
 
   if (event.httpMethod === "OPTIONS") {
-    console.log("OPTIONS 요청 처리 중");
     return {
       statusCode: 200,
       headers,
@@ -53,8 +52,16 @@ export const handler = async (event) => {
     userEmail = userEmail || "jhh333210@gmail.com";
 
     const body = JSON.parse(event.body || "{}");
-    const planId = body.plan_id || body.planId;
+    const planId = body.plan_id;
   
+    if (!planId) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ success: false, message: "plan_id가 필요합니다." })
+      };
+    }
+
     if (!planId) {
       return {
         statusCode: 400,

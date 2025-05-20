@@ -49,7 +49,7 @@ const Sidebar = ({ onSelectItinerary, selectedItinerary, itineraries, onDeleteIt
             const dateString = formatDate(date);
             const hasItinerary = itineraries.some(it => it.date === dateString);
             return hasItinerary ? (
-              <div className="absolute inset-0 flex items-center justify-center">
+              <div key={dateString} className="absolute inset-0 flex items-center justify-center">
                 <div className="w-8 h-8 bg-yellow-300 rounded-full flex items-center justify-center">
                   <span className="text-gray-800">{date.getDate()}일</span>
                 </div>
