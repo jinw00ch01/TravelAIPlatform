@@ -302,6 +302,17 @@ const TravelPlanner = ({ loadMode }) => {
     setSelectedDay(result.destination.index + 1);
   };
 
+  const [selectedLocation, setSelectedLocation] = useState(null);
+
+  const handleScheduleClick = (schedule) => {
+    if (schedule.lat && schedule.lng) {
+      setSelectedLocation({
+        lat: schedule.lat,
+        lng: schedule.lng
+      });
+    }
+  };
+
   const renderScheduleItem = (schedule, index) => {
     const dragHandleStyle = { 
         display:'flex', 
@@ -336,7 +347,13 @@ const TravelPlanner = ({ loadMode }) => {
                   '&:hover': { boxShadow: 3, borderColor: 'primary.main' },
                   cursor: 'pointer'
                 }}
-                onClick={() => schedule.hotelDetails && handleOpenAccommodationDetail(schedule.hotelDetails)}
+                onClick={() => {
+                  if (schedule.hotelDetails) {
+                    handleOpenAccommodationDetail(schedule.hotelDetails);
+                  } else {
+                    handleScheduleClick(schedule);
+                  }
+                }}
               >
                 <Grid container spacing={1} alignItems="center" sx={{ height: '100%' }}>
                   <Grid item xs sm={8} md={9}> 
@@ -953,10 +970,10 @@ const TravelPlanner = ({ loadMode }) => {
                           )}
                           <Grid item xs sm={accommodationToShow.hotelDetails.main_photo_url ? 9 : 12}>
                             <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: '#5D4037', fontSize: '0.9rem' }}>
-                              {accommodationToShow.hotelDetails.hotel_name_trans || accommodationToShow.hotelDetails.hotel_name || '숙소 정보'}
+                              {accommodationToShow.hotelDetails.hotel?.hotel_name_trans || accommodationToShow.hotelDetails.hotel?.hotel_name || '숙소 정보'}
                             </Typography>
                             <Typography variant="body2" color="text.secondary" gutterBottom sx={{fontSize: '0.8rem'}}>
-                              {accommodationToShow.hotelDetails.address || accommodationToShow.hotelDetails.address_trans || '주소 정보 없음'}
+                              {accommodationToShow.hotelDetails.hotel?.address || accommodationToShow.hotelDetails.hotel?.address_trans || '주소 정보 없음'}
                             </Typography>
                             {(accommodationToShow.hotelDetails.checkIn || accommodationToShow.hotelDetails.checkOut) && (
                                 <Typography component="div" variant="body2" color="text.secondary" sx={{mt: 0.5, fontSize: '0.8rem'}}>
@@ -1051,7 +1068,8 @@ const TravelPlanner = ({ loadMode }) => {
                         travelPlans={travelPlans} 
                         selectedDay={selectedDay} 
                         showAllMarkers={showAllMarkers}
-                        hideFlightMarkers={hideFlightMarkers} 
+                        hideFlightMarkers={hideFlightMarkers}
+                        selectedLocation={selectedLocation}
                       />
                     </Box>
                   )}

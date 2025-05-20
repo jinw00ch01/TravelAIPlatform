@@ -63,7 +63,7 @@ const isJapanLocation = (coord) => {
          coord[1] <= JAPAN_BOUNDS.north;
 };
 
-const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightMarkers = false }) => {
+const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightMarkers = false, selectedLocation = null }) => {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const markers = useRef([]);
@@ -478,8 +478,8 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightM
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
         style: 'mapbox://styles/mapbox/streets-v12',
-        center: center,
-        zoom: 12
+        center: selectedLocation ? [selectedLocation.lng, selectedLocation.lat] : center,
+        zoom: selectedLocation ? 15 : 12
       });
 
       // 지도 로드 완료 후 경로 레이어 추가
@@ -521,7 +521,7 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightM
         map.current = null;
       }
     };
-  }, []);
+  }, [selectedLocation]);
 
   // 경로 초기화 및 업데이트 로직 개선
   useEffect(() => {
@@ -984,6 +984,17 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightM
 
     setIsSelectingLocation(false);
   };
+
+  // 선택된 위치가 변경될 때마다 지도 중심점 업데이트
+  useEffect(() => {
+    if (map.current && selectedLocation) {
+      map.current.flyTo({
+        center: [selectedLocation.lng, selectedLocation.lat],
+        zoom: 15,
+        essential: true
+      });
+    }
+  }, [selectedLocation]);
 
   return (
     <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>

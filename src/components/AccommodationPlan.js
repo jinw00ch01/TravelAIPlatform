@@ -603,9 +603,12 @@ const AccommodationPlan = forwardRef(({
         return;
       }
       onAddToSchedule({
-        ...selectedHotel,
+        hotel: selectedHotel,
+        roomList: roomData.rooms,
         checkIn: formData.checkIn,
-        checkOut: formData.checkOut
+        checkOut: formData.checkOut,
+        lat: selectedHotel.latitude,
+        lng: selectedHotel.longitude
       });
       if (onForceRefreshDay) onForceRefreshDay();
     }
@@ -1286,10 +1289,13 @@ const AccommodationPlan = forwardRef(({
                                   onClick={() => {
                                     if (onAddToSchedule) {
                                       onAddToSchedule({
-                                        ...selectedHotel,
+                                        hotel: selectedHotel,
                                         room,
+                                        roomList: roomData.rooms,
                                         checkIn: formData.checkIn,
-                                        checkOut: formData.checkOut
+                                        checkOut: formData.checkOut,
+                                        lat: selectedHotel.latitude,
+                                        lng: selectedHotel.longitude
                                       });
                                     }
                                     if (onForceRefreshDay) onForceRefreshDay();

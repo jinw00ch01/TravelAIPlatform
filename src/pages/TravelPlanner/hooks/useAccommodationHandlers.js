@@ -113,7 +113,9 @@ const useAccommodationHandlers = () => {
         duration: '1박',
         notes: hotelWithRoomList.price ? `가격: ${hotelWithRoomList.price}` : (hotelWithRoomList.composite_price_breakdown?.gross_amount ? `가격: ${hotelWithRoomList.composite_price_breakdown.gross_amount} ${hotelWithRoomList.composite_price_breakdown.currency}` : ''),
         type: 'accommodation',
-        hotelDetails: hotelWithRoomList
+        hotelDetails: hotelWithRoomList,
+        lat: hotelWithRoomList.lat || hotelWithRoomList.latitude,
+        lng: hotelWithRoomList.lng || hotelWithRoomList.longitude
       };
       setTravelPlans(prevTravelPlans => {
         const updatedPlans = { ...prevTravelPlans };
@@ -138,7 +140,9 @@ const useAccommodationHandlers = () => {
         duration: '',
         notes: hotelWithRoomList.price ? `가격: ${hotelWithRoomList.price}` : (hotelWithRoomList.composite_price_breakdown?.gross_amount ? `가격: ${hotelWithRoomList.composite_price_breakdown.gross_amount} ${hotelWithRoomList.composite_price_breakdown.currency}` : ''),
         type: 'accommodation',
-        hotelDetails: hotelWithRoomList
+        hotelDetails: hotelWithRoomList,
+        lat: hotelWithRoomList.lat || hotelWithRoomList.latitude,
+        lng: hotelWithRoomList.lng || hotelWithRoomList.longitude
       };
       setTravelPlans(prevTravelPlans => {
         const updatedPlans = { ...prevTravelPlans };
