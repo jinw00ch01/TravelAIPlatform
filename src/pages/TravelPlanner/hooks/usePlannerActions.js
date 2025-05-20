@@ -17,9 +17,11 @@ const usePlannerActions = ({
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const getDayTitle = useCallback((dayNumber) => {
-    const date = new Date(startDate);
-    if (isNaN(date.getTime())) return `Day ${dayNumber}`;
+    const base = startDate instanceof Date ? startDate : (startDate ? new Date(startDate) : null);
+    if (!base || isNaN(base.getTime())) return `Day ${dayNumber}`;
+    const date = new Date(base);
     date.setDate(date.getDate() + dayNumber - 1);
+    if (isNaN(date.getTime())) return `Day ${dayNumber}`;
     return formatDateFns(date, 'M/d');
   }, [startDate]);
 

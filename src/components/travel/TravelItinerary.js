@@ -180,11 +180,11 @@ function TravelItinerary({ itinerary, onSave }) {
                         <input
                           type="text"
                           className="form-input"
-                          value={editedItinerary.days[dayIndex].title || format(date, 'M/d')}
+                          value={editedItinerary.days[dayIndex].title || format(new Date(date), 'M/d')}
                           onChange={(e) => handleDayUpdate(dayIndex, 'title', e.target.value)}
                         />
                       ) : (
-                        `${format(date, 'M/d')}: ${day.title || ''}`
+                        `${format(new Date(date), 'M/d')}: ${day.title || ''}`
                       )}
                     </h5>
                     {editMode && (

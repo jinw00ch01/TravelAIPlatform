@@ -27,39 +27,62 @@ const useAccommodationHandlers = () => {
   }, []);
 
   // 숙소를 일정에 추가하는 함수
-  const addAccommodationToSchedule = useCallback((hotelToAdd, dayKey, getDayTitle, setTravelPlans) => {
-    if (!dayKey || !hotelToAdd) {
-      alert('숙소를 추가할 날짜 또는 호텔 정보가 없습니다.');
+  const addAccommodationToSchedule = useCallback((hotelToAdd, getDayTitle, setTravelPlans, startDate, dayOrder) => {
+    if (!hotelToAdd) {
+      alert('호텔 정보가 없습니다.');
       return;
     }
-    
-    const newSchedule = {
-      id: `hotel-${hotelToAdd.hotel_id || hotelToAdd.id}-${Date.now()}`,
-      name: hotelToAdd.hotel_name || hotelToAdd.name,
-      time: '체크인', 
-      address: hotelToAdd.address,
-      category: '숙소',
-      duration: '1박', 
-      notes: hotelToAdd.price ? `가격: ${hotelToAdd.price}` : (hotelToAdd.composite_price_breakdown?.gross_amount_per_night?.value ? `1박 평균: ${Math.round(hotelToAdd.composite_price_breakdown.gross_amount_per_night.value).toLocaleString()} ${hotelToAdd.composite_price_breakdown.gross_amount_per_night.currency}` : ''),
-      lat: hotelToAdd.latitude,
-      lng: hotelToAdd.longitude,
-      type: 'accommodation', 
-      hotelDetails: { ...hotelToAdd }
-    };
 
-    setTravelPlans(prevTravelPlans => {
-      const targetDayKey = dayKey.toString();
-      const currentSchedules = prevTravelPlans[targetDayKey]?.schedules || [];
-      return {
-        ...prevTravelPlans,
-        [targetDayKey]: {
-          ...(prevTravelPlans[targetDayKey] || { title: getDayTitle(parseInt(targetDayKey)), schedules: [] }),
-          schedules: [...currentSchedules, newSchedule]
-        }
+    let checkInDate = hotelToAdd.checkIn instanceof Date ? hotelToAdd.checkIn : new Date(hotelToAdd.checkIn);
+    let checkOutDate = hotelToAdd.checkOut instanceof Date ? hotelToAdd.checkOut : new Date(hotelToAdd.checkOut);
+
+    console.log('[숙소추가] checkInDate:', checkInDate, 'checkOutDate:', checkOutDate);
+    console.log('[숙소추가] startDate:', startDate, 'dayOrder:', dayOrder);
+
+    if (isNaN(checkInDate.getTime()) || isNaN(checkOutDate.getTime())) {
+      alert('체크인 또는 체크아웃 날짜가 올바르지 않습니다.');
+      return;
+    }
+
+    const baseStart = startDate instanceof Date ? startDate : new Date(startDate);
+    const currentDate = new Date(checkInDate);
+    while (currentDate <= checkOutDate) {
+      const diff = Math.round((currentDate - baseStart) / (1000 * 60 * 60 * 24));
+      const dayKey = dayOrder[diff] || (diff + 1).toString();
+
+      let time = '숙박';
+      if (currentDate.getTime() === checkInDate.getTime()) time = '체크인';
+      else if (currentDate.getTime() === checkOutDate.getTime()) time = '체크아웃';
+
+      const newSchedule = {
+        id: `hotel-${hotelToAdd.hotel_id || hotelToAdd.id}-${dayKey}`,
+        name: hotelToAdd.hotel_name || hotelToAdd.name,
+        time,
+        address: hotelToAdd.address,
+        category: '숙소',
+        duration: '1박',
+        notes: hotelToAdd.price ? `가격: ${hotelToAdd.price}` : (hotelToAdd.composite_price_breakdown?.gross_amount_per_night?.value ? `1박 평균: ${Math.round(hotelToAdd.composite_price_breakdown.gross_amount_per_night.value).toLocaleString()} ${hotelToAdd.composite_price_breakdown.gross_amount_per_night.currency}` : ''),
+        lat: hotelToAdd.latitude,
+        lng: hotelToAdd.longitude,
+        type: 'accommodation',
+        hotelDetails: { ...hotelToAdd }
       };
-    });
+
+      setTravelPlans(prevTravelPlans => {
+        const currentSchedules = prevTravelPlans[dayKey]?.schedules || [];
+        return {
+          ...prevTravelPlans,
+          [dayKey]: {
+            ...(prevTravelPlans[dayKey] || { title: getDayTitle(dayKey), schedules: [] }),
+            schedules: [...currentSchedules, newSchedule]
+          }
+        };
+      });
+
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
     
-    alert('숙소가 선택한 날짜의 일정에 추가되었습니다.');
+    alert('숙소가 체크인부터 체크아웃까지의 일정에 추가되었습니다.');
   }, []);
 
   return {

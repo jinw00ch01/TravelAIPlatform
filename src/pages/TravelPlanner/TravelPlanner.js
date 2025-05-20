@@ -169,7 +169,8 @@ const TravelPlanner = ({ loadMode }) => {
     // 체크아웃 = 시작일 + (일정 일수 - 1)
     const calcCheckOut = () => {
       const days = dayOrder?.length || 1;
-      const d = new Date(startDate);
+      const d = startDate instanceof Date ? new Date(startDate) : (startDate ? new Date(startDate) : new Date());
+      if (isNaN(d.getTime())) return new Date();
       d.setDate(d.getDate() + Math.max(days - 1, 0));
       return d;
     };
@@ -177,12 +178,15 @@ const TravelPlanner = ({ loadMode }) => {
     // 숙소 계획 폼 날짜 동기화
     setAccommodationFormData(prev => {
       if (!prev) return prev;
-      const newCheckIn = prev.checkIn instanceof Date ? prev.checkIn : new Date(prev.checkIn || startDate);
-      const newCheckOut = prev.checkOut instanceof Date ? prev.checkOut : new Date(prev.checkOut || calcCheckOut());
-
-      const needUpdate = newCheckIn.getTime() !== startDate.getTime() || newCheckOut.getTime() !== calcCheckOut().getTime();
+      const newCheckIn = prev.checkIn instanceof Date ? prev.checkIn : (prev.checkIn ? new Date(prev.checkIn) : startDate);
+      const newCheckOut = prev.checkOut instanceof Date ? prev.checkOut : (prev.checkOut ? new Date(prev.checkOut) : calcCheckOut());
+      if (isNaN(newCheckIn.getTime())) return prev;
+      if (isNaN(newCheckOut.getTime())) return prev;
+      const baseStart = startDate instanceof Date ? startDate : (startDate ? new Date(startDate) : new Date());
+      if (isNaN(baseStart.getTime())) return prev;
+      const needUpdate = newCheckIn.getTime() !== baseStart.getTime() || newCheckOut.getTime() !== calcCheckOut().getTime();
       if (!needUpdate) return prev;
-      return { ...prev, checkIn: startDate, checkOut: calcCheckOut() };
+      return { ...prev, checkIn: baseStart, checkOut: calcCheckOut() };
     });
 
     // 비행 검색 파라미터 날짜 동기화
@@ -190,12 +194,16 @@ const TravelPlanner = ({ loadMode }) => {
       if (!prev) return prev;
       const newDeparture = prev.departureDate instanceof Date ? prev.departureDate : (prev.departureDate ? new Date(prev.departureDate) : null);
       const newReturn = prev.returnDate instanceof Date ? prev.returnDate : (prev.returnDate ? new Date(prev.returnDate) : null);
+      if (newDeparture && isNaN(newDeparture.getTime())) return prev;
+      if (newReturn && isNaN(newReturn.getTime())) return prev;
+      const baseStart = startDate instanceof Date ? startDate : (startDate ? new Date(startDate) : new Date());
+      if (isNaN(baseStart.getTime())) return prev;
       const targetReturn = dayOrder.length > 1 ? calcCheckOut() : null;
-      const needUpdate = !newDeparture || newDeparture.getTime() !== startDate.getTime() || (
+      const needUpdate = !newDeparture || newDeparture.getTime() !== baseStart.getTime() || (
         (targetReturn && !newReturn) || (targetReturn && newReturn && newReturn.getTime() !== targetReturn.getTime()) || (!targetReturn && newReturn)
       );
       if (!needUpdate) return prev;
-      return { ...prev, departureDate: startDate, returnDate: targetReturn };
+      return { ...prev, departureDate: baseStart, returnDate: targetReturn };
     });
   }, [startDate, dayOrder, setAccommodationFormData, setFlightSearchParams]);
 
@@ -383,9 +391,9 @@ const TravelPlanner = ({ loadMode }) => {
   }, []);
 
   // 실제 숙소를 일정에 추가하는 함수 (useAccommodationHandlers 훅 사용)
-  const onAddAccommodationToSchedule = useCallback((hotelToAdd, dayKey) => {
-    addAccommodationToSchedule(hotelToAdd, dayKey, getDayTitle, setTravelPlans);
-  }, [addAccommodationToSchedule, getDayTitle, setTravelPlans]);
+  const onAddAccommodationToSchedule = useCallback((hotelToAdd) => {
+    addAccommodationToSchedule(hotelToAdd, getDayTitle, setTravelPlans, startDate, dayOrder);
+  }, [addAccommodationToSchedule, getDayTitle, setTravelPlans, startDate, dayOrder]);
 
   // AIChatWidget에서 메시지 전송 시 호출될 핸들러
   const handleAISendMessage = useCallback(async (message, callback) => {
@@ -879,7 +887,7 @@ const TravelPlanner = ({ loadMode }) => {
                             }}
                           >
                             {currentPlan.schedules
-                              .filter(schedule => schedule.type !== 'Flight_Departure' && schedule.type !== 'Flight_Return' && schedule.type !== 'accommodation') // 항공편과 숙박 제외
+                              .filter(schedule => schedule.type !== 'Flight_Departure' && schedule.type !== 'Flight_Return') // 숙소(accommodation)는 제외하지 않음
                               .map((schedule, index) => renderScheduleItem(schedule, index))}
                             {providedList.placeholder}
                           </List>

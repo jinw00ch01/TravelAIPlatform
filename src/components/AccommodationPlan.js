@@ -114,7 +114,7 @@ const AccommodationPlan = forwardRef(({
       if (searchResults.length > 0 && value !== '') {
         const updatedResults = searchResults.map(hotel => ({
           ...hotel,
-          url: `https://www.booking.com/hotel.ko.html?hotel_id=${hotel.hotel_id}&checkin=${format(formData.checkIn, 'yyyy-MM-dd')}&checkout=${format(formData.checkOut, 'yyyy-MM-dd')}&group_adults=${value}&no_rooms=1&lang=ko`
+          url: `https://www.booking.com/hotel.ko.html?hotel_id=${hotel.hotel_id}&checkin=${format(new Date(formData.checkIn), 'yyyy-MM-dd')}&checkout=${format(new Date(formData.checkOut), 'yyyy-MM-dd')}&group_adults=${value}&no_rooms=1&lang=ko`
         }));
         setSearchResults(updatedResults);
         setSortedResults(sortResults(updatedResults, sortType));
@@ -182,8 +182,8 @@ const AccommodationPlan = forwardRef(({
       }));
 
       const apiParams = {
-        checkin_date: format(formData.checkIn, 'yyyy-MM-dd'),
-        checkout_date: format(formData.checkOut, 'yyyy-MM-dd'),
+        checkin_date: format(new Date(formData.checkIn), 'yyyy-MM-dd'),
+        checkout_date: format(new Date(formData.checkOut), 'yyyy-MM-dd'),
         room_number: rooms.length.toString(),
         adults_number: rooms.reduce((sum, room) => sum + room.adults, 0).toString(),
         children_number: rooms.reduce((sum, room) => sum + room.children, 0).toString(),
@@ -354,8 +354,8 @@ const AccommodationPlan = forwardRef(({
       const roomListParams = {
         type: 'room_list',
         hotel_id: hotel.hotel_id,
-        checkin_date: format(formData.checkIn, 'yyyy-MM-dd'),
-        checkout_date: format(formData.checkOut, 'yyyy-MM-dd'),
+        checkin_date: format(new Date(formData.checkIn), 'yyyy-MM-dd'),
+        checkout_date: format(new Date(formData.checkOut), 'yyyy-MM-dd'),
         room_number: rooms.length.toString(),
         adults_number: rooms.reduce((sum, room) => sum + room.adults, 0).toString(),
         children_number: rooms.reduce((sum, room) => sum + room.children, 0).toString(),
@@ -568,8 +568,16 @@ const AccommodationPlan = forwardRef(({
   };
 
   const handleHotelSelect = (hotel) => {
-    setSelectedPlace(hotel);
-    onHotelSelect(hotel);
+    setSelectedPlace({
+      ...hotel,
+      checkIn: formData.checkIn,
+      checkOut: formData.checkOut
+    });
+    onHotelSelect({
+      ...hotel,
+      checkIn: formData.checkIn,
+      checkOut: formData.checkOut
+    });
     setIsDialogOpen(false);
   };
 
@@ -585,42 +593,20 @@ const AccommodationPlan = forwardRef(({
 
     if (!travelPlans || Object.keys(travelPlans).length === 0 || Object.keys(travelPlans).length !== dayOrderLength) {
         console.warn('[AccommodationPlan] travelPlans 상태와 dayOrderLength가 일치하지 않거나 travelPlans가 비어있습니다.', travelPlans, dayOrderLength);
-        // 이 경우에도 사용자에게 알림을 주거나, 로직을 중단할 수 있습니다.
-        // alert('일정 데이터에 문제가 있어 숙소를 추가할 수 없습니다. 페이지를 새로고침하거나 다시 시도해주세요.');
-        // return;
-        // 일단은 dayOrderLength 기준으로 daySelectList를 생성하도록 진행
     }
 
-    const currentTravelPlans = travelPlans || {};
-    const availableDayKeys = Object.keys(currentTravelPlans).filter(key => currentTravelPlans[key]);
-
-    if (availableDayKeys.length === 0 && dayOrderLength > 0) {
-        alert('표시할 날짜 정보가 없습니다. 일정 데이터를 확인해주세요.');
+    // 확인 팝업
+    if (window.confirm('이 숙소를 체크인~체크아웃 날짜 전체 일정에 추가하시겠습니까?')) {
+      if (!onAddToSchedule) {
+        alert('일정 추가 기능을 사용할 수 없습니다.');
         return;
+      }
+      onAddToSchedule({
+        ...selectedHotel,
+        checkIn: formData.checkIn,
+        checkOut: formData.checkOut
+      });
     }
-    
-    setDaySelectList(availableDayKeys.map(dayKey => ({
-      dayKey: dayKey, // TravelPlanner의 dayOrder에서 오는 키 (문자열 '1', '2', ...)
-      title: currentTravelPlans[dayKey]?.title || `${dayKey}일차`
-    })));
-
-    setHotelToAdd(selectedHotel);
-    setAddToPlanDialogOpen(true);
-  };
-
-  const handleSelectDay = (dayKey) => {
-    if (!hotelToAdd) {
-      alert('추가할 호텔 정보가 없습니다.');
-      return;
-    }
-    if (!onAddToSchedule) {
-      alert('일정 추가 기능을 사용할 수 없습니다.');
-      return;
-    }
-    
-    onAddToSchedule(hotelToAdd, dayKey);
-    
-    setAddToPlanDialogOpen(false);
   };
 
   const handleRoomConfigChange = (index, field, value) => {
@@ -1384,7 +1370,7 @@ const AccommodationPlan = forwardRef(({
                   key={dayKey}
                   fullWidth
                   sx={{ my: 1 }}
-                  onClick={() => handleSelectDay(dayKey)}
+                  onClick={() => handleAddToPlanClick()}
                 >
                   {dateStr}
                 </Button>
