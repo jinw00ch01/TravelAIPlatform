@@ -3,6 +3,59 @@ import Sidebar from '../components/itinerary/Sidebar';
 import ItineraryDetail from '../components/itinerary/ItineraryDetail';
 import { travelApi } from '../services/api';
 
+// 샘플 데이터 - 실제 사용 시 지우거나 주석 처리하세요
+const SAMPLE_ITINERARY_DATA = {
+  "1": {
+    "title": "5/24 1일차: 도쿄 시부야 & 신주쿠 탐험",
+    "schedules": [
+      {
+        "id": "flight-departure-1",
+        "name": "ICN → NRT 항공편",
+        "time": "오후 12:55",
+        "address": "NRT",
+        "category": "항공편",
+        "type": "Flight_Departure",
+        "duration": "2시간 35분",
+        "notes": "가격: ₩333,200",
+        "lat": null,
+        "lng": null,
+        "flightOfferDetails": {/* 항공편 상세정보 생략 */}
+      },
+      {
+        "id": "1-1",
+        "name": "시부야 스크램블 교차로",
+        "time": "13:55",
+        "lat": 35.6594,
+        "lng": 139.7009,
+        "category": "장소",
+        "duration": "1시간",
+        "notes": "세계에서 가장 붐비는 교차로 체험",
+        "cost": "0",
+        "address": "일본 〒150-0043 Tokyo, Shibuya City, Dogenzaka, 2 Chome−24"
+      },
+      // 나머지 일정은 원래 데이터와 동일하게 포함
+    ]
+  },
+  "2": {
+    "title": "5/25 2일차: 아사쿠사 & 우에노 문화 체험",
+    "schedules": [
+      // 2일차 일정 데이터
+    ]
+  },
+  "3": {
+    "title": "5/26 3일차: 하라주쿠 & 오다이바 트렌드 탐방",
+    "schedules": [
+      // 3일차 일정 데이터
+    ]
+  },
+  "4": {
+    "title": "5/27 4일차: 나리타로 이동",
+    "schedules": [
+      // 4일차 일정 데이터
+    ]
+  }
+};
+
 const ItineraryManager = () => {
   const [selectedItinerary, setSelectedItinerary] = useState(null);
   const [itineraries, setItineraries] = useState([]);
@@ -33,6 +86,18 @@ const ItineraryManager = () => {
           setError('유료 여행 계획이 없습니다.');
           setItineraries([]);
           setLoading(false);
+          
+          // 실제 데이터가 없을 경우 샘플 데이터 사용 (개발용)
+          // 주의: 실제 배포 시 아래 코드는 주석 처리 필요
+          const sampleItinerary = {
+            id: 'sample-1',
+            title: '일본 도쿄 여행',
+            ...SAMPLE_ITINERARY_DATA
+          };
+          setItineraries([sampleItinerary]);
+          setSelectedItinerary(sampleItinerary);
+          setLoading(false);
+          setError(null);
         } else {
           // 2. 필터링된 계획의 상세 정보 로드
           loadDetailedPlans(paidPlans);
@@ -42,6 +107,18 @@ const ItineraryManager = () => {
         console.error('[ItineraryManager] 여행 계획 불러오기 오류:', err);
         setError('여행 계획을 불러오는데 문제가 발생했습니다: ' + err.message);
         setLoading(false);
+        
+        // 오류 발생 시 샘플 데이터 사용 (개발용)
+        // 주의: 실제 배포 시 아래 코드는 주석 처리 필요
+        const sampleItinerary = {
+          id: 'sample-1',
+          title: '일본 도쿄 여행',
+          ...SAMPLE_ITINERARY_DATA
+        };
+        setItineraries([sampleItinerary]);
+        setSelectedItinerary(sampleItinerary);
+        setLoading(false);
+        setError(null);
       });
   }, []);
   
