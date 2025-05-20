@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../../components/auth/AuthContext';
 import {
   Box, Button, Typography, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -65,8 +65,7 @@ const TravelPlanner = ({ loadMode }) => {
     isLoadingPlan,
     loadedFlightInfo,
     isRoundTrip,
-    loadError,
-    loadedAccommodationInfo
+    loadError
   } = useTravelPlanLoader(user, planIdFromUrl, loadMode);
 
   const {
@@ -135,6 +134,7 @@ const TravelPlanner = ({ loadMode }) => {
   const [tempStartDate, setTempStartDate] = useState(null);
   const [editTitleMode, setEditTitleMode] = useState(false);
   const [tempTitle, setTempTitle] = useState('');
+  const [loadedAccommodationInfo, setLoadedAccommodationInfo] = useState(null);
 
   const mainAccommodationPlanRef = useRef(null);
   const sidebarAccommodationPlanRef = useRef(null);
@@ -147,6 +147,17 @@ const TravelPlanner = ({ loadMode }) => {
   const [isAccommodationDetailOpen, setIsAccommodationDetailOpen] = useState(false);
 
   const currentPlan = travelPlans[selectedDay] || { title: '', schedules: [] };
+
+  const accommodationToShow = useMemo(() => {
+    if (Array.isArray(currentPlan.schedules)) {
+      const checkIn = currentPlan.schedules.find(
+        s => s.type === 'accommodation' && s.time === '체크인'
+      );
+      if (checkIn) return checkIn;
+      return currentPlan.schedules.find(s => s.type === 'accommodation');
+    }
+    return null;
+  }, [currentPlan.schedules, selectedDay]);
 
   useEffect(() => {
     if (currentPlan && currentPlan.title) {
@@ -161,6 +172,21 @@ const TravelPlanner = ({ loadMode }) => {
       setTravelPlans(updatedPlans);
     }
   }, [travelPlans, airportInfoCache, loadedFlightInfo, updateFlightScheduleDetails, setTravelPlans]);
+
+  // travelPlans가 변경될 때마다 loadedAccommodationInfo 업데이트
+  useEffect(() => {
+    if (currentPlan?.schedules) {
+      const accommodation = currentPlan.schedules.find(
+        s => s.type === 'accommodation' && s.time === '체크인'
+      ) || currentPlan.schedules.find(s => s.type === 'accommodation');
+      
+      if (accommodation?.hotelDetails) {
+        setLoadedAccommodationInfo(accommodation.hotelDetails);
+      } else {
+        setLoadedAccommodationInfo(null);
+      }
+    }
+  }, [currentPlan?.schedules, selectedDay, travelPlans]);
 
   /* ---------- 날짜 동기화 ---------- */
   useEffect(() => {
@@ -206,6 +232,27 @@ const TravelPlanner = ({ loadMode }) => {
       return { ...prev, departureDate: baseStart, returnDate: targetReturn };
     });
   }, [startDate, dayOrder, setAccommodationFormData, setFlightSearchParams]);
+
+  // 여행 계획이 최소 1박 2일(2일치 dayOrder와 travelPlans)로 생성되도록 보장
+  useEffect(() => {
+    if (startDate && dayOrder.length < 2) {
+      // 최소 2일이 되도록 dayOrder와 travelPlans를 확장
+      const newDayOrder = dayOrder.length === 0 ? ['1', '2'] : (dayOrder.length === 1 ? [dayOrder[0], (parseInt(dayOrder[0]) + 1).toString()] : dayOrder);
+      const newTravelPlans = { ...travelPlans };
+      newDayOrder.forEach((dayKey, idx) => {
+        if (!newTravelPlans[dayKey]) {
+          const date = new Date(startDate);
+          date.setDate(date.getDate() + idx);
+          newTravelPlans[dayKey] = {
+            title: `${date.getMonth() + 1}/${date.getDate()}`,
+            schedules: []
+          };
+        }
+      });
+      setDayOrder(newDayOrder);
+      setTravelPlans(newTravelPlans);
+    }
+  }, [startDate, dayOrder, travelPlans, setDayOrder, setTravelPlans]);
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
@@ -262,6 +309,83 @@ const TravelPlanner = ({ loadMode }) => {
         marginRight: '8px',
         cursor:'grab' 
     };
+
+    // 숙박 일정인 경우 다른 스타일 적용
+    if (schedule.type === 'accommodation') {
+      return (
+        <Draggable key={schedule.id || `${selectedDay}-${index}`} draggableId={schedule.id || `${selectedDay}-${index}`} index={index}>
+          {(provided) => (
+            <Box
+              ref={provided.innerRef}
+              {...provided.draggableProps}
+              sx={{ 
+                display: 'flex', 
+                alignItems: 'stretch', 
+                mb: 1 
+              }}
+            >
+              <div {...provided.dragHandleProps} style={dragHandleStyle}>
+                <DragIndicatorIcon color="action" />
+              </div>
+              <Paper
+                sx={{ 
+                  p: 1.5, 
+                  flexGrow: 1, 
+                  border: 1, borderColor: 'divider', borderRadius: 1,
+                  bgcolor: '#fff0e6',
+                  '&:hover': { boxShadow: 3, borderColor: 'primary.main' },
+                  cursor: 'pointer'
+                }}
+                onClick={() => schedule.hotelDetails && handleOpenAccommodationDetail(schedule.hotelDetails)}
+              >
+                <Grid container spacing={1} alignItems="center" sx={{ height: '100%' }}>
+                  <Grid item xs sm={8} md={9}> 
+                    <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: '#5D4037' }}>
+                      {schedule.time} {schedule.name}
+                    </Typography>
+                    {schedule.address && (
+                      <Typography variant="body2" color="text.primary" sx={{fontSize: '0.8rem'}}>
+                        {schedule.address}
+                      </Typography>
+                    )}
+                    <Typography variant="body2" color="text.secondary" sx={{fontSize: '0.8rem'}}>
+                      {schedule.category}
+                      {schedule.duration && ` • ${schedule.duration}`}
+                    </Typography>
+                    {schedule.notes && (
+                      <Typography component="span" variant="body2" color="text.secondary" sx={{ display: 'block', mt: 0.5, whiteSpace: 'pre-line', fontSize: '0.75rem' }}>
+                        📝 {schedule.notes}
+                      </Typography>
+                    )}
+                    {/* roomList 표시 */}
+                    {schedule.hotelDetails?.roomList && schedule.hotelDetails.roomList.length > 0 && (
+                      <Box sx={{ mt: 1 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 'bold', fontSize: '0.8rem' }}>객실 목록</Typography>
+                        <ul style={{ margin: 0, paddingLeft: 16 }}>
+                          {schedule.hotelDetails.roomList.map((room, idx) => (
+                            <li key={room.id || idx} style={{ fontSize: '0.8rem' }}>
+                              {room.name} {room.price ? `- ${room.price}${room.currency ? ` ${room.currency}` : ''}` : ''}
+                            </li>
+                          ))}
+                        </ul>
+                      </Box>
+                    )}
+                  </Grid>
+                  <Grid item xs="auto" sm={4} md={3} sx={{ textAlign: 'right' }}> 
+                    <IconButton edge="end" aria-label="edit" onClick={(e) => { e.stopPropagation(); handleEditScheduleOpen(schedule); }} sx={{ mb: 0.5, p:0.5 }}>
+                      <EditIcon fontSize="small"/>
+                    </IconButton>
+                    <IconButton edge="end" aria-label="delete" onClick={(e) => { e.stopPropagation(); handleDeleteSchedule(schedule.id); }} sx={{p:0.5}}>
+                      <DeleteIcon fontSize="small"/>
+                    </IconButton>
+                  </Grid>
+                </Grid>
+              </Paper>
+            </Box>
+          )}
+        </Draggable>
+      );
+    }
 
     // 일반 일정 항목 (Paper와 Grid 사용)
     return (
@@ -392,8 +516,21 @@ const TravelPlanner = ({ loadMode }) => {
 
   // 실제 숙소를 일정에 추가하는 함수 (useAccommodationHandlers 훅 사용)
   const onAddAccommodationToSchedule = useCallback((hotelToAdd) => {
-    addAccommodationToSchedule(hotelToAdd, getDayTitle, setTravelPlans, startDate, dayOrder);
-  }, [addAccommodationToSchedule, getDayTitle, setTravelPlans, startDate, dayOrder]);
+    addAccommodationToSchedule(
+      hotelToAdd,
+      getDayTitle,
+      (updater) => {
+        setTravelPlans(prev => {
+          const updated = typeof updater === 'function' ? updater(prev) : updater;
+          setTimeout(() => setSelectedDay(selectedDay), 0);
+          return updated;
+        });
+      },
+      startDate,
+      dayOrder,
+      setLoadedAccommodationInfo
+    );
+  }, [addAccommodationToSchedule, getDayTitle, setTravelPlans, startDate, dayOrder, setLoadedAccommodationInfo, selectedDay]);
 
   // AIChatWidget에서 메시지 전송 시 호출될 핸들러
   const handleAISendMessage = useCallback(async (message, callback) => {
@@ -528,6 +665,18 @@ const TravelPlanner = ({ loadMode }) => {
     }
   }, [planId, dayOrder, travelPlans, startDate, API_URL, loadedFlightInfo, isRoundTrip, setPlanId, setTravelPlans, setDayOrder]);
 
+  const forceRefreshSelectedDay = useCallback(() => {
+    setSelectedDay(prev => prev); // 같은 값으로 set해도 리렌더링 트리거
+  }, [setSelectedDay]);
+
+  useEffect(() => {
+    if (sidebarTab === 'schedule') {
+      const prev = selectedDay;
+      setSelectedDay(null);
+      setTimeout(() => setSelectedDay(prev), 0);
+    }
+  }, [sidebarTab]);
+
   if (!user && !process.env.REACT_APP_SKIP_AUTH) {
     return <Typography>로그인이 필요합니다.</Typography>;
   }
@@ -659,6 +808,7 @@ const TravelPlanner = ({ loadMode }) => {
                   onAddToSchedule={onAddAccommodationToSchedule}
                   displayInMain={false}
                   dayOrderLength={dayOrder.length}
+                  onForceRefreshDay={forceRefreshSelectedDay}
                 />
               )}
               {sidebarTab === 'flight' && (
@@ -777,7 +927,7 @@ const TravelPlanner = ({ loadMode }) => {
                     <Typography variant="h6" sx={{ mb: 2 }}>일정 목록</Typography>
                     
                     {/* 고정된 숙박 정보 박스 */}
-                    {loadedAccommodationInfo && loadedAccommodationInfo.hotel && (
+                    {accommodationToShow && accommodationToShow.hotelDetails && (
                       <Paper 
                         elevation={1}
                         sx={{ 
@@ -788,41 +938,41 @@ const TravelPlanner = ({ loadMode }) => {
                           cursor: 'pointer',
                           '&:hover': { boxShadow: 3, borderColor: 'primary.main' }
                         }}
-                        onClick={() => handleOpenAccommodationDetail(loadedAccommodationInfo)} // 여기서는 loadedAccommodationInfo 직접 사용
+                        onClick={() => handleOpenAccommodationDetail(accommodationToShow.hotelDetails)}
                       >
                         <Grid container spacing={1} alignItems="center">
-                          {loadedAccommodationInfo.hotel.main_photo_url && (
+                          {accommodationToShow.hotelDetails.main_photo_url && (
                             <Grid item xs={12} sm={3}>
                               <Box
                                 component="img"
-                                src={loadedAccommodationInfo.hotel.main_photo_url}
-                                alt={loadedAccommodationInfo.hotel.hotel_name_trans || loadedAccommodationInfo.hotel.hotel_name}
+                                src={accommodationToShow.hotelDetails.main_photo_url}
+                                alt={accommodationToShow.hotelDetails.hotel_name_trans || accommodationToShow.hotelDetails.hotel_name}
                                 sx={{ width: '100%', height: 80, objectFit: 'cover', borderRadius: 1 }}
                               />
                             </Grid>
                           )}
-                          <Grid item xs sm={loadedAccommodationInfo.hotel.main_photo_url ? 9 : 12}>
+                          <Grid item xs sm={accommodationToShow.hotelDetails.main_photo_url ? 9 : 12}>
                             <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: '#5D4037', fontSize: '0.9rem' }}>
-                              {loadedAccommodationInfo.hotel.hotel_name_trans || loadedAccommodationInfo.hotel.hotel_name || '숙소 정보'}
+                              {accommodationToShow.hotelDetails.hotel_name_trans || accommodationToShow.hotelDetails.hotel_name || '숙소 정보'}
                             </Typography>
                             <Typography variant="body2" color="text.secondary" gutterBottom sx={{fontSize: '0.8rem'}}>
-                              {loadedAccommodationInfo.hotel.address || loadedAccommodationInfo.hotel.address_trans || '주소 정보 없음'}
+                              {accommodationToShow.hotelDetails.address || accommodationToShow.hotelDetails.address_trans || '주소 정보 없음'}
                             </Typography>
-                            {(loadedAccommodationInfo.checkIn || loadedAccommodationInfo.checkOut) && (
-                                <Typography component="div" variant="body2" color="text.secondary" sx={{mt: 0.5, fontSize: '0.8rem'}}>\
-                                  체크인: {loadedAccommodationInfo.checkIn ? formatDateFns(new Date(loadedAccommodationInfo.checkIn), 'MM/dd') : '-'}\
-                                  {' ~ '}\
-                                  체크아웃: {loadedAccommodationInfo.checkOut ? formatDateFns(new Date(loadedAccommodationInfo.checkOut), 'MM/dd') : '-'}\
+                            {(accommodationToShow.hotelDetails.checkIn || accommodationToShow.hotelDetails.checkOut) && (
+                                <Typography component="div" variant="body2" color="text.secondary" sx={{mt: 0.5, fontSize: '0.8rem'}}>
+                                  체크인: {accommodationToShow.hotelDetails.checkIn ? formatDateFns(new Date(accommodationToShow.hotelDetails.checkIn), 'MM/dd') : '-'}
+                                  {' ~ '}
+                                  체크아웃: {accommodationToShow.hotelDetails.checkOut ? formatDateFns(new Date(accommodationToShow.hotelDetails.checkOut), 'MM/dd') : '-'}
                                 </Typography>
                             )}
-                            {loadedAccommodationInfo.room?.name && (
-                                <Typography component="div" variant="body2" color="text.secondary" sx={{mt: 0.5, fontSize: '0.8rem'}}>\
-                                객실: {loadedAccommodationInfo.room.name}\
+                            {accommodationToShow.hotelDetails.room?.name && (
+                                <Typography component="div" variant="body2" color="text.secondary" sx={{mt: 0.5, fontSize: '0.8rem'}}>
+                                객실: {accommodationToShow.hotelDetails.room.name}
                                 </Typography>
                             )}
-                            {loadedAccommodationInfo.hotel.price && (
-                                <Typography variant="subtitle2" color="primary" sx={{ mt: 0.5, fontWeight: 'bold', fontSize: '0.9rem' }}>\
-                                {loadedAccommodationInfo.hotel.price}\
+                            {accommodationToShow.hotelDetails.price && (
+                                <Typography variant="subtitle2" color="primary" sx={{ mt: 0.5, fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                {accommodationToShow.hotelDetails.price}
                                 </Typography>
                             )}
                           </Grid>
@@ -919,6 +1069,7 @@ const TravelPlanner = ({ loadMode }) => {
                 onAddToSchedule={onAddAccommodationToSchedule}
                 travelPlans={travelPlans}
                 dayOrderLength={dayOrder.length}
+                onForceRefreshDay={forceRefreshSelectedDay}
               />
             )}
             {sidebarTab === 'flight' && (
@@ -1149,6 +1300,19 @@ const TravelPlanner = ({ loadMode }) => {
                 </Box>
               ) : (
                 <Typography>선택된 객실 정보가 없습니다.</Typography>
+              )}
+
+              {accommodationToShow.hotelDetails.roomList && accommodationToShow.hotelDetails.roomList.length > 0 && (
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 'bold', fontSize: '0.85rem' }}>객실 목록</Typography>
+                  <ul style={{ margin: 0, paddingLeft: 16 }}>
+                    {accommodationToShow.hotelDetails.roomList.map((room, idx) => (
+                      <li key={room.id || idx} style={{ fontSize: '0.85rem' }}>
+                        {room.name} {room.price ? `- ${room.price}${room.currency ? ` ${room.currency}` : ''}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </Box>
               )}
             </DialogContent>
             <DialogActions>

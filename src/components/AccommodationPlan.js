@@ -66,7 +66,8 @@ const AccommodationPlan = forwardRef(({
   setFormData,
   travelPlans,
   onAddToSchedule,
-  dayOrderLength
+  dayOrderLength,
+  onForceRefreshDay
 }, ref) => {
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -606,6 +607,7 @@ const AccommodationPlan = forwardRef(({
         checkIn: formData.checkIn,
         checkOut: formData.checkOut
       });
+      if (onForceRefreshDay) onForceRefreshDay();
     }
   };
 
@@ -812,6 +814,9 @@ const AccommodationPlan = forwardRef(({
                   )}
                 </Box>
               ))}
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 1, mb: 1, display: 'block' }}>
+                반칸으로 둘 시 성인 2명으로 자동 검색됩니다
+              </Typography>
               {roomConfig.length < 5 && (
                 <Button
                   startIcon={<AddIcon />}
@@ -1136,15 +1141,7 @@ const AccommodationPlan = forwardRef(({
                 </Typography>
                 <Box sx={{ display: 'flex', gap: 1 }}>
                   <Button
-                    variant="outlined"
-                    onClick={handleAddToPlanClick}
-                    disabled={!selectedHotel}
-                  >
-                    일정에 추가하기
-                  </Button>
-                  <Button
                     variant="contained"
-                    color="primary"
                     onClick={(e) => handleBooking(e, selectedHotel)}
                     startIcon={<OpenInNewIcon />}
                   >
@@ -1282,14 +1279,25 @@ const AccommodationPlan = forwardRef(({
                                 </Grid>
                               </Grid>
 
-                              <Box sx={{ mt: 2 }}>
+                              <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
                                 <Button
                                   variant="contained"
                                   color="primary"
-                                  onClick={(e) => handleBooking(e, selectedHotel)}
+                                  onClick={() => {
+                                    if (onAddToSchedule) {
+                                      onAddToSchedule({
+                                        ...selectedHotel,
+                                        room,
+                                        checkIn: formData.checkIn,
+                                        checkOut: formData.checkOut
+                                      });
+                                    }
+                                    if (onForceRefreshDay) onForceRefreshDay();
+                                    setModalOpen(false);
+                                  }}
                                   fullWidth
                                 >
-                                  예약하기
+                                  이 객실로 일정에 추가
                                 </Button>
                               </Box>
                             </Grid>
