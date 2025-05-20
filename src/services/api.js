@@ -259,6 +259,37 @@ export const travelApi = {
         await sleep(RETRY_DELAY * retries);
       }
     }
+  },
+
+  // 전체 여행 계획 목록 불러오기
+  getTravelPlans: async () => {
+    try {
+      const response = await apiClient.post('/api/travel/load', {}, {
+        timeout: 10000,
+        retry: 2,
+        retryDelay: 1000,
+        withCredentials: false,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('여행 계획 목록 불러오기 실패:', error);
+      if (error.response) {
+        // 서버가 응답을 반환한 경우
+        console.error('서버 응답:', error.response.data);
+        throw new Error(error.response.data.message || '서버 오류가 발생했습니다.');
+      } else if (error.request) {
+        // 요청은 보냈지만 응답을 받지 못한 경우
+        console.error('요청 실패:', error.request);
+        throw new Error('서버에 연결할 수 없습니다.');
+      } else {
+        // 요청 설정 중 오류가 발생한 경우
+        console.error('요청 설정 오류:', error.message);
+        throw new Error('요청을 처리할 수 없습니다.');
+      }
+    }
   }
 };
 

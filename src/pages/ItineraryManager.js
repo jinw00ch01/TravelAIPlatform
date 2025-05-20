@@ -1,14 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from '../components/itinerary/Sidebar';
 import ItineraryDetail from '../components/itinerary/ItineraryDetail';
+import { travelApi } from '../services/api';
 
 const ItineraryManager = () => {
   const [selectedItinerary, setSelectedItinerary] = useState(null);
-  const [itineraries, setItineraries] = useState([
-    { id: 1, title: '도쿄 여행', date: '2024-03-20' },
-    { id: 2, title: '오사카 여행', date: '2024-03-25' },
-    { id: 3, title: '후쿠오카 여행', date: '2024-04-01' },
-  ]);
+  const [itineraries, setItineraries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    travelApi.getTravelPlans()
+      .then(response => {
+        if (response.plans && Array.isArray(response.plans)) {
+          setItineraries(response.plans);
+        } else {
+          setError('여행 계획 데이터 형식이 올바르지 않습니다.');
+        }
+      })
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
 
   const handleTitleUpdate = (itineraryId, newTitle) => {
     setItineraries(prevItineraries =>
@@ -39,7 +51,11 @@ const ItineraryManager = () => {
       
       {/* 메인 컨텐츠 */}
       <div className="flex-1 overflow-auto">
-        {selectedItinerary ? (
+        {loading ? (
+          <div className="flex items-center justify-center h-full">불러오는 중...</div>
+        ) : error ? (
+          <div className="flex items-center justify-center h-full text-red-500">{error}</div>
+        ) : selectedItinerary ? (
           <ItineraryDetail 
             itinerary={selectedItinerary}
             onTitleUpdate={handleTitleUpdate}
