@@ -8,79 +8,98 @@ function ViewItinerary() {
   const [travelPlan, setTravelPlan] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const { id } = useParams();
+  const { id: planIdFromUrl } = useParams();
   const { currentUser } = useAuth();
   const navigate = useNavigate();
 
   // 여행 계획 조회
   useEffect(() => {
-    async function fetchTravelPlan() {
+    async function fetchAndDisplayPlan() {
+      if (!currentUser) {
+        navigate('/login');
+        return;
+      }
+      
+      setLoading(true);
+      setError('');
+
       try {
-        const planData = await travelApi.getTravelPlan(id);
-        
-        if (planData) {
-          // 권한 확인
-          if (planData.userId !== currentUser?.uid) {
-            setError('접근 권한이 없습니다.');
-            setLoading(false);
-            return;
-          }
-          
-          // 날짜 변환
-          const plan = {
-            id: planData.id,
-            ...planData,
-            createdAt: planData.createdAt?.toDate() || new Date(),
-            startDate: planData.startDate?.toDate() || null,
-            endDate: planData.endDate?.toDate() || null
-          };
-          
-          setTravelPlan(plan);
-          
-          // 실제 프로젝트에서는 여기서 itinerary가 없고 status가 'pending'인 경우,
-          // 백엔드 API를 호출하여 실시간으로 여행 계획을 생성받아야 함
-          // 이 예제에서는 더미 데이터로 시뮬레이션
-          
-          if (!plan.itinerary && plan.status === 'pending') {
-            // API 호출 시뮬레이션 (실제로는 백엔드 API 호출)
-            setTimeout(async () => {
-              const dummyItinerary = generateDummyItinerary(plan);
-              
-              // Firestore 업데이트
-              await travelApi.updateTravelPlan(id, {
-                itinerary: dummyItinerary,
-                status: 'generated'
-              });
-              
-              setTravelPlan(prev => ({
-                ...prev,
-                itinerary: dummyItinerary,
-                status: 'generated'
-              }));
-            }, 3000);
-          }
-        } else {
-          setError('해당 여행 계획을 찾을 수 없습니다.');
+        // 1. checklistfunction 호출하여 여행 계획 목록 가져오기
+        const checklistResponse = await travelApi.invokeChecklist();
+        console.log('ViewItinerary - invokeChecklist 응답:', checklistResponse);
+
+        if (!checklistResponse || !checklistResponse.success || !Array.isArray(checklistResponse.plans)) {
+          throw new Error('사용자의 여행 계획 목록을 불러오는데 실패했습니다.');
         }
-      } catch (err) {
-        console.error('여행 계획 조회 실패:', err);
-        setError('여행 계획을 불러오는데 실패했습니다.');
+
+        // 2. URL의 ID와 일치하는 항목 찾기
+        const targetPlanOverview = checklistResponse.plans.find(p => 
+          p.plan_id?.toString() === planIdFromUrl
+        );
+
+        if (!targetPlanOverview) {
+          setError(`ID ${planIdFromUrl}에 해당하는 여행 계획을 찾을 수 없습니다.`);
+          setLoading(false);
+          return;
+        }
+
+        // 3. paid_plan 확인하여 유료 계획만 불러오기
+        if (!targetPlanOverview.paid_plan) {
+          setError(`ID ${planIdFromUrl}에 해당하는 계획은 유료 계획이 아닙니다.`);
+          setLoading(false);
+          return;
+        }
+
+        // 4. checkplanfunction 호출하여 상세 정보 가져오기
+        const checkplanResponse = await travelApi.invokeCheckplan(targetPlanOverview.plan_id.toString());
+        console.log(`ViewItinerary - invokeCheckplan 응답 (plan_id: ${targetPlanOverview.plan_id}):`, checkplanResponse);
+
+        if (!checkplanResponse || !checkplanResponse.success || !checkplanResponse.plan) {
+          throw new Error('여행 계획의 상세 정보를 불러오는데 실패했습니다.');
+        }
+
+        const planDetail = checkplanResponse.plan;
+
+        // 5. 소유권 확인
+        if (planDetail.user_id !== currentUser.email) {
+          console.warn(`소유권 불일치: Plan user_id (${planDetail.user_id}), Token user_email (${currentUser.email})`);
+          setError('해당 여행 계획에 접근할 권한이 없습니다.');
+          setLoading(false);
+          return;
+        }
+
+        // 6. 계획 데이터 처리 (필요한 경우 JSON 문자열을 파싱)
+        const processedPlan = {
+          id: planDetail.plan_id,
+          name: planDetail.name,
+          itinerary_schedules: typeof planDetail.itinerary_schedules === 'string' 
+            ? JSON.parse(planDetail.itinerary_schedules) 
+            : planDetail.itinerary_schedules,
+          flight_details: typeof planDetail.flight_details === 'string'
+            ? JSON.parse(planDetail.flight_details)
+            : planDetail.flight_details,
+          accommodation_details: typeof planDetail.accommodation_details === 'string'
+            ? JSON.parse(planDetail.accommodation_details)
+            : planDetail.accommodation_details
+        };
+
+        // 7. 상태 업데이트
+        setTravelPlan(processedPlan);
+      } catch (error) {
+        console.error('여행 계획 불러오기 실패:', error);
+        setError('여행 계획을 불러오는데 실패했습니다: ' + error.message);
       } finally {
         setLoading(false);
       }
     }
-    
-    if (currentUser) {
-      fetchTravelPlan();
-    } else {
-      navigate('/login');
-    }
-  }, [id, currentUser, navigate]);
+
+    fetchAndDisplayPlan();
+  }, [planIdFromUrl, currentUser, navigate]);
 
   // 여행 계획 저장
   const handleSaveItinerary = async (updatedItinerary) => {
     try {
-      await travelApi.updateTravelPlan(id, {
+      await travelApi.updateTravelPlan(planIdFromUrl, {
         itinerary: updatedItinerary,
         status: 'completed'
       });
@@ -256,7 +275,7 @@ function ViewItinerary() {
           <div className="bg-white shadow sm:rounded-lg mb-6">
             <div className="px-4 py-5 sm:px-6">
               <h3 className="text-lg leading-6 font-medium text-gray-900">
-                {travelPlan.destination || '목적지 미정'} 여행 계획
+                {travelPlan.name || '목적지 미정'} 여행 계획
               </h3>
               <p className="mt-1 max-w-2xl text-sm text-gray-500">
                 여행 요약 정보

@@ -26,6 +26,7 @@ export const handler = async (event) => {
   console.log("event:", JSON.stringify(event));
 
   if (event.httpMethod === "OPTIONS") {
+    console.log("OPTIONS 요청 처리 중");
     return {
       statusCode: 200,
       headers,

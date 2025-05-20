@@ -32,12 +32,7 @@ export const handler = async (event) => {
     console.log("OPTIONS 요청 처리 중");
     return {
       statusCode: 200,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-        "Content-Type": "application/json"
-      },
+      headers,
       body: JSON.stringify({ message: "CORS preflight OK" })
     };
   }
@@ -75,7 +70,7 @@ export const handler = async (event) => {
       ExpressionAttributeValues: {
         ":uid": userEmail
       },
-      ProjectionExpression: "plan_id, #nm, last_updated", // name을 #nm으로 대체
+      ProjectionExpression: "plan_id, #nm, last_updated, paid_plan",
       ExpressionAttributeNames: {
         "#nm": "name" // alias 정의
       },

@@ -34,12 +34,49 @@ const apiClient = axios.create({
   withCredentials: false
 });
 
+// 인증 토큰 가져오기 함수
+const getTokenForAPI = async () => {
+  try {
+    // 로컬스토리지에서 먼저 시도
+    const localToken = localStorage.getItem('idToken');
+    if (localToken) {
+      console.log('[API] 로컬스토리지 토큰 사용');
+      return localToken;
+    }
+
+    // Amplify 세션에서 추출 시도
+    const session = await fetchAuthSession();
+    const idToken = session.tokens?.idToken?.toString();
+    if (idToken) {
+      console.log('[API] Amplify 세션 토큰 사용');
+      return idToken;
+    }
+
+    // 개발 환경에서는 test-token 사용
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[API] 개발 환경: 테스트 토큰 사용');
+      return 'test-token';
+    }
+
+    throw new Error('인증 토큰을 가져올 수 없습니다.');
+  } catch (error) {
+    console.error('[API] 인증 토큰 가져오기 실패:', error);
+    
+    // 개발 환경에서는 test-token 사용
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[API] 개발 환경: 테스트 토큰 사용');
+      return 'test-token';
+    }
+    
+    throw new Error('인증 토큰을 가져올 수 없습니다: ' + error.message);
+  }
+};
+
 // 요청 인터셉터 - 인증 토큰 추가
 apiClient.interceptors.request.use(
   async (config) => {
     try {
-      const { tokens } = await fetchAuthSession();
-      const token = tokens.idToken.toString();
+      const token = await getTokenForAPI();
       config.headers.Authorization = `Bearer ${token}`;
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
@@ -290,7 +327,76 @@ export const travelApi = {
         throw new Error('요청을 처리할 수 없습니다.');
       }
     }
-  }
+  },
+
+  // invokeChecklist: checklistfunction 직접 호출
+  invokeChecklist: async () => {
+    try {
+      console.log('[API] invokeChecklist 호출 시작');
+      
+      // 인증 토큰 가져오기
+      const token = await getTokenForAPI();
+      
+      // fetch를 사용하여 API 호출
+      const response = await fetch(`${API_URL}/api/travel/checklist`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ mode: 'list' })
+      });
+      
+      // 응답 확인
+      if (!response.ok) {
+        throw new Error(`API 요청 실패: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('[API] invokeChecklist 응답:', data);
+      return data;
+    } catch (error) {
+      console.error('[API] invokeChecklist 오류:', error.message);
+      throw error;
+    }
+  },
+
+  // invokeCheckplan: checkplanfunction 직접 호출
+  invokeCheckplan: async (planId) => {
+    if (planId === undefined || planId === null || isNaN(Number(planId))) {
+      const errorMsg = 'invokeCheckplan: 유효한 planId (숫자)가 필요합니다.';
+      console.error(errorMsg);
+      throw new Error(errorMsg);
+    }
+    try {
+      console.log(`[API] invokeCheckplan 호출 시작 (planId: ${planId})`);
+      
+      // 인증 토큰 가져오기
+      const token = await getTokenForAPI();
+      
+      // fetch를 사용하여 API 호출
+      const response = await fetch(`${API_URL}/api/travel/checkplan`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ plan_id: planId.toString(), mode: 'detail' })
+      });
+      
+      // 응답 확인
+      if (!response.ok) {
+        throw new Error(`API 요청 실패: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log(`[API] invokeCheckplan 응답 (planId: ${planId}):`, data);
+      return data;
+    } catch (error) {
+      console.error(`[API] invokeCheckplan 오류 (planId: ${planId}):`, error.message);
+      throw error;
+    }
+  },
 };
 
 export default apiClient;
