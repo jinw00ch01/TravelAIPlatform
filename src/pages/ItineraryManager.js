@@ -9,16 +9,19 @@ const ItineraryManager = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // 초기 데이터 로드
   useEffect(() => {
     console.log('[ItineraryManager] 유료 여행 계획 불러오기 시작');
     setLoading(true);
     
+    // 1. 여행 계획 목록 로드
     travelApi.invokeChecklist()
       .then(response => {
         console.log('[ItineraryManager] invokeChecklist 응답:', response);
         
         if (!response || !response.success || !Array.isArray(response.plans)) {
           setError('여행 계획 데이터를 불러오는데 실패했습니다.');
+          setLoading(false);
           return;
         }
         
@@ -29,48 +32,10 @@ const ItineraryManager = () => {
         if (paidPlans.length === 0) {
           setError('유료 여행 계획이 없습니다.');
           setItineraries([]);
+          setLoading(false);
         } else {
-          // 각 유료 계획에 대해 상세 정보 가져오기
-          console.log('[ItineraryManager] 유료 계획 상세 정보 가져오기 시작');
-          
-          const planDetailsPromises = paidPlans.map(plan => {
-            console.log(`[ItineraryManager] planId ${plan.plan_id}에 대해 checkplanfunction 호출`);
-            return travelApi.invokeCheckplan(plan.plan_id.toString())
-              .then(detailResponse => {
-                console.log(`[ItineraryManager] planId ${plan.plan_id} 상세 정보 응답:`, detailResponse);
-                if (detailResponse && detailResponse.success && detailResponse.plan) {
-                  // 기존 계획 정보에 상세 정보 병합
-                  return {
-                    ...plan,
-                    ...detailResponse.plan,
-                    // itinerary_schedules 데이터 파싱 (필요한 경우)
-                    itinerary_schedules: detailResponse.plan.itinerary_schedules && 
-                      typeof detailResponse.plan.itinerary_schedules === 'string'
-                        ? JSON.parse(detailResponse.plan.itinerary_schedules)
-                        : detailResponse.plan.itinerary_schedules
-                  };
-                }
-                // 상세 정보 가져오기 실패 시 기존 정보만 반환
-                console.warn(`[ItineraryManager] planId ${plan.plan_id} 상세 정보 없음`);
-                return plan;
-              })
-              .catch(err => {
-                console.error(`[ItineraryManager] planId ${plan.plan_id} 상세 정보 오류:`, err);
-                return plan; // 오류 발생 시 기존 정보만 반환
-              });
-          });
-          
-          // 모든 상세 정보 요청이 완료되면 최종 결과 설정
-          Promise.all(planDetailsPromises)
-            .then(detailedPlans => {
-              console.log('[ItineraryManager] 모든 계획 상세 정보 로드 완료:', detailedPlans);
-              setItineraries(detailedPlans);
-            })
-            .catch(err => {
-              console.error('[ItineraryManager] 상세 정보 처리 오류:', err);
-              setItineraries(paidPlans); // 오류 발생 시 기본 정보만 설정
-            })
-            .finally(() => setLoading(false));
+          // 2. 필터링된 계획의 상세 정보 로드
+          loadDetailedPlans(paidPlans);
         }
       })
       .catch(err => {
@@ -79,7 +44,100 @@ const ItineraryManager = () => {
         setLoading(false);
       });
   }, []);
+  
+  // 상세 정보 로드 함수
+  const loadDetailedPlans = (plans) => {
+    console.log('[ItineraryManager] 상세 정보 로드 시작:', plans.length);
+    
+    // 각 계획의 상세 정보 가져오기
+    const promises = plans.map(plan => {
+      console.log(`[ItineraryManager] 계획 ${plan.plan_id} 상세 정보 로드 시작`);
+      return travelApi.invokeCheckplan(plan.plan_id.toString())
+        .then(response => {
+          console.log(`[ItineraryManager] 계획 ${plan.plan_id} 상세 데이터:`, response);
+          
+          if (!response || !response.success || !response.plan) {
+            console.warn(`[ItineraryManager] 계획 ${plan.plan_id} 상세 정보 없음`);
+            return plan;
+          }
+          
+          // 계획 데이터와 상세 정보 병합
+          return processItineraryData(plan, response.plan);
+        })
+        .catch(err => {
+          console.error(`[ItineraryManager] 계획 ${plan.plan_id} 상세 정보 조회 오류:`, err);
+          return plan;
+        });
+    });
+    
+    // 모든 상세 정보 로드 완료 후 처리
+    Promise.all(promises)
+      .then(detailedPlans => {
+        console.log('[ItineraryManager] 모든 상세 정보 로드 완료:', detailedPlans);
+        setItineraries(detailedPlans);
+        
+        // 첫 번째 계획 자동 선택 (선택이 없을 경우에만)
+        if (detailedPlans.length > 0 && !selectedItinerary) {
+          setSelectedItinerary(detailedPlans[0]);
+          console.log('[ItineraryManager] 첫 번째 계획 자동 선택:', detailedPlans[0]);
+        }
+      })
+      .catch(err => {
+        console.error('[ItineraryManager] 상세 정보 처리 오류:', err);
+        setError('일부 계획 정보를 불러오는데 실패했습니다.');
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  };
+  
+  // 여행 계획 데이터 가공 함수
+  const processItineraryData = (basicInfo, detailInfo) => {
+    console.log('[ItineraryManager] 계획 데이터 가공:', basicInfo.plan_id);
+    
+    try {
+      // 기본 정보와 상세 정보 병합
+      const processedPlan = {
+        ...basicInfo,
+        ...detailInfo
+      };
+      
+      // JSON 문자열 파싱
+      const fieldsToProcess = [
+        'itinerary_schedules',
+        'flight_details',
+        'accommodation_details',
+        'transportation_details'
+      ];
+      
+      fieldsToProcess.forEach(field => {
+        if (detailInfo[field]) {
+          try {
+            processedPlan[field] = typeof detailInfo[field] === 'string'
+              ? JSON.parse(detailInfo[field])
+              : detailInfo[field];
+          } catch (err) {
+            console.warn(`[ItineraryManager] ${field} 파싱 오류:`, err);
+            processedPlan[field] = detailInfo[field];
+          }
+        }
+      });
+      
+      console.log('[ItineraryManager] 가공된 계획 데이터:', processedPlan);
+      return processedPlan;
+    } catch (err) {
+      console.error('[ItineraryManager] 데이터 가공 오류:', err);
+      return { ...basicInfo, ...detailInfo };
+    }
+  };
 
+  // 여행 계획 선택 처리
+  const handleSelectItinerary = (itinerary) => {
+    console.log('[ItineraryManager] 여행 계획 선택:', itinerary);
+    setSelectedItinerary(itinerary);
+  };
+
+  // 제목 업데이트 처리
   const handleTitleUpdate = (itineraryId, newTitle) => {
     setItineraries(prevItineraries =>
       prevItineraries.map(itinerary =>
@@ -102,7 +160,7 @@ const ItineraryManager = () => {
     <div className="flex h-screen bg-gray-100">
       {/* 사이드바 */}
       <Sidebar 
-        onSelectItinerary={setSelectedItinerary}
+        onSelectItinerary={handleSelectItinerary}
         selectedItinerary={selectedItinerary}
         itineraries={itineraries}
       />

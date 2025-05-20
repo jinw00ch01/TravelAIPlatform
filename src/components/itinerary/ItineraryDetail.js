@@ -5,6 +5,7 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
   const [title, setTitle] = useState(itinerary?.name || itinerary?.title || '');
   const [activeDay, setActiveDay] = useState(null);
   const [scheduleData, setScheduleData] = useState([]);
+  const [expandedItem, setExpandedItem] = useState(null);
 
   // 일정 데이터 추출 및 가공
   useEffect(() => {
@@ -19,12 +20,19 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
     let daySchedules = [];
     
     if (itinerary.itinerary_schedules) {
-      console.log('itinerary_schedules 데이터 사용');
+      console.log('itinerary_schedules 데이터 사용', itinerary.itinerary_schedules);
       
       // itinerary_schedules 처리 (문자열이면 파싱)
-      const schedules = typeof itinerary.itinerary_schedules === 'string'
-        ? JSON.parse(itinerary.itinerary_schedules)
-        : itinerary.itinerary_schedules;
+      let schedules = itinerary.itinerary_schedules;
+      if (typeof schedules === 'string') {
+        try {
+          schedules = JSON.parse(schedules);
+          console.log('문자열에서 파싱된 일정:', schedules);
+        } catch (err) {
+          console.error('일정 문자열 파싱 오류:', err);
+          schedules = {};
+        }
+      }
         
       // 일자별 데이터로 변환
       daySchedules = Object.keys(schedules).map(day => ({
@@ -32,18 +40,22 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
         title: schedules[day].title || `${day}일차`,
         schedules: schedules[day].schedules || []
       })).sort((a, b) => a.day - b.day);
+      
+      console.log('변환된 일정 데이터:', daySchedules);
     } 
     else if (itinerary.plan_data && itinerary.plan_data.days) {
       console.log('plan_data.days 데이터 사용');
       daySchedules = itinerary.plan_data.days.sort((a, b) => a.day - b.day);
     }
     
-    console.log('처리된 일정 데이터:', daySchedules);
+    console.log('최종 처리된 일정 데이터:', daySchedules);
     setScheduleData(daySchedules);
     
     // 첫 번째 일자를 기본 선택
-    if (daySchedules.length > 0 && !activeDay) {
-      setActiveDay(daySchedules[0].day);
+    if (daySchedules.length > 0) {
+      const firstDay = daySchedules[0].day;
+      console.log(`첫 번째 일자(${firstDay})를 활성화`);
+      setActiveDay(firstDay);
     }
   }, [itinerary]);
 
@@ -54,11 +66,13 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
   };
   
   const handleDayClick = (day) => {
+    console.log(`일자 ${day} 클릭`);
     setActiveDay(day);
   };
   
   // 선택된 일자의 일정 정보
   const activeDaySchedule = scheduleData.find(day => day.day === activeDay);
+  console.log('활성 일자 일정:', activeDay, activeDaySchedule);
   
   // 날짜 표시 포맷팅
   const formatDate = (date) => {
@@ -76,6 +90,100 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
       console.error('날짜 포맷팅 오류:', err);
       return date;
     }
+  };
+  
+  // 일정 항목 클릭 처리
+  const handleItemClick = (itemId) => {
+    setExpandedItem(expandedItem === itemId ? null : itemId);
+    console.log('일정 항목 클릭:', itemId, expandedItem === itemId ? '닫기' : '열기');
+  };
+  
+  // 호텔 정보 렌더링
+  const renderHotelInfo = (item) => {
+    if (!item.hotel_info && !item.accommodation_info) return null;
+    
+    const hotelInfo = item.hotel_info || item.accommodation_info;
+    return (
+      <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+        <h4 className="font-bold text-blue-900 mb-2">숙소 정보</h4>
+        {hotelInfo.name && <p className="font-medium">{hotelInfo.name}</p>}
+        {hotelInfo.address && <p className="text-sm text-gray-600 mb-2">{hotelInfo.address}</p>}
+        
+        <div className="grid grid-cols-2 gap-3 text-sm mt-3">
+          {hotelInfo.rating && (
+            <div>
+              <span className="font-medium">평점:</span> {hotelInfo.rating}
+            </div>
+          )}
+          {hotelInfo.price && (
+            <div>
+              <span className="font-medium">가격:</span> {typeof hotelInfo.price === 'number' ? hotelInfo.price.toLocaleString() + '원' : hotelInfo.price}
+            </div>
+          )}
+          {hotelInfo.check_in && (
+            <div>
+              <span className="font-medium">체크인:</span> {hotelInfo.check_in}
+            </div>
+          )}
+          {hotelInfo.check_out && (
+            <div>
+              <span className="font-medium">체크아웃:</span> {hotelInfo.check_out}
+            </div>
+          )}
+        </div>
+        
+        {hotelInfo.amenities && Array.isArray(hotelInfo.amenities) && hotelInfo.amenities.length > 0 && (
+          <div className="mt-2">
+            <p className="font-medium text-sm">편의 시설:</p>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {hotelInfo.amenities.map((amenity, i) => (
+                <span key={i} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                  {amenity}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+  
+  // 관광지 정보 렌더링
+  const renderAttractionInfo = (item) => {
+    if (!item.attraction_info && !item.tourism_info) return null;
+    
+    const attractionInfo = item.attraction_info || item.tourism_info;
+    return (
+      <div className="mt-4 p-4 bg-green-50 rounded-lg">
+        <h4 className="font-bold text-green-900 mb-2">관광지 정보</h4>
+        {attractionInfo.name && <p className="font-medium">{attractionInfo.name}</p>}
+        {attractionInfo.description && <p className="text-sm text-gray-600 mt-1">{attractionInfo.description}</p>}
+        
+        <div className="grid grid-cols-2 gap-3 text-sm mt-3">
+          {attractionInfo.opening_hours && (
+            <div>
+              <span className="font-medium">운영 시간:</span> {attractionInfo.opening_hours}
+            </div>
+          )}
+          {attractionInfo.entrance_fee && (
+            <div>
+              <span className="font-medium">입장료:</span> {typeof attractionInfo.entrance_fee === 'number' ? attractionInfo.entrance_fee.toLocaleString() + '원' : attractionInfo.entrance_fee}
+            </div>
+          )}
+        </div>
+        
+        {attractionInfo.highlights && Array.isArray(attractionInfo.highlights) && attractionInfo.highlights.length > 0 && (
+          <div className="mt-2">
+            <p className="font-medium text-sm">주요 특징:</p>
+            <ul className="list-disc list-inside text-sm mt-1">
+              {attractionInfo.highlights.map((highlight, i) => (
+                <li key={i}>{highlight}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -181,46 +289,64 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
                 {activeDaySchedule.schedules && activeDaySchedule.schedules.length > 0 ? (
                   <div className="space-y-6">
                     {activeDaySchedule.schedules.map((item, idx) => (
-                      <div key={idx} className="flex border-l-4 border-blue-500 bg-white rounded-lg shadow-sm overflow-hidden">
-                        {/* 시간 */}
-                        <div className="w-24 bg-blue-50 p-4 flex items-center justify-center">
-                          <span className="text-blue-800 font-bold">{item.time}</span>
-                        </div>
-                        
-                        {/* 내용 */}
-                        <div className="flex-1 p-4">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <h3 className="font-bold text-gray-900">{item.name}</h3>
-                              {item.category && (
-                                <span className="inline-block mt-1 px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full">
-                                  {item.category}
+                      <div 
+                        key={idx} 
+                        className="border-l-4 border-blue-500 bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition cursor-pointer"
+                        onClick={() => handleItemClick(`${activeDay}-${idx}`)}
+                      >
+                        <div className="flex">
+                          {/* 시간 */}
+                          <div className="w-24 bg-blue-50 p-4 flex items-center justify-center">
+                            <span className="text-blue-800 font-bold">{item.time}</span>
+                          </div>
+                          
+                          {/* 내용 */}
+                          <div className="flex-1 p-4">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <h3 className="font-bold text-gray-900">{item.name}</h3>
+                                {item.category && (
+                                  <span className="inline-block mt-1 px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full">
+                                    {item.category}
+                                  </span>
+                                )}
+                              </div>
+                              {item.cost && (
+                                <span className="text-gray-600 font-medium">
+                                  {parseInt(item.cost).toLocaleString()}원
                                 </span>
                               )}
                             </div>
-                            {item.cost && (
-                              <span className="text-gray-600 font-medium">
-                                {parseInt(item.cost).toLocaleString()}원
-                              </span>
+                            
+                            {item.address && (
+                              <p className="mt-2 text-sm text-gray-500">
+                                <span className="font-medium">위치:</span> {item.address}
+                              </p>
+                            )}
+                            
+                            {item.notes && (
+                              <p className="mt-2 text-sm text-gray-600">{item.notes}</p>
+                            )}
+                            
+                            {/* 확장된 경우 상세 정보 표시 */}
+                            {expandedItem === `${activeDay}-${idx}` && (
+                              <div className="mt-4 border-t pt-4">
+                                {/* 호텔 정보 */}
+                                {renderHotelInfo(item)}
+                                
+                                {/* 관광지 정보 */}
+                                {renderAttractionInfo(item)}
+                                
+                                {/* 추가 세부 정보 */}
+                                {item.details && (
+                                  <div className="mt-4 p-4 bg-gray-50 rounded-lg text-sm">
+                                    <h4 className="font-bold text-gray-800 mb-2">추가 정보</h4>
+                                    <pre className="whitespace-pre-wrap font-sans">{item.details}</pre>
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
-                          
-                          {item.address && (
-                            <p className="mt-2 text-sm text-gray-500">
-                              <span className="font-medium">위치:</span> {item.address}
-                            </p>
-                          )}
-                          
-                          {item.notes && (
-                            <p className="mt-2 text-sm text-gray-600">{item.notes}</p>
-                          )}
-                          
-                          {/* 추가 정보 - 호텔/관광지 등 */}
-                          {item.details && (
-                            <div className="mt-3 p-3 bg-gray-50 rounded-lg text-sm">
-                              <pre className="whitespace-pre-wrap font-sans">{item.details}</pre>
-                            </div>
-                          )}
                         </div>
                       </div>
                     ))}
