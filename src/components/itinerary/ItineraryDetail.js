@@ -3,20 +3,14 @@ import React, { useState } from 'react';
 const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(itinerary.title);
-  
-  // 임시 일정 상세 데이터
-  const details = {
-    title: title,
-    date: itinerary.date,
-    description: '여행 일정에 대한 상세 설명이 들어갑니다.',
-    schedule: [
-      { time: '09:00', activity: '호텔 체크아웃', icon: '🏨' },
-      { time: '10:00', activity: '관광지 방문', icon: '🗾' },
-      { time: '12:00', activity: '점심 식사', icon: '🍱' },
-      { time: '14:00', activity: '쇼핑', icon: '🛍️' },
-      { time: '18:00', activity: '저녁 식사', icon: '🍜' },
-    ],
-  };
+
+  // 실제 일정 데이터 추출
+  let days = [];
+  if (itinerary.itinerary_schedules) {
+    days = Object.values(itinerary.itinerary_schedules);
+  } else if (itinerary.plan_data && itinerary.plan_data.days) {
+    days = itinerary.plan_data.days;
+  }
 
   const handleTitleSubmit = (e) => {
     e.preventDefault();
@@ -58,7 +52,7 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
               </form>
             ) : (
               <>
-                <h2 className="text-3xl font-bold text-gray-800">{details.title}</h2>
+                <h2 className="text-3xl font-bold text-gray-800">{title}</h2>
                 <button
                   onClick={() => setIsEditing(true)}
                   className="ml-3 text-gray-500 hover:text-gray-700"
@@ -70,40 +64,49 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
               </>
             )}
           </div>
-          <p className="text-xl text-gray-600 mt-2">{details.date}</p>
         </div>
 
-        {/* 설명 섹션 */}
+        {/* 여행 개요 */}
         <div className="bg-blue-50 rounded-lg p-6 mb-8">
           <h3 className="text-xl font-semibold text-gray-800 mb-4">여행 개요</h3>
-          <p className="text-gray-700 text-lg leading-relaxed">{details.description}</p>
+          <p className="text-gray-700 text-lg leading-relaxed">
+            {itinerary.description || itinerary.summary || '여행 개요 정보가 없습니다.'}
+          </p>
         </div>
 
         {/* 일정 타임라인 */}
         <div className="relative mb-8">
-          {/* 타임라인 라인 */}
           <div className="absolute top-8 left-0 right-0 h-0.5 bg-gray-200"></div>
-
-          {/* 가로 스크롤 컨테이너 */}
           <div className="overflow-x-auto pb-4">
             <div className="flex space-x-8 min-w-max">
-              {details.schedule.map((item, index) => (
-                <div key={index} className="relative flex-shrink-0">
-                  {/* 타임라인 포인트 */}
-                  <div className="absolute -top-4 left-1/2 w-4 h-4 bg-blue-500 rounded-full transform -translate-x-1/2"></div>
-                  
-                  {/* 일정 카드 */}
-                  <div className="w-64 bg-white rounded-lg shadow-md p-6 border border-gray-100">
-                    <div className="flex flex-col items-center text-center">
-                      <div className="text-3xl mb-4">{item.icon}</div>
-                      <div>
-                        <div className="text-2xl font-bold text-blue-600 mb-2">{item.time}</div>
-                        <div className="text-lg text-gray-700">{item.activity}</div>
+              {days.length === 0 ? (
+                <div className="text-gray-500">일정 정보가 없습니다.</div>
+              ) : (
+                days.map((day, dayIdx) => (
+                  <div key={dayIdx} className="relative flex-shrink-0">
+                    <div className="absolute -top-4 left-1/2 w-4 h-4 bg-blue-500 rounded-full transform -translate-x-1/2"></div>
+                    <div className="w-64 bg-white rounded-lg shadow-md p-6 border border-gray-100">
+                      <div className="flex flex-col items-center text-center">
+                        <div className="text-lg font-bold mb-2">{day.title || `${dayIdx + 1}일차`}</div>
+                        <ul className="text-left w-full">
+                          {(day.schedules || day.activities || []).map((item, idx) => (
+                            <li key={idx} className="mb-2">
+                              <span className="font-semibold text-blue-600 mr-2">{item.time}</span>
+                              <span className="font-medium">{item.name || item.description}</span>
+                              {item.address && (
+                                <span className="block text-xs text-gray-500">{item.address}</span>
+                              )}
+                              {item.notes && (
+                                <span className="block text-xs text-gray-400">{item.notes}</span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>
