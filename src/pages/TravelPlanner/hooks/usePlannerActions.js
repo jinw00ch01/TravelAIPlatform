@@ -117,7 +117,8 @@ const usePlannerActions = ({
           day: parseInt(day),
           title: travelPlans[day].title,
           schedules: travelPlans[day].schedules?.map(schedule => {
-            const baseSchedule = { ...schedule };
+            const { hotelDetails, ...restOfSchedule } = schedule;
+            const baseSchedule = { ...restOfSchedule };
             if (baseSchedule.flightOfferDetails?.flightOfferData) {
               baseSchedule.flightOfferDetails.flightOfferData = 
                 JSON.parse(JSON.stringify(baseSchedule.flightOfferDetails.flightOfferData, (k,v) => typeof v === 'number' && !isFinite(v) ? null : v));
