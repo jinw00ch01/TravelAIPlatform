@@ -448,7 +448,7 @@ export const HomePage = () => {
                     endDate={endDate}
                     dateFormat="yyyy/MM/dd"
                     locale={ko}
-                    placeholderText="가는 날"
+                    placeholderText="출국일"
                     customInput={<CustomInput />}
                     className="w-full"
                   />
@@ -461,7 +461,7 @@ export const HomePage = () => {
                     minDate={startDate}
                     dateFormat="yyyy/MM/dd"
                     locale={ko}
-                    placeholderText="오는 날"
+                    placeholderText="귀국일"
                     customInput={<CustomInput />}
                     className="w-full"
                   />
