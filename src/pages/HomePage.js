@@ -329,11 +329,19 @@ export const HomePage = () => {
               position: 'relative'
             }}
           >
-            {/* 배경 이미지 위에 어두운 오버레이 제거 */}
+            {/* 왼쪽 AI 생성 이미지 */}
+            <div className="absolute right-[0%] top-[5px] w-[650px] h-[820px] rounded-lg overflow-hidden">
+              <img src="/images/travel_right.png" alt="여행 명소" className="w-full h-full object-cover" />
+            </div>
+            
+            {/* 오른쪽 AI 생성 이미지 */}
+            <div className="absolute left-[0%] top-[5px] w-[575px] h-[810px] rounded-lg overflow-hidden">
+              <img src="/images/travel_left.png" alt="여행 명소" className="w-full h-full object-cover" />
+            </div>
           </div>
 
           {/* Main heading - 위로 올림 */}
-          <h1 className="w-full max-w-[507px] top-[120px] left-1/2 -translate-x-1/2 text-sky-900 text-[50px] leading-[50px] absolute font-jua text-center">
+          <h1 className="w-full max-w-[530px] top-[120px] left-1/2 -translate-x-1/2 text-white text-[50px] leading-[50px] absolute font-jua text-center">
             여행계획을 도와드릴까요?
           </h1>
 

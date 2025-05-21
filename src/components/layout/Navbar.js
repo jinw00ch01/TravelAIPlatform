@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import windRoadLogo from '../../assets/WindRoad_logo_test.png';
 
 function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -24,7 +25,8 @@ function Navbar() {
         <div className="flex justify-between h-16">
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
-              <Link to="/plan" className="text-xl font-bold text-primary">바람길</Link>
+              <img src={windRoadLogo} alt="WindRoad 로고" className="h-12 w-auto mr-2" />
+              <Link to="/plan" className="text-xl font-bold text-primary">WINDROAD</Link>
             </div>
             <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
               <Link to="/plan" className="inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300">

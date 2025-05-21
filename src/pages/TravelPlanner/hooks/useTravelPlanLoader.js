@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { format as formatDateFns } from 'date-fns';
 import { travelApi } from '../../../services/api';
-import { formatPrice, formatDuration } from '../../../utils/flightFormatters';
 import useFlightHandlers from './useFlightHandlers';
 
 // 날짜 포맷팅 유틸리티 함수 (loader 내부용)

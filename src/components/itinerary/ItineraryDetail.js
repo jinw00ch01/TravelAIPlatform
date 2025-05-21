@@ -254,7 +254,7 @@ const getIconByCategory = (category) => {
   switch (category?.toLowerCase()) {
     case '항공편': return '✈️';
     case '식당': return '🍱';
-    case '장소': return '🗾';
+    case '장소': return '🏛️';
     case '호텔': return '🏨';
     case '쇼핑': return '🛍️';
     default: return '📍';
