@@ -301,7 +301,7 @@ export const travelApi = {
   // 전체 여행 계획 목록 불러오기
   getTravelPlans: async () => {
     try {
-      const response = await apiClient.post('/api/travel/load', {}, {
+      const response = await apiClient.post('/api/travel/LoadPlanFunction_NEW', {}, {
         timeout: 10000,
         retry: 2,
         retryDelay: 1000,

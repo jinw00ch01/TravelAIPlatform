@@ -500,8 +500,8 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
       if (planIdFromUrl === 'newest') {
         // 최신 계획 로드 (/planner/newest)
         result = await loadNewestPlan(potentialStartDate);
-      } else if (planIdFromUrl && !isNaN(Number(planIdFromUrl))) {
-        // 특정 ID로 계획 로드 (/planner/12345678)
+      } else if (planIdFromUrl && (!isNaN(Number(planIdFromUrl)) || planIdFromUrl.startsWith('plan-'))) {
+        // 특정 ID로 계획 로드 (/planner/12345678 또는 /planner/plan-xxxxxxxxxx)
         result = await loadPlanById(planIdFromUrl, potentialStartDate);
       } else {
         // 기본 경우 (URL에 ID 없음)

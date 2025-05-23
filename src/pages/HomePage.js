@@ -9,17 +9,20 @@ import { cn } from "../lib/utils";
 import { CalendarIcon, Minus, Plus, Loader2, X } from "lucide-react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { travelApi } from "../services/api";
 import TravelInfoSection from "./HomePage/TravelInfoSection";
 import FlightDialog from "./HomePage/FlightDialog";
 import amadeusApi from "../utils/amadeusApi";
 import ToursAndActivity from "./HomePage/ToursAndActivity";
 import AccomodationDialog from "./HomePage/AccomodationDialog";
+import websocketService from "../services/websocketService";
+import { useAuth } from "../components/auth/AuthContext";
 
 export const HomePage = () => {
   const navigate = useNavigate();
+  const { getJwtToken } = useAuth();
   const fileInputRef = useRef(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState(""); // WebSocket 상태 메시지용
   const [searchText, setSearchText] = useState("");
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
@@ -117,6 +120,14 @@ export const HomePage = () => {
     setSelectedFlightDictionaries(dictionaries || {});
     setIsFlightDialogOpen(false);
   }, [enrichFlightWithAirportInfo]);
+
+  // 컴포넌트 언마운트 시 WebSocket 연결 정리
+  useEffect(() => {
+    return () => {
+      // 컴포넌트가 언마운트될 때 WebSocket 연결 해제
+      websocketService.disconnect();
+    };
+  }, []);
 
   // 선택한 항공편의 공항 세부정보(한글 공항/도시명 등) 동기화
   useEffect(() => {
@@ -243,15 +254,47 @@ export const HomePage = () => {
     }
 
     setIsProcessing(true); // 로딩 시작
+    setProcessingStatus("연결을 준비 중입니다...");
     let planSuccessfullyCreated = false; // 성공 플래그
     let generatedPlanId = null;
 
     try {
+      // WebSocket 상태 업데이트 핸들러 등록
+      websocketService.onMessage('request_received', (data) => {
+        console.log('[HomePage] request_received 메시지:', data);
+        setProcessingStatus(data.message || "요청이 접수되었습니다...");
+      });
+
+      websocketService.onMessage('status_update', (data) => {
+        console.log('[HomePage] status_update 메시지:', data);
+        setProcessingStatus(data.message || "처리 중...");
+      });
+
+      // AuthContext에서 JWT 토큰 가져오기
+      let authToken = null;
+      try {
+        const tokenResult = await getJwtToken();
+        
+        // getJwtToken()은 { success: boolean, token: string } 형태로 반환됨
+        if (tokenResult && tokenResult.success && typeof tokenResult.token === 'string' && tokenResult.token.trim()) {
+          authToken = tokenResult.token;
+          console.log('[HomePage] JWT 토큰 가져오기 성공, 타입:', typeof tokenResult.token);
+        } else {
+          console.warn('[HomePage] JWT 토큰이 유효하지 않음. 결과:', tokenResult);
+          authToken = 'test-token';
+        }
+      } catch (tokenError) {
+        console.warn('[HomePage] JWT 토큰 가져오기 실패:', tokenError);
+        // 개발 환경에서는 test-token 사용
+        authToken = 'test-token';
+      }
+
       const planDetails = {
         query: searchText,
         startDate: startDate ? format(startDate, 'yyyy-MM-dd', { locale: ko }) : null,
         endDate: endDate ? format(endDate, 'yyyy-MM-dd', { locale: ko }) : null,
         adults: adultCount,
+        children: childCount,
       };
       
       if (selectedFlight) {
@@ -261,24 +304,54 @@ export const HomePage = () => {
         planDetails.accommodationInfo = selectedAccommodation;
       }
 
-      const result = await travelApi.createTravelPlan(planDetails);
+      console.log('[HomePage] 전송할 계획 세부사항:', planDetails);
+
+      // WebSocket을 통한 여행 계획 생성 요청 (토큰 전달)
+      const result = await websocketService.createTravelPlan(planDetails, authToken);
+
+      console.log('[HomePage] WebSocket 응답 수신:', result);
 
       if (result && result.planId) {
-        console.log('[HomePage] AI 여행 계획 생성 성공 (ID 수신):', result.planId);
+        console.log('[HomePage] WebSocket AI 여행 계획 생성 성공 (ID 수신):', result.planId);
         planSuccessfullyCreated = true;
         generatedPlanId = result.planId;
+        setProcessingStatus("여행 계획 생성이 완료되었습니다!");
       } else {
          console.warn('[HomePage] 생성 응답에 planId가 없거나 유효하지 않음:', result);
+         setProcessingStatus("오류: 계획 ID를 받지 못했습니다.");
       }
 
     } catch (error) {
-      console.error('[PlanTravel] AI 여행 계획 생성 오류:', error);
+      console.error('[HomePage] WebSocket AI 여행 계획 생성 오류:', error);
+      setProcessingStatus(`오류 발생: ${error.message}`);
     } finally {
       setIsProcessing(false); // 로딩 종료
+      
+      // 핸들러 정리
+      websocketService.removeMessageHandler('request_received');
+      websocketService.removeMessageHandler('status_update');
+      
       if (planSuccessfullyCreated && generatedPlanId) {
-        navigate(`/planner/${generatedPlanId}`, { state: { flightData: selectedFlight, isNewPlan: true } });
+        console.log('[HomePage] 페이지 이동 준비 중. generatedPlanId:', generatedPlanId, '타입:', typeof generatedPlanId);
+        // 약간의 지연 후 페이지 이동 (사용자가 성공 메시지를 볼 수 있도록)
+        setTimeout(() => {
+          const targetUrl = `/planner/${generatedPlanId}`;
+          console.log('[HomePage] 페이지 이동 실행:', targetUrl);
+          navigate(targetUrl, { 
+            state: { 
+              flightData: selectedFlight, 
+              isNewPlan: true,
+              planId: generatedPlanId
+            } 
+          });
+        }, 1500);
       } else {
         console.log('[HomePage] 여행 계획 생성 요청이 완료되었으나, 성공적으로 ID를 받지 못했거나 오류가 발생했습니다.');
+        console.log('[HomePage] planSuccessfullyCreated:', planSuccessfullyCreated, 'generatedPlanId:', generatedPlanId);
+        // 에러 메시지를 3초 후 제거
+        setTimeout(() => {
+          setProcessingStatus("");
+        }, 3000);
       }
     }
   };
@@ -330,8 +403,8 @@ export const HomePage = () => {
             }}
           >
             {/* 왼쪽 AI 생성 이미지 */}
-            <div className="absolute right-[0%] top-[5px] w-[650px] h-[820px] rounded-lg overflow-hidden">
-              <img src="/images/travel_right.png" alt="여행 명소" className="w-full h-full object-cover" />
+            <div className="absolute right-[0%] top-[5px] w-[750px] h-[815px] rounded-lg overflow-hidden">
+              <img src="/images/travel_right.gif" alt="여행 명소" className="w-full h-full object-cover" />
             </div>
             
             {/* 오른쪽 AI 생성 이미지 */}
@@ -434,6 +507,18 @@ export const HomePage = () => {
                   </CardContent>
                 </Card>
               </div>
+
+              {/* 상태 메시지 표시 영역 */}
+              {(isProcessing || processingStatus) && (
+                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    {isProcessing && <Loader2 className="h-4 w-4 animate-spin text-blue-600" />}
+                    <span className="text-blue-700 text-sm font-medium">
+                      {processingStatus || "처리 중입니다..."}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Date selection section */}
