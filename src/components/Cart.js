@@ -131,88 +131,98 @@ const Cart = () => {
       console.log('[Cart] 여행 계획 상세 응답:', response.data);
 
       if (response.data.success) {
-        // API 응답의 flight_details를 flightInfo로 매핑하여 데이터 일관성 유지
+        // 항공권 정보 파싱
+        let flightInfo = null;
+        try {
+          flightInfo = typeof response.data.plan.flight_details === 'string' 
+            ? JSON.parse(response.data.plan.flight_details)
+            : response.data.plan.flight_details;
+          console.log('[Cart] 파싱된 항공권 정보:', flightInfo);
+        } catch (e) {
+          console.error('[Cart] 항공권 정보 파싱 오류:', e);
+        }
+
+        // 숙소 정보 파싱
+        let accommodationInfo = null;
+        try {
+          accommodationInfo = typeof response.data.plan.accmo_info === 'string'
+            ? JSON.parse(response.data.plan.accmo_info)
+            : response.data.plan.accmo_info;
+          console.log('[Cart] 파싱된 숙소 정보:', accommodationInfo);
+        } catch (e) {
+          console.error('[Cart] 숙소 정보 파싱 오류:', e);
+        }
+
         const updatedPlanDetails = {
           ...response.data.plan,
-          flightInfo: typeof response.data.plan.flight_details === 'string' 
-            ? JSON.parse(response.data.plan.flight_details)
-            : response.data.plan.flight_details,
-          accommodationInfo: response.data.plan.accommodationInfo || response.data.plan.accommodation_details
+          flightInfo,
+          accommodationInfo
         };
         setPlanDetails(updatedPlanDetails);
-        console.log('[Cart] 변환된 계획 상세:', updatedPlanDetails);
-        console.log('[Cart] 항공편 정보:', updatedPlanDetails.flightInfo);
-        console.log('[Cart] 숙박 정보:', updatedPlanDetails.accommodationInfo);
         
         // 장바구니 아이템 구성
         const items = [];
         
-        // 항공편 데이터 추가
-        if (updatedPlanDetails.flightInfo) {
-          console.log('[Cart] 항공편 데이터 처리 중...');
-          try {
-            // 항공편 정보가 배열인지 확인하고 아니면 배열로 변환
-            const flights = Array.isArray(updatedPlanDetails.flightInfo) 
-              ? updatedPlanDetails.flightInfo 
-              : JSON.parse(updatedPlanDetails.flightInfo);
-              
-            console.log('[Cart] 파싱된 항공편 데이터:', flights);
-            
-            if (Array.isArray(flights) && flights.length > 0) {
-              flights.forEach((flight, index) => {
-                const price = flight?.flightOfferDetails?.flightOfferData?.price?.grandTotal;
-                console.log(`[Cart] 항공편 ${index + 1} 가격:`, price);
-                if (price) {
-                  items.push({
-                    id: `flight-${index}-${planId}`,
-                    name: flight.name || `항공편 ${index + 1}`,
-                    type: 'flight',
-                    quantity: 1,
-                    price: Number(price),
-                    originalData: flight
-                  });
+        // 항공권 데이터 추가
+        if (flightInfo && Array.isArray(flightInfo)) {
+          flightInfo.forEach((flight, index) => {
+            const price = flight?.flightOfferDetails?.flightOfferData?.price?.total;
+            if (price) {
+              const departure = flight.flightOfferDetails?.flightOfferData?.itineraries?.[0]?.segments?.[0];
+              items.push({
+                id: `flight-${index}-${planId}`,
+                name: `${departure?.departure?.iataCode || ''} → ${departure?.arrival?.iataCode || ''} 항공편`,
+                type: 'flight',
+                quantity: 1,
+                price: parseFloat(price),
+                details: {
+                  departure: departure?.departure?.at ? new Date(departure.departure.at).toLocaleString('ko-KR') : '정보 없음',
+                  arrival: departure?.arrival?.at ? new Date(departure.arrival.at).toLocaleString('ko-KR') : '정보 없음',
+                  duration: flight.flightOfferDetails?.flightOfferData?.itineraries?.[0]?.duration || '정보 없음'
                 }
               });
-            } else {
-              console.log('[Cart] 항공편 데이터가 배열 형식이 아닙니다.');
             }
-          } catch (error) {
-            console.error('[Cart] 항공편 데이터 파싱 오류:', error);
-          }
-        } else {
-          console.log('[Cart] 유효한 항공편 데이터가 없습니다.');
+          });
         }
         
-        // 숙박 데이터 추가
-        if (updatedPlanDetails.accommodationInfo) {
-          console.log('[Cart] 숙박 데이터 처리 중...');
-          // 숙박 정보가 문자열이면 파싱
-          const accommodation = typeof updatedPlanDetails.accommodationInfo === 'string' 
-            ? JSON.parse(updatedPlanDetails.accommodationInfo) 
-            : updatedPlanDetails.accommodationInfo;
-            
-          console.log('[Cart] 파싱된 숙박 정보:', accommodation);
+        // 숙소 데이터 추가
+        if (accommodationInfo?.hotel) {
+          const checkIn = new Date(accommodationInfo.checkIn);
+          const checkOut = new Date(accommodationInfo.checkOut);
+          const nights = Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
           
-          if (accommodation && accommodation.hotel) {
-            console.log('[Cart] 호텔 이름:', accommodation.hotel?.name);
-            console.log('[Cart] 숙박 가격:', accommodation.room?.price);
-            
-            const hotelName = accommodation.hotel?.name || '숙박';
-            const roomPrice = accommodation.room?.price || 0;
-            
-            if (roomPrice !== undefined && roomPrice !== null) {
-              items.push({
-                id: `accommodation-${planId}`,
-                name: hotelName,
-                type: 'accommodation',
-                quantity: 1,
-                price: typeof roomPrice === 'string' ? parseFloat(roomPrice) : roomPrice,
-                originalData: accommodation
-              });
-            }
+          // 선택된 룸 정보 가져오기
+          const selectedRoom = accommodationInfo.room || accommodationInfo.selectedRoom;
+          console.log('[Cart] 선택된 룸 정보:', selectedRoom);
+
+          // 룸 가격 계산
+          let roomPrice = 0;
+          if (selectedRoom?.price) {
+            roomPrice = typeof selectedRoom.price === 'string' 
+              ? parseFloat(selectedRoom.price.replace(/[^0-9.]/g, ''))
+              : selectedRoom.price;
+          } else if (selectedRoom?.rates?.[0]?.price) {
+            roomPrice = typeof selectedRoom.rates[0].price === 'string'
+              ? parseFloat(selectedRoom.rates[0].price.replace(/[^0-9.]/g, ''))
+              : selectedRoom.rates[0].price;
           }
-        } else {
-          console.log('[Cart] 유효한 숙박 데이터가 없습니다.');
+
+          items.push({
+            id: `accommodation-${planId}`,
+            name: accommodationInfo.hotel.hotel_name || accommodationInfo.hotel.name || '숙소',
+            type: 'accommodation',
+            quantity: nights,
+            price: roomPrice,
+            details: {
+              address: accommodationInfo.hotel.address,
+              checkIn: checkIn.toLocaleString('ko-KR'),
+              checkOut: checkOut.toLocaleString('ko-KR'),
+              nights: nights,
+              roomType: selectedRoom?.name || selectedRoom?.room_type || '선택된 객실',
+              roomDescription: selectedRoom?.description || selectedRoom?.room_description,
+              amenities: selectedRoom?.amenities || []
+            }
+          });
         }
         
         console.log('[Cart] 생성된 장바구니 아이템:', items);
@@ -220,7 +230,6 @@ const Cart = () => {
         
         // 기본적으로 모든 아이템 선택
         const newSelectedItems = items.map(item => item.id);
-        console.log('[Cart] 선택된 아이템 IDs:', newSelectedItems);
         setSelectedItems(newSelectedItems);
       } else {
         throw new Error(response.data.message || '계획 상세 정보를 불러오는데 실패했습니다.');
@@ -300,6 +309,20 @@ const Cart = () => {
   const calculateTotal = () => {
     const subtotal = calculateSubtotal();
     return Math.max(0, subtotal - discountAmount);
+  };
+
+  // 가격 포맷팅 함수 추가
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('ko-KR', {
+      style: 'currency',
+      currency: 'KRW',
+      maximumFractionDigits: 0
+    }).format(price);
+  };
+
+  // 숫자 포맷팅 함수 추가
+  const formatNumber = (number) => {
+    return new Intl.NumberFormat('ko-KR').format(number);
   };
 
   // 결제 처리 함수
@@ -401,11 +424,7 @@ const Cart = () => {
                   className="plan-select" 
                   value={selectedPlan?.plan_id || ''}
                   onChange={(e) => {
-                    const planId = e.target.value;
-                    console.log('[Cart] 드롭다운에서 선택된 plan_id:', planId);
-                    console.log('[Cart] 사용 가능한 plans:', plans);
-                    const plan = plans.find(p => String(p.plan_id) === String(planId));
-                    console.log('[Cart] 찾은 plan 객체:', plan);
+                    const plan = plans.find(p => String(p.plan_id) === e.target.value);
                     if (plan) handlePlanSelect(plan);
                   }}
                 >
@@ -439,39 +458,71 @@ const Cart = () => {
           <div className="divider"></div>
           
           <div className="cart-items">
-            <div className="cart-items-header">
-              <div className="header-checkbox"></div>
-              <span className="header-name">상품명</span>
-              <span className="header-quantity">수량</span>
-              <span className="header-price">결제금액</span>
-              <div className="header-delete"></div>
-            </div>
-            <div className="divider"></div>
-            {cartItems.map(item => (
-              <div key={item.id}>
-                <div className="cart-item">
-                  <input
-                    type="checkbox"
-                    checked={selectedItems.includes(item.id)}
-                    onChange={() => handleCheckboxChange(item.id)}
-                  />
-                  <span className="item-name">{item.name}</span>
-                  <div className="quantity-controls">
-                    <button 
-                      className="quantity-btn"
-                      onClick={() => handleQuantityChange(item.id, -1)}
-                    >
-                      -
-                    </button>
-                    <span className="item-quantity">{item.quantity}</span>
-                    <button 
-                      className="quantity-btn"
-                      onClick={() => handleQuantityChange(item.id, 1)}
-                    >
-                      +
-                    </button>
+            {/* 항공권 섹션 */}
+            <div className="category-section">
+              <h3 className="category-title">
+                <span className="icon">✈️</span>
+                항공권
+              </h3>
+              <div className="cart-items-header">
+                <div className="header-checkbox"></div>
+                <span className="header-name">항공편</span>
+                <span className="header-quantity">인원</span>
+                <span className="header-price">결제금액</span>
+                <div className="header-delete"></div>
+              </div>
+              <div className="divider"></div>
+              {cartItems.filter(item => item.type === 'flight').map(item => (
+                <div key={item.id} className="cart-item-card">
+                  <div className="cart-item-header">
+                    <input
+                      type="checkbox"
+                      checked={selectedItems.includes(item.id)}
+                      onChange={() => handleCheckboxChange(item.id)}
+                    />
+                    <span className="item-type-icon">
+                      {item.type === 'flight' ? '✈️' : '🏨'}
+                    </span>
+                    <span className="item-name">{item.name}</span>
                   </div>
-                  <span className="item-price">{item.price.toLocaleString()}원</span>
+                  <div className="cart-item-details">
+                    {item.type === 'flight' && (
+                      <>
+                        <div>출발: {item.details.departure}</div>
+                        <div>도착: {item.details.arrival}</div>
+                        <div>소요시간: {item.details.duration}</div>
+                      </>
+                    )}
+                  </div>
+                  <div className="cart-item-price">
+                    <div className="quantity-info">
+                      {item.type === 'accommodation' ? (
+                        <span className="nights-info">{formatNumber(item.quantity)}박</span>
+                      ) : (
+                        <div className="quantity-controls">
+                          <button 
+                            className="quantity-btn"
+                            onClick={() => handleQuantityChange(item.id, -1)}
+                          >
+                            -
+                          </button>
+                          <span className="item-quantity">{formatNumber(item.quantity)}</span>
+                          <button 
+                            className="quantity-btn"
+                            onClick={() => handleQuantityChange(item.id, 1)}
+                          >
+                            +
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="price-info">
+                      <div className="unit-price">
+                        1{item.type === 'accommodation' ? '박' : '인'} {formatPrice(item.price)}
+                      </div>
+                      <div className="total-price">{formatPrice(item.price * item.quantity)}</div>
+                    </div>
+                  </div>
                   <button 
                     className="delete-btn"
                     onClick={() => handleDeleteItem(item.id)}
@@ -479,9 +530,107 @@ const Cart = () => {
                     ×
                   </button>
                 </div>
-                <div className="divider"></div>
+              ))}
+              {cartItems.filter(item => item.type === 'flight').length === 0 && (
+                <div className="empty-category-message">
+                  선택된 항공권이 없습니다.
+                </div>
+              )}
+            </div>
+
+            {/* 숙소 섹션 */}
+            <div className="category-section">
+              <h3 className="category-title">
+                <span className="icon">🏨</span>
+                숙소
+              </h3>
+              <div className="cart-items-header">
+                <div className="header-checkbox"></div>
+                <span className="header-name">숙소명</span>
+                <span className="header-quantity">박수</span>
+                <span className="header-price">결제금액</span>
+                <div className="header-delete"></div>
               </div>
-            ))}
+              <div className="divider"></div>
+              {cartItems.filter(item => item.type === 'accommodation').map(item => (
+                <div key={item.id} className="cart-item-card">
+                  <div className="cart-item-header">
+                    <input
+                      type="checkbox"
+                      checked={selectedItems.includes(item.id)}
+                      onChange={() => handleCheckboxChange(item.id)}
+                    />
+                    <span className="item-type-icon">
+                      {item.type === 'flight' ? '✈️' : '🏨'}
+                    </span>
+                    <span className="item-name">{item.name}</span>
+                  </div>
+                  <div className="cart-item-details">
+                    {item.type === 'accommodation' && (
+                      <>
+                        <div>주소: {item.details.address}</div>
+                        <div>체크인: {item.details.checkIn}</div>
+                        <div>체크아웃: {item.details.checkOut}</div>
+                        <div className="room-details">
+                          <div className="room-type">객실 타입: {item.details.roomType}</div>
+                          {item.details.roomDescription && (
+                            <div className="room-description">{item.details.roomDescription}</div>
+                          )}
+                          {item.details.amenities && item.details.amenities.length > 0 && (
+                            <div className="room-amenities">
+                              <span>편의시설:</span>
+                              <ul>
+                                {item.details.amenities.map((amenity, index) => (
+                                  <li key={index}>{amenity}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div className="cart-item-price">
+                    <div className="quantity-info">
+                      <div className="quantity-controls">
+                        <button 
+                          className="quantity-btn"
+                          onClick={() => handleQuantityChange(item.id, -1)}
+                          disabled={item.quantity <= 1}
+                        >
+                          -
+                        </button>
+                        <span className="item-quantity">{formatNumber(item.quantity)}박</span>
+                        <button 
+                          className="quantity-btn"
+                          onClick={() => handleQuantityChange(item.id, 1)}
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                    <div className="price-info">
+                      <div className="unit-price">
+                        1박 {formatPrice(item.price)}
+                      </div>
+                      <div className="total-price">{formatPrice(item.price * item.quantity)}</div>
+                    </div>
+                  </div>
+                  <button 
+                    className="delete-btn"
+                    onClick={() => handleDeleteItem(item.id)}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {cartItems.filter(item => item.type === 'accommodation').length === 0 && (
+                <div className="empty-category-message">
+                  선택된 숙소가 없습니다.
+                </div>
+              )}
+            </div>
+
             {cartItems.length === 0 && (
               <div className="empty-cart-message">
                 <p>장바구니가 비어있습니다.</p>
@@ -492,6 +641,34 @@ const Cart = () => {
               </div>
             )}
           </div>
+
+          {/* 카테고리별 소계 */}
+          {cartItems.length > 0 && (
+            <div className="category-subtotals">
+              <div className="subtotal-item">
+                <span className="icon">✈️</span>
+                <span>항공권 소계:</span>
+                <span className="amount">
+                  {formatPrice(
+                    cartItems
+                      .filter(item => item.type === 'flight' && selectedItems.includes(item.id))
+                      .reduce((total, item) => total + (item.price * item.quantity), 0)
+                  )}
+                </span>
+              </div>
+              <div className="subtotal-item">
+                <span className="icon">🏨</span>
+                <span>숙소 소계:</span>
+                <span className="amount">
+                  {formatPrice(
+                    cartItems
+                      .filter(item => item.type === 'accommodation' && selectedItems.includes(item.id))
+                      .reduce((total, item) => total + (item.price * item.quantity), 0)
+                  )}
+                </span>
+              </div>
+            </div>
+          )}
 
           <div className="discount-section">
             <div className="discount-input">
@@ -537,7 +714,7 @@ const Cart = () => {
                   </div>
                 )}
               </div>
-              <span className="discount-amount">-{discountAmount.toLocaleString()}원</span>
+              <span className="discount-amount">-{formatPrice(discountAmount)}</span>
             </div>
           </div>
 
@@ -545,16 +722,16 @@ const Cart = () => {
             <div className="price-details">
               <div className="subtotal">
                 <span>상품 금액</span>
-                <span>{calculateSubtotal().toLocaleString()}원</span>
+                <span>{formatPrice(calculateSubtotal())}</span>
               </div>
               <div className="discount">
                 <span>할인 금액</span>
-                <span className="discount-amount">-{discountAmount.toLocaleString()}원</span>
+                <span className="discount-amount">-{formatPrice(discountAmount)}</span>
               </div>
             </div>
             <div className="total-price">
               <span>총 결제금액</span>
-              <span className="final-price">{calculateTotal().toLocaleString()}원</span>
+              <span className="final-price">{formatPrice(calculateTotal())}</span>
             </div>
             <div className="cart-buttons">
               <button 

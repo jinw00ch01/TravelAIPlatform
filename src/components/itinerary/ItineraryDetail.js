@@ -118,42 +118,122 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
       <div className="bg-white rounded-lg shadow-lg p-8">
         {/* 헤더 섹션 */}
         <div className="mb-8">
-          <div className="flex items-center">
-            {isEditing ? (
-              <form onSubmit={handleTitleSubmit} className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="text-3xl font-bold text-gray-800 border-b-2 border-blue-500 focus:outline-none"
-                  autoFocus
-                />
-                <button type="submit" className="text-blue-500 hover:text-blue-700">저장</button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsEditing(false);
-                    setTitle(itinerary?.name || itinerary?.title || "제목 없음"); 
-                  }}
-                  className="text-gray-500 hover:text-gray-700"
-                >취소</button>
-              </form>
-            ) : (
-              <>
-                <h2 className="text-3xl font-bold text-gray-800">{title}</h2>
-                {itinerary && Object.keys(itinerary).length > 0 && ( // itinerary가 있을 때만 수정 버튼 표시
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              {isEditing ? (
+                <form onSubmit={handleTitleSubmit} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="text-3xl font-bold text-gray-800 border-b-2 border-blue-500 focus:outline-none"
+                    autoFocus
+                  />
+                  <button type="submit" className="text-blue-500 hover:text-blue-700">저장</button>
                   <button
-                    onClick={() => setIsEditing(true)}
-                    className="ml-3 text-gray-500 hover:text-gray-700"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                    </svg>
-                  </button>
-                )}
-              </>
+                    type="button"
+                    onClick={() => {
+                      setIsEditing(false);
+                      setTitle(itinerary?.name || itinerary?.title || "제목 없음"); 
+                    }}
+                    className="text-gray-500 hover:text-gray-700"
+                  >취소</button>
+                </form>
+              ) : (
+                <>
+                  <h2 className="text-3xl font-bold text-gray-800">{title}</h2>
+                  {itinerary && Object.keys(itinerary).length > 0 && (
+                    <button
+                      onClick={() => setIsEditing(true)}
+                      className="ml-3 text-gray-500 hover:text-gray-700"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                      </svg>
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+            {/* 여행 기간 표시 */}
+            {itinerary?.accommodationInfo?.checkIn && itinerary?.accommodationInfo?.checkOut && (
+              <div className="text-right">
+                <div className="text-sm text-gray-600">여행 기간</div>
+                <div className="text-lg font-semibold text-blue-600">
+                  {new Date(itinerary.accommodationInfo.checkIn).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
+                  {' - '}
+                  {new Date(itinerary.accommodationInfo.checkOut).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
+                </div>
+              </div>
             )}
           </div>
+        </div>
+
+        {/* 숙소 및 항공권 요약 섹션 */}
+        <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* 숙소 요약 */}
+          {itinerary?.accommodationInfo?.hotel && (
+            <div className="bg-green-50 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-green-800 mb-2 flex items-center">
+                <span className="mr-2">🏨</span>
+                숙소 정보
+              </h3>
+              <div className="space-y-2">
+                <div className="font-medium">{itinerary.accommodationInfo.hotel.hotel_name}</div>
+                <div className="text-sm text-gray-600">{itinerary.accommodationInfo.hotel.address}</div>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <span className="text-gray-500">체크인:</span>
+                    <div className="font-medium">{new Date(itinerary.accommodationInfo.checkIn).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' })}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">체크아웃:</span>
+                    <div className="font-medium">{new Date(itinerary.accommodationInfo.checkOut).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' })}</div>
+                  </div>
+                </div>
+                {itinerary.accommodationInfo.hotel.price && (
+                  <div className="text-green-600 font-medium">
+                    가격: {itinerary.accommodationInfo.hotel.price}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 항공권 요약 */}
+          {itinerary?.flightInfo && itinerary.flightInfo.length > 0 && (
+            <div className="bg-blue-50 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-blue-800 mb-2 flex items-center">
+                <span className="mr-2">✈️</span>
+                항공권 정보
+              </h3>
+              <div className="space-y-3">
+                {itinerary.flightInfo.map((flight, index) => {
+                  const departure = flight.flightOfferDetails?.flightOfferData?.itineraries?.[0]?.segments?.[0];
+                  return (
+                    <div key={index} className="border-b border-blue-100 pb-2 last:border-0">
+                      <div className="font-medium">
+                        {departure?.departure?.iataCode} → {departure?.arrival?.iataCode}
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        {new Date(departure?.departure?.at).toLocaleString('ko-KR', {
+                          month: 'numeric',
+                          day: 'numeric',
+                          hour: 'numeric',
+                          minute: 'numeric'
+                        })}
+                      </div>
+                      {flight.flightOfferDetails?.flightOfferData?.price?.total && (
+                        <div className="text-blue-600 text-sm">
+                          가격: {flight.flightOfferDetails.flightOfferData.price.total}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 캘린더 네비게이션 */}
@@ -178,16 +258,6 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
           <div className="mb-6 text-center text-gray-500">표시할 날짜 정보가 없습니다.</div>
         )}
 
-        {/* 설명 섹션 */}
-        <div className="bg-blue-50 rounded-lg p-5 mb-8">
-          <h3 className="text-xl font-semibold text-gray-800 mb-3">
-            {currentDateData && currentDateData.title ? currentDateData.title : (itineraryData ? "일정 개요" : "정보 없음")}
-          </h3>
-          <p className="text-gray-700 text-base leading-relaxed">
-            {currentDateData?.description || itinerary?.overview || "선택된 날짜의 상세 설명이 없거나, 전체 여행 개요가 없습니다."}
-          </p>
-        </div>
-
         {/* 일정 타임라인 */}
         <div className="mb-8">
           <h3 className="text-xl font-semibold text-gray-800 mb-4">
@@ -196,33 +266,81 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
           
           {currentDateData && schedules && schedules.length > 0 ? (
             <div className="space-y-4">
-              {schedules.map((item, index) => {
-                const icon = getIconByCategory(item.category);
-                return (
-                  <div key={item.id || index} className="flex border-l-4 border-blue-500 bg-white shadow-sm rounded-lg overflow-hidden">
-                    <div className="w-20 bg-blue-50 p-4 flex items-center justify-center">
-                      <div className="text-center">
-                        <div className="text-xl mb-1">{icon}</div>
-                        <div className="text-blue-800 font-bold">{item.time}</div>
-                      </div>
-                    </div>
-                    <div className="flex-1 p-4">
-                      <h4 className="font-bold text-gray-900">{item.name || item.activity}</h4>
-                      {item.duration && (<p className="text-sm text-gray-600 mt-1"><span className="font-medium">소요시간:</span> {item.duration}</p>)}
-                      {item.address && (<p className="text-sm text-gray-600 mt-1"><span className="font-medium">위치:</span> {item.address}</p>)}
-                      {item.notes && (<p className="text-sm text-gray-600 mt-1"><span className="font-medium">메모:</span> {item.notes}</p>)}
-                      {item.cost && item.cost !== '0' && (<p className="text-sm text-gray-600 mt-1"><span className="font-medium">비용:</span> ¥{item.cost}</p>)}
-                    </div>
+              {/* 항공편 정보 */}
+              {schedules.filter(item => item.type === 'Flight_Departure' || item.type === 'Flight_Return').length > 0 && (
+                <div className="bg-blue-50 rounded-lg p-4 mb-4">
+                  <h4 className="text-lg font-semibold text-blue-800 mb-3">✈️ 항공편 정보</h4>
+                  <div className="space-y-3">
+                    {schedules
+                      .filter(item => item.type === 'Flight_Departure' || item.type === 'Flight_Return')
+                      .map((item, index) => (
+                        <div key={item.id || index} className="flex items-start p-3 bg-white rounded-lg shadow-sm">
+                          <div className="flex-grow">
+                            <div className="font-medium text-gray-800">{item.name}</div>
+                            <div className="text-sm text-gray-600">
+                              <div>시간: {item.time}</div>
+                              {item.duration && <div>소요시간: {item.duration}</div>}
+                              {item.notes && <div className="text-blue-600">{item.notes}</div>}
+                            </div>
+                          </div>
+                        </div>
+                    ))}
                   </div>
-                );
-              })}
+                </div>
+              )}
+
+              {/* 숙박 정보 */}
+              {schedules.filter(item => item.type === 'accommodation').length > 0 && (
+                <div className="bg-green-50 rounded-lg p-4 mb-4">
+                  <h4 className="text-lg font-semibold text-green-800 mb-3">🏨 숙박 정보</h4>
+                  <div className="space-y-3">
+                    {schedules
+                      .filter(item => item.type === 'accommodation')
+                      .map((item, index) => (
+                        <div key={item.id || index} className="flex items-start p-3 bg-white rounded-lg shadow-sm">
+                          <div className="flex-grow">
+                            <div className="font-medium text-gray-800">{item.name}</div>
+                            <div className="text-sm text-gray-600">
+                              <div>{item.time === '체크인' ? '체크인' : '체크아웃'} 시간: {item.time}</div>
+                              {item.address && <div>주소: {item.address}</div>}
+                              {item.hotelDetails?.hotel?.price && (
+                                <div className="text-green-600">가격: {item.hotelDetails.hotel.price}</div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 일반 일정 */}
+              <div className="space-y-3">
+                {schedules
+                  .filter(item => item.type !== 'Flight_Departure' && item.type !== 'Flight_Return' && item.type !== 'accommodation')
+                  .map((item, index) => {
+                    const icon = getIconByCategory(item.category);
+                    return (
+                      <div key={item.id || index} className="flex items-start p-4 bg-white rounded-lg shadow-sm">
+                        <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-gray-100 rounded-full mr-4">
+                          {icon}
+                        </div>
+                        <div className="flex-grow">
+                          <div className="font-medium text-gray-800">{item.name}</div>
+                          <div className="text-sm text-gray-600">
+                            <div>시간: {item.time}</div>
+                            {item.duration && <div>소요시간: {item.duration}</div>}
+                            {item.address && <div>주소: {item.address}</div>}
+                            {item.notes && <div className="text-gray-500">{item.notes}</div>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
             </div>
           ) : (
-            <div className="text-center py-8 bg-gray-50 rounded-lg">
-              <p className="text-gray-500">
-                {selectedDateKey && itineraryData && itineraryData[selectedDateKey] ? "이 날의 일정이 없습니다. 다른 날짜를 선택해보세요." : "날짜를 선택해주세요."}
-              </p>
-            </div>
+            <div className="text-center text-gray-500">선택된 날짜의 일정이 없습니다.</div>
           )}
         </div>
 

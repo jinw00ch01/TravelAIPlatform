@@ -564,7 +564,17 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightM
         const currentSchedules = travelPlans[selectedDay]?.schedules;
         if (!currentSchedules || currentSchedules.length <= 1) return;
 
-        const coordinates = currentSchedules.map(schedule => [schedule.lng, schedule.lat]);
+        // 항공편을 제외한 일정만 필터링
+        const filteredSchedules = currentSchedules.filter(schedule => 
+          schedule.type !== 'Flight_Departure' && 
+          schedule.type !== 'Flight_Return' && 
+          schedule.lng && 
+          schedule.lat
+        );
+
+        if (filteredSchedules.length <= 1) return;
+
+        const coordinates = filteredSchedules.map(schedule => [schedule.lng, schedule.lat]);
 
         const routePromises = [];
         for (let i = 0; i < coordinates.length - 1; i++) {

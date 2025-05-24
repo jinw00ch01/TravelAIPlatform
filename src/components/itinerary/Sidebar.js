@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
+import './Sidebar.css';
 
-const Sidebar = ({ onSelectItinerary, selectedItinerary, itineraries, onDeleteItinerary }) => {
+const Sidebar = ({ onSelectItinerary, selectedItinerary, itineraries, onDeleteItinerary, onDateSelectFromCalendar }) => {
   const [date, setDate] = useState(new Date());
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, itineraryId: null });
   
@@ -15,10 +16,33 @@ const Sidebar = ({ onSelectItinerary, selectedItinerary, itineraries, onDeleteIt
   };
 
   // 달력 타일 스타일링을 위한 함수
-  const tileClassName = ({ date }) => {
-    const dateString = formatDate(date);
-    const hasItinerary = itineraries.some(it => it.date === dateString);
-    return hasItinerary ? 'relative' : '';
+  const tileClassName = ({ date, view }) => {
+    if (view !== 'month' || !selectedItinerary?.accommodationInfo?.checkIn || !selectedItinerary?.accommodationInfo?.checkOut) {
+      return '';
+    }
+
+    const checkIn = new Date(selectedItinerary.accommodationInfo.checkIn);
+    const checkOut = new Date(selectedItinerary.accommodationInfo.checkOut);
+    
+    // 시간을 0으로 설정하여 날짜만 비교
+    checkIn.setHours(0, 0, 0, 0);
+    checkOut.setHours(0, 0, 0, 0);
+    const currentDate = new Date(date);
+    currentDate.setHours(0, 0, 0, 0);
+
+    const classes = [];
+
+    if (currentDate.getTime() === checkIn.getTime()) {
+      classes.push('calendar-check-in');
+    }
+    if (currentDate.getTime() === checkOut.getTime()) {
+      classes.push('calendar-check-out');
+    }
+    if (currentDate > checkIn && currentDate < checkOut) {
+      classes.push('calendar-stay-period');
+    }
+
+    return classes.join(' ');
   };
 
   const handleDeleteClick = (e, itineraryId) => {
@@ -36,54 +60,48 @@ const Sidebar = ({ onSelectItinerary, selectedItinerary, itineraries, onDeleteIt
   };
 
   return (
-    <div className="w-80 bg-white shadow-lg p-4">
-      {/* 달력 */}
+    <div className="w-64 bg-white shadow-lg p-4 flex flex-col">
+      {/* 캘린더 */}
       <div className="mb-6">
         <Calendar
-          onChange={setDate}
-          value={date}
-          className="w-full border-none text-xs"
+          onChange={onDateSelectFromCalendar}
+          value={null}
           tileClassName={tileClassName}
-          calendarClassName="text-xs"
-          tileContent={({ date }) => {
-            const dateString = formatDate(date);
-            const hasItinerary = itineraries.some(it => it.date === dateString);
-            return hasItinerary ? (
-              <div key={dateString} className="absolute inset-0 flex items-center justify-center">
-                <div className="w-8 h-8 bg-yellow-300 rounded-full flex items-center justify-center">
-                  <span className="text-gray-800">{date.getDate()}일</span>
-                </div>
-              </div>
-            ) : null;
-          }}
+          className="custom-calendar"
         />
       </div>
 
-      {/* 일정 목록 */}
-      <div className="space-y-2">
-        <h3 className="font-semibold text-lg mb-3">일정 목록</h3>
-        {itineraries.map((itinerary) => (
-          <div
-            key={itinerary.id}
-            className={`p-3 rounded-lg cursor-pointer transition-colors group relative ${
-              selectedItinerary?.id === itinerary.id
-                ? 'bg-blue-100 text-blue-800'
-                : 'hover:bg-gray-100'
-            }`}
-            onClick={() => onSelectItinerary(itinerary)}
-          >
-            <div className="font-medium">{itinerary.title}</div>
-            <div className="text-sm text-gray-500">{itinerary.date}</div>
+      {/* 여행 계획 목록 */}
+      <div className="flex-1 overflow-y-auto">
+        <h3 className="text-lg font-semibold mb-4">여행 계획 목록</h3>
+        <div className="space-y-2">
+          {itineraries.map((itinerary) => (
             <button
-              onClick={(e) => handleDeleteClick(e, itinerary.id)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
+              key={itinerary.plan_id}
+              onClick={() => onSelectItinerary(itinerary)}
+              className={`w-full text-left p-3 rounded-lg transition-colors ${
+                selectedItinerary?.plan_id === itinerary.plan_id
+                  ? 'bg-blue-500 text-white'
+                  : 'hover:bg-gray-100'
+              }`}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
+              <div className="font-medium">{itinerary.name || itinerary.title}</div>
+              {itinerary.accommodationInfo?.checkIn && (
+                <div className="text-sm opacity-80">
+                  {new Date(itinerary.accommodationInfo.checkIn).toLocaleDateString('ko-KR', {
+                    month: 'long',
+                    day: 'numeric'
+                  })}
+                  {' - '}
+                  {new Date(itinerary.accommodationInfo.checkOut).toLocaleDateString('ko-KR', {
+                    month: 'long',
+                    day: 'numeric'
+                  })}
+                </div>
+              )}
             </button>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       {/* 삭제 확인 대화상자 */}

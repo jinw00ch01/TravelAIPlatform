@@ -1,0 +1,65 @@
+.custom-calendar {
+  width: 100%;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  background: white;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+/* 체크인 날짜 스타일 */
+.calendar-check-in {
+  background-color: #3b82f6 !important;
+  color: white !important;
+  border-top-left-radius: 9999px !important;
+  border-bottom-left-radius: 9999px !important;
+}
+
+/* 체크아웃 날짜 스타일 */
+.calendar-check-out {
+  background-color: #3b82f6 !important;
+  color: white !important;
+  border-top-right-radius: 9999px !important;
+  border-bottom-right-radius: 9999px !important;
+}
+
+/* 체크인-체크아웃 사이 기간 스타일 */
+.calendar-stay-period {
+  background-color: #dbeafe !important;
+}
+
+/* 체크인/아웃 날짜가 같은 경우 */
+.calendar-check-in.calendar-check-out {
+  border-radius: 9999px !important;
+}
+
+/* 달력 타일 호버 효과 */
+.react-calendar__tile:enabled:hover {
+  background-color: #93c5fd !important;
+  color: white !important;
+}
+
+/* 오늘 날짜 스타일 */
+.react-calendar__tile--now {
+  background: #f3f4f6 !important;
+}
+
+/* 선택된 날짜 스타일 */
+.react-calendar__tile--active {
+  background: #3b82f6 !important;
+  color: white !important;
+}
+
+/* 달력 네비게이션 버튼 스타일 */
+.react-calendar__navigation button {
+  min-width: 44px;
+  background: none;
+  font-size: 16px;
+  margin-top: 8px;
+}
+
+.react-calendar__navigation button:enabled:hover,
+.react-calendar__navigation button:enabled:focus {
+  background-color: #e5e7eb !important;
+  border-radius: 0.5rem;
+} 

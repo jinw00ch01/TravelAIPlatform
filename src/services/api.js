@@ -178,40 +178,28 @@ export const travelApi = {
   // 여행 계획 저장 (SavePlanFunction)
   savePlan: async (planData) => {
     try {
-      console.log('여행 계획 저장 요청 시도 - URL:', `${API_URL}/api/travel/save`, 'Data:', planData);
+      console.log('[API] 여행 계획 저장 요청 시도 - URL:', `${API_URL}/api/travel/save`);
+      console.log('[API] 저장할 데이터:', planData);
       
       // 서버에 맞는 형식으로 데이터 변환
-      // SavePlanFunction에서 기대하는 형식: { title: "제목", data: { ... 일차별 데이터 ... } }
-      let serverData;
-      
-      // planData가 이미 planData와 dynamoDbData로 구조화되어 있는 경우
-      if (planData.planData) {
-        const innerPlanData = planData.planData;
-        serverData = {
-          title: innerPlanData.title,
-          data: innerPlanData.days.reduce((obj, day) => {
-            obj[day.day] = {
-              title: day.title,
-              schedules: day.schedules
-            };
-            return obj;
-          }, {})
-        };
-      } else {
-        // 기존 형식 (단일 객체)
-        serverData = {
-          title: planData.title,
-          data: planData.days.reduce((obj, day) => {
-            obj[day.day] = {
-              title: day.title,
-              schedules: day.schedules
-            };
-            return obj;
-          }, {})
-        };
+      let serverData = {
+        title: planData.title,
+        data: planData.days.reduce((obj, day) => {
+          obj[day.day] = {
+            title: day.title,
+            schedules: day.schedules
+          };
+          return obj;
+        }, {})
+      };
+
+      // 숙소 정보가 있으면 추가
+      if (planData.accommodationInfo) {
+        serverData.accommodationInfo = planData.accommodationInfo;
+        console.log('[API] 숙소 정보 포함:', serverData.accommodationInfo);
       }
       
-      console.log('변환된 서버 데이터:', serverData);
+      console.log('[API] 변환된 서버 데이터:', serverData);
       
       // apiClient를 사용하여 요청 (인터셉터에서 인증 헤더 자동 추가)
       const response = await apiClient.post('/api/travel/save', serverData, {
@@ -220,20 +208,10 @@ export const travelApi = {
         retryDelay: 1000
       });
       
-      console.log('여행 계획 저장 성공:', response.data);
+      console.log('[API] 여행 계획 저장 성공:', response.data);
       return response.data;
     } catch (error) {
       console.error('여행 계획 저장 실패:', error);
-      
-      // 오류 상세 로깅
-      if (error.response) {
-        console.error('저장 실패 - 서버 응답:', error.response.status, error.response.data);
-      } else if (error.request) {
-        console.error('저장 실패 - 응답 없음:', error.request);
-      } else {
-        console.error('저장 실패 - 요청 오류:', error.message);
-      }
-      
       throw error;
     }
   },

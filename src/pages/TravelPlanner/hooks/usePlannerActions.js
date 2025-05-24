@@ -111,23 +111,46 @@ const usePlannerActions = ({
     setIsSaving(true);
     setSaveError(null);
     try {
+      // 숙소 정보 추출
+      let accommodationInfo = null;
+      for (const dayKey of Object.keys(travelPlans)) {
+        const schedules = travelPlans[dayKey].schedules || [];
+        const checkInSchedule = schedules.find(s => s.type === 'accommodation' && s.time === '체크인');
+        if (checkInSchedule?.hotelDetails) {
+          accommodationInfo = checkInSchedule.hotelDetails;
+          console.log('[usePlannerActions] 숙소 정보 추출:', accommodationInfo);
+          break;
+        }
+      }
+
+      // 일반 일정에서 숙소 일정 제외
       const planData = {
         title: titleToSave,
         days: Object.keys(travelPlans).map(day => ({
           day: parseInt(day),
           title: travelPlans[day].title,
-          schedules: travelPlans[day].schedules?.map(schedule => {
-            const { hotelDetails, ...restOfSchedule } = schedule;
-            const baseSchedule = { ...restOfSchedule };
-            if (baseSchedule.flightOfferDetails?.flightOfferData) {
-              baseSchedule.flightOfferDetails.flightOfferData = 
-                JSON.parse(JSON.stringify(baseSchedule.flightOfferDetails.flightOfferData, (k,v) => typeof v === 'number' && !isFinite(v) ? null : v));
-            }
-            return baseSchedule;
-          }) || []
+          schedules: (travelPlans[day].schedules || [])
+            .filter(schedule => schedule.type !== 'accommodation')
+            .map(schedule => {
+              const { hotelDetails, ...restOfSchedule } = schedule;
+              const baseSchedule = { ...restOfSchedule };
+              if (baseSchedule.flightOfferDetails?.flightOfferData) {
+                baseSchedule.flightOfferDetails.flightOfferData = 
+                  JSON.parse(JSON.stringify(baseSchedule.flightOfferDetails.flightOfferData, (k,v) => typeof v === 'number' && !isFinite(v) ? null : v));
+              }
+              return baseSchedule;
+            })
         })),
         startDate: formatDateFns(startDate, 'yyyy-MM-dd')
       };
+
+      // 숙소 정보가 있으면 추가
+      if (accommodationInfo) {
+        planData.accommodationInfo = accommodationInfo;
+        console.log('[usePlannerActions] 저장할 planData에 숙소 정보 추가:', planData.accommodationInfo);
+      }
+
+      console.log('[usePlannerActions] 최종 저장 데이터:', planData);
 
       const response = await travelApi.savePlan(planData);
       if (response?.success && response.plan_id) {

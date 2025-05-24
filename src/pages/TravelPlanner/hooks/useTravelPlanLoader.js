@@ -120,13 +120,67 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
             roundTripFlag = parsedFlightInfo.some(f => f.type === 'Flight_Return');
             console.log('[useTravelPlanLoader] 항공편 정보 파싱 완료', { parsedFlightInfo, roundTripFlag });
           }
-          // 여기서 accommodationInfo도 파싱 시도 (checkplan API가 반환한다면)
-          if (data.plan.accommodation_details) { // 필드명이 accommodation_details라고 가정
-            parsedAccommodationInfo = JSON.parse(data.plan.accommodation_details);
-            console.log('[useTravelPlanLoader] 숙박 정보 파싱 완료 (checkplan API)', parsedAccommodationInfo);
+          // accmo_info 필드에서 숙박 정보 파싱
+          if (data.plan.accmo_info) {
+            parsedAccommodationInfo = JSON.parse(data.plan.accmo_info);
+            console.log('[useTravelPlanLoader] 숙박 정보 파싱 완료 (accmo_info)', parsedAccommodationInfo);
+            
+            // 숙박 정보를 일정에 추가
+            if (parsedAccommodationInfo.hotel && parsedAccommodationInfo.checkIn && parsedAccommodationInfo.checkOut) {
+              const checkInDate = new Date(parsedAccommodationInfo.checkIn);
+              const checkOutDate = new Date(parsedAccommodationInfo.checkOut);
+              
+              // 체크인 날짜에 해당하는 day 찾기
+              const checkInDayKey = Object.keys(newTravelPlans).find(dayKey => {
+                const dayDate = new Date(potentialStartDate);
+                dayDate.setDate(dayDate.getDate() + parseInt(dayKey) - 1);
+                dayDate.setHours(0, 0, 0, 0);
+                checkInDate.setHours(0, 0, 0, 0);
+                return dayDate.getTime() === checkInDate.getTime();
+              });
+
+              // 체크아웃 날짜에 해당하는 day 찾기
+              const checkOutDayKey = Object.keys(newTravelPlans).find(dayKey => {
+                const dayDate = new Date(potentialStartDate);
+                dayDate.setDate(dayDate.getDate() + parseInt(dayKey) - 1);
+                dayDate.setHours(0, 0, 0, 0);
+                checkOutDate.setHours(0, 0, 0, 0);
+                return dayDate.getTime() === checkOutDate.getTime();
+              });
+
+              if (checkInDayKey) {
+                const baseSchedule = {
+                  type: 'accommodation',
+                  name: parsedAccommodationInfo.hotel.hotel_name || parsedAccommodationInfo.hotel.hotel_name_trans,
+                  address: parsedAccommodationInfo.hotel.address || parsedAccommodationInfo.hotel.address_trans,
+                  category: '숙박',
+                  lat: parsedAccommodationInfo.hotel.latitude,
+                  lng: parsedAccommodationInfo.hotel.longitude,
+                  hotelDetails: parsedAccommodationInfo
+                };
+
+                // 체크인 일정 추가
+                const checkInSchedule = {
+                  ...baseSchedule,
+                  id: `hotel-${parsedAccommodationInfo.hotel.hotel_id}-${checkInDayKey}-in`,
+                  time: '체크인'
+                };
+                newTravelPlans[checkInDayKey].schedules.push(checkInSchedule);
+
+                // 체크아웃 일정 추가 (체크아웃 날짜가 다른 경우에만)
+                if (checkOutDayKey && checkOutDayKey !== checkInDayKey) {
+                  const checkOutSchedule = {
+                    ...baseSchedule,
+                    id: `hotel-${parsedAccommodationInfo.hotel.hotel_id}-${checkOutDayKey}-out`,
+                    time: '체크아웃'
+                  };
+                  newTravelPlans[checkOutDayKey].schedules.push(checkOutSchedule);
+                }
+              }
+            }
           }
         } catch (e) {
-          console.error('[useTravelPlanLoader] 항공편 또는 숙박 정보 파싱 실패:', e);
+          console.error('[useTravelPlanLoader] 항공편/숙박 정보 파싱 실패:', e);
         }
         
         console.log('[useTravelPlanLoader] checkplanfunction API 데이터 처리 완료');
@@ -602,6 +656,11 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
         // 날짜 비교를 위해 시간 정보 제거
         checkInDate.setHours(0, 0, 0, 0);
         checkOutDate.setHours(0, 0, 0, 0);
+        console.log('[useTravelPlanLoader] 체크인/아웃 날짜:', { checkInDate, checkOutDate });
+
+        // 시작 날짜를 체크인 날짜로 업데이트
+        result.startDate = checkInDate;
+        console.log('[useTravelPlanLoader] 시작 날짜를 체크인 날짜로 업데이트:', result.startDate);
         
         // 체크인과 체크아웃 날짜에 해당하는 day 키 찾기
         const dayKeys = result.dayOrder.filter(dayKey => {
@@ -610,9 +669,18 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
           dayDate.setHours(0, 0, 0, 0);
           
           // 체크인 또는 체크아웃 날짜와 일치하는지 확인
-          return dayDate.getTime() === checkInDate.getTime() || 
-                 dayDate.getTime() === checkOutDate.getTime();
+          const isCheckInDay = dayDate.getTime() === checkInDate.getTime();
+          const isCheckOutDay = dayDate.getTime() === checkOutDate.getTime();
+          console.log('[useTravelPlanLoader] 날짜 비교:', {
+            dayKey,
+            dayDate,
+            isCheckInDay,
+            isCheckOutDay
+          });
+          return isCheckInDay || isCheckOutDay;
         }).sort((a, b) => parseInt(a) - parseInt(b));
+
+        console.log('[useTravelPlanLoader] 찾은 숙박 일정 날짜들:', dayKeys);
 
         if (dayKeys.length > 0) {
           console.log('[useTravelPlanLoader] 숙박 일정 추가:', dayKeys);
@@ -629,6 +697,7 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
             lng: hotelInfo.longitude,
             notes: hotelInfo.price ? `가격: ${hotelInfo.price}` : ''
           };
+          console.log('[useTravelPlanLoader] 생성된 기본 스케줄:', baseSchedule);
 
           // 체크인 날짜에 체크인 일정 추가
           const checkInDayKey = dayKeys[0];
