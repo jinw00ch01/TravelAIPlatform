@@ -109,6 +109,14 @@ export const handler = async (event) => {
     });
 
     const result = await docClient.send(queryCmd);
+    
+    // 디버깅 로그 추가
+    console.log("DynamoDB 쿼리 결과:", JSON.stringify(result, null, 2));
+    if (result.Items && result.Items[0]) {
+      console.log("첫 번째 아이템 키들:", Object.keys(result.Items[0]));
+      console.log("name 필드 값:", result.Items[0].name);
+      console.log("plan_id 필드 값:", result.Items[0].plan_id);
+    }
 
     return {
       statusCode: 200,

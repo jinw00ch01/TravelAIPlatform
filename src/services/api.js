@@ -216,6 +216,84 @@ export const travelApi = {
     }
   },
 
+  // 여행 계획 수정 (UpdateTravelPlan - SavePlanFunction 사용)
+  updateTravelPlan: async (planId, updateData, updateType = null) => {
+    try {
+      console.log('[API] 여행 계획 수정 요청 시도 - URL:', `${API_URL}/api/travel/save`);
+      console.log('[API] 수정할 데이터:', { planId, updateData, updateType });
+      
+      // 기본 수정 데이터 구조
+      let serverData = {
+        plan_id: planId
+      };
+
+      // 수정 타입이 지정된 경우
+      if (updateType) {
+        serverData.update_type = updateType;
+      }
+
+      // 수정 데이터에 따라 적절한 필드 설정
+      if (updateData.title) {
+        serverData.title = updateData.title;
+      }
+
+      if (updateData.data || updateData.itinerary) {
+        // 일정 데이터 처리
+        const itineraryData = updateData.data || updateData.itinerary;
+        
+        if (Array.isArray(itineraryData)) {
+          // days 배열 형식인 경우 객체로 변환
+          serverData.data = itineraryData.reduce((obj, day) => {
+            obj[day.day] = {
+              title: day.title,
+              schedules: day.schedules || []
+            };
+            return obj;
+          }, {});
+        } else {
+          // 이미 객체 형식인 경우
+          serverData.data = itineraryData;
+        }
+      }
+
+      if (updateData.flightInfo) {
+        serverData.flightInfo = updateData.flightInfo;
+      }
+
+      if (updateData.accommodationInfo) {
+        serverData.accommodationInfo = updateData.accommodationInfo;
+      }
+
+      if (updateData.shared_email !== undefined) {
+        serverData.shared_email = updateData.shared_email;
+      }
+
+      if (updateData.paid_plan !== undefined) {
+        serverData.paid_plan = updateData.paid_plan;
+      }
+
+      if (updateData.status) {
+        // status는 특별히 처리하지 않고 로그만 남김
+        console.log('[API] status 필드는 현재 지원되지 않음:', updateData.status);
+      }
+      
+      console.log('[API] 최종 수정 요청 데이터:', serverData);
+      
+      // apiClient를 사용하여 요청 (인터셉터에서 인증 헤더 자동 추가)
+      const response = await apiClient.post('/api/travel/save', serverData, {
+        timeout: 15000, // 타임아웃 설정 (15초)
+        retry: 2,       // 재시도 설정
+        retryDelay: 1000
+      });
+      
+      console.log('[API] 여행 계획 수정 성공:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('여행 계획 수정 실패:', error);
+      throw error;
+    }
+  },
+
   // 투어/액티비티 조회 함수 추가
   getToursAndActivities: async (params) => {
     try {

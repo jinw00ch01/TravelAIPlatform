@@ -70,7 +70,9 @@ const TravelPlansList = ({ onSelectPlan }) => {
           className="bg-white rounded-lg shadow p-4 cursor-pointer hover:shadow-md transition-shadow"
           onClick={() => onSelectPlan(plan)}
         >
-          <h3 className="text-lg font-semibold mb-2">{plan.name}</h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-lg font-semibold">{plan.name}</h3>
+          </div>
           <p className="text-gray-600 text-sm">
             마지막 수정: {format(new Date(plan.last_updated), 'yyyy년 MM월 dd일', { locale: ko })}
           </p>

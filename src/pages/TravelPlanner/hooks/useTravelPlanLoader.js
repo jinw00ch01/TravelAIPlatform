@@ -15,6 +15,7 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
   const [selectedDay, setSelectedDay] = useState('');
   const [startDate, setStartDate] = useState(new Date());
   const [planId, setPlanId] = useState(null);
+  const [planName, setPlanName] = useState(null);
   const [isLoadingPlan, setIsLoadingPlan] = useState(true); 
   const [loadedFlightInfo, setLoadedFlightInfo] = useState(null);
   const [isRoundTrip, setIsRoundTrip] = useState(false);
@@ -32,6 +33,7 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
     setSelectedDay('1');
     setStartDate(initialDate);
     setPlanId(null);
+    setPlanName(null);
     setLoadedFlightInfo(null);
     setIsRoundTrip(false);
     setLoadError(null);
@@ -76,6 +78,7 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
     let newSelectedDay = '1';
     let newPlanId = null;
     let newStartDate = null;
+    let planName = null;
     let isDataProcessed = false;
     let parsedFlightInfo = null;
     let roundTripFlag = false;
@@ -84,10 +87,22 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
     // checkplanfunction API에서 받은 데이터 구조 확인 및 처리 (plan이 배열이 아니라 객체인 경우)
     if (data?.plan?.itinerary_schedules && typeof data.plan.itinerary_schedules === 'string') {
       console.log('[useTravelPlanLoader] checkplanfunction API 응답 데이터 처리 (plan 객체)');
+      console.log('[useTravelPlanLoader] data.plan 전체:', data.plan);
+      console.log('[useTravelPlanLoader] data.plan.name:', data.plan.name);
+      console.log('[useTravelPlanLoader] data.plan.plan_id:', data.plan.plan_id);
+      
       try {
         // plan_id가 있으면 저장
         if (data.plan.plan_id) {
           newPlanId = data.plan.plan_id;
+        }
+        
+        // 계획 제목 저장
+        if (data.plan.name) {
+          planName = data.plan.name;
+          console.log('[useTravelPlanLoader] 계획 제목 추출 성공:', planName);
+        } else {
+          console.log('[useTravelPlanLoader] 계획 제목(name) 없음!');
         }
         
         // itinerary_schedules 파싱
@@ -193,6 +208,18 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
     
     // 기존 정제 로직은 checkplanfunction 처리가 되지 않았을 때만 실행
     if (!isDataProcessed) {
+      console.log('[useTravelPlanLoader] 다른 데이터 처리 경로 실행');
+      console.log('[useTravelPlanLoader] data 전체 구조:', data);
+      
+      // 우선 name 필드부터 확인
+      if (data?.plan && !Array.isArray(data.plan) && data.plan.name) {
+        planName = data.plan.name;
+        console.log('[useTravelPlanLoader] 단일 plan 객체에서 name 추출:', planName);
+      } else if (data?.plan?.[0]?.name) {
+        planName = data.plan[0].name;
+        console.log('[useTravelPlanLoader] plan 배열[0]에서 name 추출:', planName);
+      }
+
       if (data?.plan?.[0]?.start_date) {
         newStartDate = new Date(data.plan[0].start_date);
       } else if (data?.originalData?.start_date) {
@@ -242,10 +269,12 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
         newDayOrder = Object.keys(data.plannerData).sort((a, b) => parseInt(a) - parseInt(b));
         newSelectedDay = newDayOrder[0] || '1';
         if (data.plan?.[0]?.id) newPlanId = data.plan[0].id;
+        if (data.plan?.[0]?.name) planName = data.plan[0].name;
       } else if (data?.plan?.[0]?.itinerary_schedules && Object.keys(data.plan[0].itinerary_schedules).length > 0) {
         console.log('[useTravelPlanLoader] itinerary_schedules 데이터 발견');
         const itinerarySchedules = data.plan[0].itinerary_schedules;
         if (data.plan[0].plan_id) newPlanId = data.plan[0].plan_id;
+        if (data.plan[0].name) planName = data.plan[0].name;
 
         Object.keys(itinerarySchedules).sort((a, b) => parseInt(a) - parseInt(b)).forEach(dayKey => {
           const dayPlan = itinerarySchedules[dayKey];
@@ -264,6 +293,7 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
       } else if (data?.plan?.[0]?.plan_data?.candidates?.[0]?.content?.parts?.[0]?.text) {
         console.log('[useTravelPlanLoader] AI 생성 데이터 파싱 시도 (Gemini)');
         if (data.plan[0].plan_id) newPlanId = data.plan[0].plan_id;
+        if (data.plan[0].name) planName = data.plan[0].name;
         
         try {
           const textContent = data.plan[0].plan_data.candidates[0].content.parts[0].text;
@@ -554,6 +584,7 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
       dayOrder: newDayOrder,
       selectedDay: newSelectedDay,
       planId: newPlanId,
+      planName: planName,
       startDate: newStartDate || potentialStartDate,
       loadedFlightInfo: parsedFlightInfo,
       isRoundTrip: roundTripFlag,
@@ -644,6 +675,7 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
       setLoadedFlightInfo(result.loadedFlightInfo);
       setIsRoundTrip(result.isRoundTrip);
       setLoadedAccommodationInfo(result.loadedAccommodationInfo);
+      setPlanName(result.planName);
       
       console.log('[useTravelPlanLoader] 최종 상태 업데이트 완료. newStartDate:', result.startDate);
 
@@ -775,7 +807,9 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
     loadedFlightInfo,
     isRoundTrip,
     loadError,
-    loadedAccommodationInfo
+    loadedAccommodationInfo,
+    planName,
+    setPlanName
   };
 };
 

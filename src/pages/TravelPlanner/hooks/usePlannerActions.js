@@ -103,7 +103,107 @@ const usePlannerActions = ({
     }
   }, [isSaving]);
 
-  const handleSaveConfirm = useCallback(async (titleToSave) => {
+  // 즉시 수정 함수 (다이얼로그 없이 바로 수정)
+  const handleImmediateUpdate = useCallback(async () => {
+    if (!planId || isNaN(Number(planId))) {
+      console.error('[usePlannerActions] 즉시 수정: 유효한 planId가 없습니다');
+      return false;
+    }
+
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      // 숙소 정보 추출
+      let accommodationInfo = null;
+      for (const dayKey of Object.keys(travelPlans)) {
+        const schedules = travelPlans[dayKey].schedules || [];
+        const checkInSchedule = schedules.find(s => s.type === 'accommodation' && s.time === '체크인');
+        if (checkInSchedule?.hotelDetails) {
+          accommodationInfo = checkInSchedule.hotelDetails;
+          console.log('[usePlannerActions] 숙소 정보 추출:', accommodationInfo);
+          break;
+        }
+      }
+
+      // 수정 모드: updateTravelPlan 사용 (plan_data만 수정)
+      const updateData = {
+        data: Object.keys(travelPlans).reduce((obj, dayKey) => {
+          obj[parseInt(dayKey)] = {
+            title: travelPlans[dayKey].title,
+            schedules: (travelPlans[dayKey].schedules || [])
+              .filter(schedule => schedule.type !== 'accommodation')
+              .map(schedule => {
+                const { hotelDetails, ...restOfSchedule } = schedule;
+                const baseSchedule = { ...restOfSchedule };
+                if (baseSchedule.flightOfferDetails?.flightOfferData) {
+                  baseSchedule.flightOfferDetails.flightOfferData = 
+                    JSON.parse(JSON.stringify(baseSchedule.flightOfferDetails.flightOfferData, (k,v) => typeof v === 'number' && !isFinite(v) ? null : v));
+                }
+                return baseSchedule;
+              })
+          };
+          return obj;
+        }, {})
+      };
+
+      // 숙소 정보가 있으면 추가
+      if (accommodationInfo) {
+        updateData.accommodationInfo = accommodationInfo;
+      }
+
+      console.log('[usePlannerActions] 즉시 수정 데이터:', updateData);
+
+      const response = await travelApi.updateTravelPlan(planId, updateData, 'plan_data');
+      
+      if (response?.success) {
+        console.log('[usePlannerActions] 계획 즉시 수정 완료:', response);
+        return true;
+      } else {
+        setSaveError(response?.message || '수정 중 알 수 없는 오류가 발생했습니다.');
+        return false;
+      }
+    } catch (err) {
+      console.error('[usePlannerActions] 즉시 수정 실패:', err);
+      setSaveError(`수정 중 오류 발생: ${err.message || '네트워크 오류일 수 있습니다.'}`);
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  }, [travelPlans, planId]);
+
+  // 계획 제목 업데이트 함수 추가
+  const handleUpdatePlanTitle = useCallback(async (newTitle) => {
+    if (!planId || isNaN(Number(planId))) {
+      console.error('[usePlannerActions] 제목 수정: 유효한 planId가 없습니다');
+      return false;
+    }
+
+    if (!newTitle || !newTitle.trim()) {
+      console.error('[usePlannerActions] 제목 수정: 유효한 제목이 없습니다');
+      return false;
+    }
+
+    try {
+      const response = await travelApi.updateTravelPlan(
+        planId, 
+        { title: newTitle.trim() },
+        'plan_data'
+      );
+
+      if (response?.success) {
+        console.log('[usePlannerActions] 계획 제목 수정 완료:', response);
+        return true;
+      } else {
+        console.error('[usePlannerActions] 제목 수정 실패:', response?.message);
+        return false;
+      }
+    } catch (err) {
+      console.error('[usePlannerActions] 제목 수정 실패:', err);
+      return false;
+    }
+  }, [planId]);
+
+  const handleSaveConfirm = useCallback(async (titleToSave, sharedEmail = '') => {
     if (!titleToSave || !titleToSave.trim()) {
       setSaveError('여행 계획 제목을 입력해주세요.');
       return false;
@@ -150,19 +250,30 @@ const usePlannerActions = ({
         console.log('[usePlannerActions] 저장할 planData에 숙소 정보 추가:', planData.accommodationInfo);
       }
 
+      // shared_email 정보 추가
+      if (sharedEmail && sharedEmail.trim()) {
+        planData.shared_email = sharedEmail.trim();
+        console.log('[usePlannerActions] 공유 이메일 추가:', planData.shared_email);
+      }
+
       console.log('[usePlannerActions] 최종 저장 데이터:', planData);
 
+      // 새로 저장 모드: savePlan 사용
+      console.log('[usePlannerActions] 새로운 계획 저장 모드');
+      
       const response = await travelApi.savePlan(planData);
+      
       if (response?.success && response.plan_id) {
         setPlanId(response.plan_id);
         setIsSaveDialogOpen(false);
+        console.log('[usePlannerActions] 새 계획 저장 완료 - plan_id:', response.plan_id);
         return true;
       } else {
         setSaveError(response?.message || '저장 중 알 수 없는 오류가 발생했습니다.');
         return false;
       }
     } catch (err) {
-      console.error('저장 실패:', err);
+      console.error('[usePlannerActions] 저장 실패:', err);
       setSaveError(`저장 중 오류 발생: ${err.message || '네트워크 오류일 수 있습니다.'}`);
       return false;
     } finally {
@@ -313,6 +424,8 @@ const usePlannerActions = ({
     openSaveDialog,
     closeSaveDialog,
     handleSaveConfirm,
+    handleImmediateUpdate,
+    handleUpdatePlanTitle,
     isSaveDialogOpen,
     planTitleForSave,
     setPlanTitleForSave,

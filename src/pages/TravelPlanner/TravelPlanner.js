@@ -62,6 +62,7 @@ const TravelPlanner = ({ loadMode }) => {
     selectedDay, setSelectedDay,
     startDate, setStartDate,
     planId, setPlanId,
+    planName, setPlanName,
     isLoadingPlan,
     loadedFlightInfo,
     isRoundTrip,
@@ -102,10 +103,13 @@ const TravelPlanner = ({ loadMode }) => {
     openSaveDialog,
     closeSaveDialog,
     handleSaveConfirm: plannerHandleSaveConfirm,
+    handleImmediateUpdate: plannerHandleImmediateUpdate,
+    handleUpdatePlanTitle: plannerHandleUpdatePlanTitle,
     isSaveDialogOpen,
     planTitleForSave,
     setPlanTitleForSave,
     isSaving,
+    saveError,
     handleAddPlace,
     handleEditScheduleOpen,
     handleUpdateSchedule,
@@ -147,7 +151,30 @@ const TravelPlanner = ({ loadMode }) => {
   const [selectedAccommodationForDialog, setSelectedAccommodationForDialog] = useState(null);
   const [isAccommodationDetailOpen, setIsAccommodationDetailOpen] = useState(false);
 
+  // 계획 제목 관리를 위한 상태 추가
+  const [planTitle, setPlanTitle] = useState('');
+  const [isEditingPlanTitle, setIsEditingPlanTitle] = useState(false);
+  const [tempPlanTitle, setTempPlanTitle] = useState('');
+
   const currentPlan = travelPlans[selectedDay] || { title: '', schedules: [] };
+
+  // planId 변경 시 계획 제목 설정
+  useEffect(() => {
+    console.log('[TravelPlanner] 제목 설정 useEffect 실행:', { planName, planId, isNaN: isNaN(Number(planId)) });
+    if (planName) {
+      // 로드된 실제 계획 제목이 있으면 사용
+      console.log('[TravelPlanner] planName으로 제목 설정:', planName);
+      setPlanTitle(planName);
+    } else if (planId && !isNaN(Number(planId))) {
+      // planId만 있으면 기본 형식 사용
+      console.log('[TravelPlanner] planId로 제목 설정:', `여행 계획 #${planId}`);
+      setPlanTitle(`여행 계획 #${planId}`);
+    } else {
+      // 아무것도 없으면 새 계획
+      console.log('[TravelPlanner] 기본 제목 설정: 새 여행 계획');
+      setPlanTitle('새 여행 계획');
+    }
+  }, [planId, planName]);
 
   const accommodationToShow = useMemo(() => {
     console.log('Calculating accommodationToShow with:', {
@@ -738,6 +765,22 @@ const TravelPlanner = ({ loadMode }) => {
     setMapResizeTrigger(v => v + 1);
   }, [isSidebarOpen]);
 
+  // 저장/수정 버튼 클릭 핸들러
+  const handleSaveOrUpdate = useCallback(async () => {
+    if (planId && !isNaN(Number(planId))) {
+      // 수정 모드: 다이얼로그 없이 바로 수정
+      const success = await plannerHandleImmediateUpdate();
+      if (success) {
+        // 성공 메시지 표시
+        alert('여행 계획이 성공적으로 수정되었습니다!');
+        console.log('[TravelPlanner] 여행 계획이 성공적으로 수정되었습니다.');
+      }
+    } else {
+      // 새로 저장 모드: 다이얼로그 열기
+      openSaveDialog();
+    }
+  }, [planId, plannerHandleImmediateUpdate, openSaveDialog]);
+
   if (!user && !process.env.REACT_APP_SKIP_AUTH) {
     return <Typography>로그인이 필요합니다.</Typography>;
   }
@@ -848,10 +891,19 @@ const TravelPlanner = ({ loadMode }) => {
                       variant="contained"
                       color="primary"
                       fullWidth
-                      onClick={openSaveDialog}
+                      onClick={handleSaveOrUpdate}
+                      disabled={isSaving}
                     >
-                      저장
+                      {isSaving 
+                        ? (planId && !isNaN(Number(planId)) ? '수정 중...' : '저장 중...') 
+                        : (planId && !isNaN(Number(planId)) ? '수정' : '저장')
+                      }
                     </Button>
+                    {saveError && (
+                      <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+                        {saveError}
+                      </Typography>
+                    )}
                   </Box>
                 </>
               )}
@@ -921,11 +973,92 @@ const TravelPlanner = ({ loadMode }) => {
             >
               메뉴
             </Button>
-            <Typography variant="h6">
-              {sidebarTab === 'schedule' ? '여행 일정' :
-               sidebarTab === 'accommodation' ? '숙소 검색 결과' :
-               '항공편 검색 결과'}
-            </Typography>
+            {sidebarTab === 'schedule' ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+                {isEditingPlanTitle ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <TextField
+                      value={tempPlanTitle}
+                      onChange={e => setTempPlanTitle(e.target.value)}
+                      size="small"
+                      autoFocus
+                      onBlur={async () => {
+                        if (planId && !isNaN(Number(planId))) {
+                          const success = await plannerHandleUpdatePlanTitle(tempPlanTitle);
+                          if (success) {
+                            setPlanTitle(tempPlanTitle);
+                            setPlanName(tempPlanTitle);
+                          }
+                        } else {
+                          setPlanTitle(tempPlanTitle);
+                        }
+                        setIsEditingPlanTitle(false);
+                      }}
+                      onKeyDown={async (e) => {
+                        if (e.key === 'Enter') {
+                          if (planId && !isNaN(Number(planId))) {
+                            const success = await plannerHandleUpdatePlanTitle(tempPlanTitle);
+                            if (success) {
+                              setPlanTitle(tempPlanTitle);
+                              setPlanName(tempPlanTitle);
+                            }
+                          } else {
+                            setPlanTitle(tempPlanTitle);
+                          }
+                          setIsEditingPlanTitle(false);
+                        } else if (e.key === 'Escape') {
+                          setTempPlanTitle(planTitle);
+                          setIsEditingPlanTitle(false);
+                        }
+                      }}
+                    />
+                    <Button
+                      size="small"
+                      onClick={async () => {
+                        if (planId && !isNaN(Number(planId))) {
+                          const success = await plannerHandleUpdatePlanTitle(tempPlanTitle);
+                          if (success) {
+                            setPlanTitle(tempPlanTitle);
+                            setPlanName(tempPlanTitle);
+                          }
+                        } else {
+                          setPlanTitle(tempPlanTitle);
+                        }
+                        setIsEditingPlanTitle(false);
+                      }}
+                    >
+                      저장
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={() => {
+                        setTempPlanTitle(planTitle);
+                        setIsEditingPlanTitle(false);
+                      }}
+                    >
+                      취소
+                    </Button>
+                  </Box>
+                ) : (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="h6">{planTitle}</Typography>
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        setTempPlanTitle(planTitle);
+                        setIsEditingPlanTitle(true);
+                      }}
+                    >
+                      <EditIcon />
+                    </IconButton>
+                  </Box>
+                )}
+              </Box>
+            ) : (
+              <Typography variant="h6">
+                {sidebarTab === 'accommodation' ? '숙소 검색 결과' : '항공편 검색 결과'}
+              </Typography>
+            )}
           </Box>
 
           <Box sx={{ flex: 1, p: 2, overflow: 'hidden', bgcolor: '#f4f6f8' }}>
