@@ -409,7 +409,7 @@ export const HomePage = () => {
             
             {/* 오른쪽 AI 생성 이미지 */}
             <div className="absolute left-[0%] top-[5px] w-[575px] h-[810px] rounded-lg overflow-hidden">
-              <img src="/images/travel_left.png" alt="여행 명소" className="w-full h-full object-cover" />
+              <img src="/images/travel_left.gif" alt="여행 명소" className="w-full h-full object-cover" />
             </div>
           </div>
 
