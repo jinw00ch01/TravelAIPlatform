@@ -105,6 +105,7 @@ const TravelPlanner = ({ loadMode }) => {
     handleSaveConfirm: plannerHandleSaveConfirm,
     handleImmediateUpdate: plannerHandleImmediateUpdate,
     handleUpdatePlanTitle: plannerHandleUpdatePlanTitle,
+    handleSharePlan: plannerHandleSharePlan,
     isSaveDialogOpen,
     planTitleForSave,
     setPlanTitleForSave,
@@ -156,22 +157,24 @@ const TravelPlanner = ({ loadMode }) => {
   const [isEditingPlanTitle, setIsEditingPlanTitle] = useState(false);
   const [tempPlanTitle, setTempPlanTitle] = useState('');
 
+  // 플랜 공유 관련 상태 추가
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
+  const [sharedEmail, setSharedEmail] = useState('');
+  const [shareMessage, setShareMessage] = useState('');
+  const [isSharing, setIsSharing] = useState(false);
+
   const currentPlan = travelPlans[selectedDay] || { title: '', schedules: [] };
 
   // planId 변경 시 계획 제목 설정
   useEffect(() => {
-    console.log('[TravelPlanner] 제목 설정 useEffect 실행:', { planName, planId, isNaN: isNaN(Number(planId)) });
     if (planName) {
       // 로드된 실제 계획 제목이 있으면 사용
-      console.log('[TravelPlanner] planName으로 제목 설정:', planName);
       setPlanTitle(planName);
     } else if (planId && !isNaN(Number(planId))) {
       // planId만 있으면 기본 형식 사용
-      console.log('[TravelPlanner] planId로 제목 설정:', `여행 계획 #${planId}`);
       setPlanTitle(`여행 계획 #${planId}`);
     } else {
       // 아무것도 없으면 새 계획
-      console.log('[TravelPlanner] 기본 제목 설정: 새 여행 계획');
       setPlanTitle('새 여행 계획');
     }
   }, [planId, planName]);
@@ -781,6 +784,52 @@ const TravelPlanner = ({ loadMode }) => {
     }
   }, [planId, plannerHandleImmediateUpdate, openSaveDialog]);
 
+  // 플랜 공유 핸들러
+  const handleOpenShareDialog = useCallback(() => {
+    setIsShareDialogOpen(true);
+    setShareMessage('');
+  }, []);
+
+  const handleCloseShareDialog = useCallback(() => {
+    setIsShareDialogOpen(false);
+    setSharedEmail('');
+    setShareMessage('');
+  }, []);
+
+  const handleSharePlan = useCallback(async () => {
+    if (!sharedEmail.trim()) {
+      setShareMessage('공유할 이메일을 입력해주세요.');
+      return;
+    }
+
+    if (!planId || planId === 'new') {
+      setShareMessage('저장된 계획만 공유할 수 있습니다. 먼저 계획을 저장해주세요.');
+      return;
+    }
+
+    setIsSharing(true);
+    setShareMessage('');
+
+    try {
+      // 새로운 공유 전용 함수 사용 (기존 계획의 shared_email만 업데이트)
+      const result = await plannerHandleSharePlan(sharedEmail.trim());
+      
+      if (result.success) {
+        setShareMessage(result.message);
+        setTimeout(() => {
+          handleCloseShareDialog();
+        }, 2000);
+      } else {
+        setShareMessage(result.message);
+      }
+    } catch (error) {
+      console.error('플랜 공유 실패:', error);
+      setShareMessage('플랜 공유 중 오류가 발생했습니다. 다시 시도해주세요.');
+    } finally {
+      setIsSharing(false);
+    }
+  }, [sharedEmail, planId, plannerHandleSharePlan]);
+
   if (!user && !process.env.REACT_APP_SKIP_AUTH) {
     return <Typography>로그인이 필요합니다.</Typography>;
   }
@@ -1107,10 +1156,10 @@ const TravelPlanner = ({ loadMode }) => {
                     <Button
                       variant="outlined"
                       size="small"
-                      onClick={() => setHideFlightMarkers(v => !v)}
-                      color={hideFlightMarkers ? "primary" : "inherit"}
+                      onClick={() => handleOpenShareDialog()}
+                      color="primary"
                     >
-                      {hideFlightMarkers ? '항공편 표시' : '항공편 숨기기'}
+                      플랜 공유
                     </Button>
                     <Button variant="contained" startIcon={<SearchIcon />} onClick={() => setIsSearchOpen(true)}>
                       장소 검색
@@ -1524,6 +1573,46 @@ const TravelPlanner = ({ loadMode }) => {
         )}
 
         <AIChatWidget onSendMessage={handleAISendMessage} />
+
+        <Dialog open={isShareDialogOpen} onClose={handleCloseShareDialog}>
+          <DialogTitle>플랜 공유</DialogTitle>
+          <DialogContent>
+            <Box sx={{ pt: 2 }}>
+              <TextField
+                autoFocus
+                fullWidth
+                label="공유할 이메일 주소"
+                type="email"
+                value={sharedEmail}
+                onChange={e => setSharedEmail(e.target.value)}
+                placeholder="example@email.com"
+                sx={{ mb: 2 }}
+                disabled={isSharing}
+              />
+              {shareMessage && (
+                <Typography 
+                  variant="body2" 
+                  color={shareMessage.includes('성공') ? 'success.main' : 'error.main'}
+                  sx={{ mt: 1 }}
+                >
+                  {shareMessage}
+                </Typography>
+              )}
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseShareDialog} disabled={isSharing}>
+              취소
+            </Button>
+            <Button 
+              onClick={handleSharePlan} 
+              variant="contained" 
+              disabled={isSharing || !sharedEmail.trim()}
+            >
+              {isSharing ? '공유 중...' : '공유하기'}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
     </Box>
     </LocalizationProvider>

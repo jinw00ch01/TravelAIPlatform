@@ -203,6 +203,49 @@ const usePlannerActions = ({
     }
   }, [planId]);
 
+  // 공유 기능을 위한 함수 추가
+  const handleSharePlan = useCallback(async (sharedEmail) => {
+    if (!planId || isNaN(Number(planId))) {
+      console.error('[usePlannerActions] 공유: 유효한 planId가 없습니다');
+      return { success: false, message: '저장된 계획만 공유할 수 있습니다.' };
+    }
+
+    if (!sharedEmail || !sharedEmail.trim()) {
+      console.error('[usePlannerActions] 공유: 유효한 이메일이 없습니다');
+      return { success: false, message: '공유할 이메일을 입력해주세요.' };
+    }
+
+    try {
+      console.log('[usePlannerActions] 계획 공유 시작:', { planId, sharedEmail: sharedEmail.trim() });
+      
+      const response = await travelApi.updateTravelPlan(
+        planId, 
+        { shared_email: sharedEmail.trim() },
+        'shared_email'
+      );
+
+      if (response?.success) {
+        console.log('[usePlannerActions] 계획 공유 완료:', response);
+        return { 
+          success: true, 
+          message: `${sharedEmail.trim()}로 플랜이 성공적으로 공유되었습니다!` 
+        };
+      } else {
+        console.error('[usePlannerActions] 공유 실패:', response?.message);
+        return { 
+          success: false, 
+          message: response?.message || '플랜 공유 중 오류가 발생했습니다.' 
+        };
+      }
+    } catch (err) {
+      console.error('[usePlannerActions] 공유 실패:', err);
+      return { 
+        success: false, 
+        message: `플랜 공유 중 오류 발생: ${err.message || '네트워크 오류'}` 
+      };
+    }
+  }, [planId]);
+
   const handleSaveConfirm = useCallback(async (titleToSave, sharedEmail = '') => {
     if (!titleToSave || !titleToSave.trim()) {
       setSaveError('여행 계획 제목을 입력해주세요.');
@@ -426,6 +469,7 @@ const usePlannerActions = ({
     handleSaveConfirm,
     handleImmediateUpdate,
     handleUpdatePlanTitle,
+    handleSharePlan,
     isSaveDialogOpen,
     planTitleForSave,
     setPlanTitleForSave,
