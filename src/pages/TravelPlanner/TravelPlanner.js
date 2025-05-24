@@ -150,15 +150,37 @@ const TravelPlanner = ({ loadMode }) => {
   const currentPlan = travelPlans[selectedDay] || { title: '', schedules: [] };
 
   const accommodationToShow = useMemo(() => {
-    if (Array.isArray(currentPlan.schedules)) {
-      const checkIn = currentPlan.schedules.find(
-        s => s.type === 'accommodation' && s.time === '체크인'
-      );
-      if (checkIn) return checkIn;
-      return currentPlan.schedules.find(s => s.type === 'accommodation');
+    console.log('Calculating accommodationToShow with:', {
+      travelPlans,
+      dayOrder,
+      selectedDay,
+      currentPlan
+    });
+    
+    // 전체 일정에서 체크인 정보 찾기
+    for (const dayKey of dayOrder) {
+      const dayPlan = travelPlans[dayKey];
+      if (dayPlan?.schedules) {
+        // 체크인 정보 찾기
+        const checkIn = dayPlan.schedules.find(
+          s => s.type === 'accommodation' && s.time === '체크인'
+        );
+        if (checkIn) {
+          console.log('Found check-in accommodation:', checkIn);
+          return checkIn;
+        }
+      }
     }
+    
+    // 체크인이 없으면 현재 날짜의 숙소 정보 반환
+    if (Array.isArray(currentPlan.schedules)) {
+      const accommodation = currentPlan.schedules.find(s => s.type === 'accommodation');
+      console.log('Found current day accommodation:', accommodation);
+      return accommodation;
+    }
+    console.log('No accommodation found');
     return null;
-  }, [currentPlan.schedules, selectedDay]);
+  }, [currentPlan.schedules, dayOrder, travelPlans, selectedDay]);
 
   useEffect(() => {
     if (currentPlan && currentPlan.title) {
@@ -176,18 +198,35 @@ const TravelPlanner = ({ loadMode }) => {
 
   // travelPlans가 변경될 때마다 loadedAccommodationInfo 업데이트
   useEffect(() => {
+    console.log('Updating loadedAccommodationInfo. Current travelPlans:', travelPlans);
+    
+    // 전체 일정에서 체크인 정보 찾기
+    for (const dayKey of dayOrder) {
+      const dayPlan = travelPlans[dayKey];
+      if (dayPlan?.schedules) {
+        const checkIn = dayPlan.schedules.find(
+          s => s.type === 'accommodation' && s.time === '체크인'
+        );
+        if (checkIn?.hotelDetails) {
+          console.log('Setting loadedAccommodationInfo from check-in:', checkIn.hotelDetails);
+          setLoadedAccommodationInfo(checkIn.hotelDetails);
+          return;
+        }
+      }
+    }
+    
+    // 체크인이 없으면 현재 날짜의 숙소 정보 사용
     if (currentPlan?.schedules) {
-      const accommodation = currentPlan.schedules.find(
-        s => s.type === 'accommodation' && s.time === '체크인'
-      ) || currentPlan.schedules.find(s => s.type === 'accommodation');
-      
+      const accommodation = currentPlan.schedules.find(s => s.type === 'accommodation');
       if (accommodation?.hotelDetails) {
+        console.log('Setting loadedAccommodationInfo from current day:', accommodation.hotelDetails);
         setLoadedAccommodationInfo(accommodation.hotelDetails);
       } else {
+        console.log('No accommodation found, setting loadedAccommodationInfo to null');
         setLoadedAccommodationInfo(null);
       }
     }
-  }, [currentPlan?.schedules, selectedDay, travelPlans]);
+  }, [currentPlan?.schedules, dayOrder, travelPlans, selectedDay]);
 
   /* ---------- 날짜 동기화 ---------- */
   useEffect(() => {
@@ -964,38 +1003,38 @@ const TravelPlanner = ({ loadMode }) => {
                         onClick={() => handleOpenAccommodationDetail(accommodationToShow.hotelDetails)}
                       >
                         <Grid container spacing={1} alignItems="center">
-                          {accommodationToShow.hotelDetails.main_photo_url && (
+                          {(accommodationToShow.hotelDetails.hotel?.main_photo_url || accommodationToShow.hotelDetails.main_photo_url) && (
                             <Grid item xs={12} sm={3}>
                               <Box
                                 component="img"
-                                src={accommodationToShow.hotelDetails.main_photo_url}
-                                alt={accommodationToShow.hotelDetails.hotel_name_trans || accommodationToShow.hotelDetails.hotel_name}
+                                src={accommodationToShow.hotelDetails.hotel?.main_photo_url || accommodationToShow.hotelDetails.main_photo_url}
+                                alt={accommodationToShow.hotelDetails.hotel?.hotel_name_trans || accommodationToShow.hotelDetails.hotel?.hotel_name || accommodationToShow.hotelDetails.hotel_name_trans || accommodationToShow.hotelDetails.hotel_name || '숙소 이미지'}
                                 sx={{ width: '100%', height: 80, objectFit: 'cover', borderRadius: 1 }}
                               />
                             </Grid>
                           )}
-                          <Grid item xs sm={accommodationToShow.hotelDetails.main_photo_url ? 9 : 12}>
+                          <Grid item xs sm={(accommodationToShow.hotelDetails.hotel?.main_photo_url || accommodationToShow.hotelDetails.main_photo_url) ? 9 : 12}>
                             <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: '#5D4037', fontSize: '0.9rem' }}>
-                              {accommodationToShow.hotelDetails.hotel?.hotel_name_trans || accommodationToShow.hotelDetails.hotel?.hotel_name || '숙소 정보'}
+                              {accommodationToShow.hotelDetails.hotel?.hotel_name_trans || accommodationToShow.hotelDetails.hotel?.hotel_name || accommodationToShow.hotelDetails.hotel_name_trans || accommodationToShow.hotelDetails.hotel_name || '숙소 정보'}
                             </Typography>
                             <Typography variant="body2" color="text.secondary" gutterBottom sx={{fontSize: '0.8rem'}}>
-                              {accommodationToShow.hotelDetails.hotel?.address || accommodationToShow.hotelDetails.hotel?.address_trans || '주소 정보 없음'}
+                              {accommodationToShow.hotelDetails.hotel?.address || accommodationToShow.hotelDetails.hotel?.address_trans || accommodationToShow.hotelDetails.address || accommodationToShow.hotelDetails.address_trans || '주소 정보 없음'}
                             </Typography>
-                            {(accommodationToShow.hotelDetails.checkIn || accommodationToShow.hotelDetails.checkOut) && (
+                            {(accommodationToShow.hotelDetails.hotel?.checkIn || accommodationToShow.hotelDetails.checkIn || accommodationToShow.hotelDetails.hotel?.checkOut || accommodationToShow.hotelDetails.checkOut) && (
                                 <Typography component="div" variant="body2" color="text.secondary" sx={{mt: 0.5, fontSize: '0.8rem'}}>
-                                  체크인: {accommodationToShow.hotelDetails.checkIn ? formatDateFns(new Date(accommodationToShow.hotelDetails.checkIn), 'MM/dd') : '-'}
+                                  체크인: {accommodationToShow.hotelDetails.hotel?.checkIn || accommodationToShow.hotelDetails.checkIn ? formatDateFns(new Date(accommodationToShow.hotelDetails.hotel?.checkIn || accommodationToShow.hotelDetails.checkIn), 'MM/dd') : '-'}
                                   {' ~ '}
-                                  체크아웃: {accommodationToShow.hotelDetails.checkOut ? formatDateFns(new Date(accommodationToShow.hotelDetails.checkOut), 'MM/dd') : '-'}
+                                  체크아웃: {accommodationToShow.hotelDetails.hotel?.checkOut || accommodationToShow.hotelDetails.checkOut ? formatDateFns(new Date(accommodationToShow.hotelDetails.hotel?.checkOut || accommodationToShow.hotelDetails.checkOut), 'MM/dd') : '-'}
                                 </Typography>
                             )}
-                            {accommodationToShow.hotelDetails.room?.name && (
+                            {(accommodationToShow.hotelDetails.hotel?.room?.name || accommodationToShow.hotelDetails.room?.name) && (
                                 <Typography component="div" variant="body2" color="text.secondary" sx={{mt: 0.5, fontSize: '0.8rem'}}>
-                                객실: {accommodationToShow.hotelDetails.room.name}
+                                객실: {accommodationToShow.hotelDetails.hotel?.room?.name || accommodationToShow.hotelDetails.room?.name}
                                 </Typography>
                             )}
-                            {accommodationToShow.hotelDetails.price && (
+                            {(accommodationToShow.hotelDetails.hotel?.price || accommodationToShow.hotelDetails.price) && (
                                 <Typography variant="subtitle2" color="primary" sx={{ mt: 0.5, fontWeight: 'bold', fontSize: '0.9rem' }}>
-                                {accommodationToShow.hotelDetails.price}
+                                {accommodationToShow.hotelDetails.hotel?.price || accommodationToShow.hotelDetails.price}
                                 </Typography>
                             )}
                           </Grid>
@@ -1060,7 +1099,11 @@ const TravelPlanner = ({ loadMode }) => {
                             }}
                           >
                             {currentPlan.schedules
-                              .filter(schedule => schedule.type !== 'Flight_Departure' && schedule.type !== 'Flight_Return') // 숙소(accommodation)는 제외하지 않음
+                              .filter(schedule => 
+                                schedule.type !== 'Flight_Departure' && 
+                                schedule.type !== 'Flight_Return' && 
+                                schedule.type !== 'accommodation'  // 숙소 일정 제외
+                              )
                               .map((schedule, index) => renderScheduleItem(schedule, index))}
                             {providedList.placeholder}
                           </List>

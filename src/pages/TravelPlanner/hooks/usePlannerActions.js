@@ -148,10 +148,65 @@ const usePlannerActions = ({
   }, [travelPlans, startDate, setPlanId]);
 
   const handleAddPlace = useCallback((place) => {
+    console.log('handleAddPlace called with:', place);
+    
     if (!selectedDay) {
       alert('날짜를 선택해주세요.');
       return;
     }
+
+    // 숙소인 경우 특별 처리
+    if (place.category === '숙소' || place.type === 'accommodation') {
+      console.log('Processing as accommodation');
+      
+      const hotelDetails = {
+        hotel: {
+          hotel_id: place.id || Date.now().toString(),
+          hotel_name: place.name,
+          hotel_name_trans: place.name,
+          address: place.address,
+          address_trans: place.address,
+          latitude: place.lat,
+          longitude: place.lng,
+          main_photo_url: place.photo_url || '',
+          price: place.price || '',
+          checkIn: place.checkInTime || '14:00',
+          checkOut: place.checkOutTime || '11:00'
+        }
+      };
+      console.log('Created hotelDetails:', hotelDetails);
+
+      const newSchedule = {
+        id: Date.now().toString(),
+        name: place.name,
+        lat: place.lat,
+        lng: place.lng,
+        address: place.address,
+        category: '숙소',
+        time: '체크인',
+        duration: '1박',
+        type: 'accommodation',
+        hotelDetails: hotelDetails,
+        notes: place.price ? `가격: ${place.price}` : ''
+      };
+      console.log('Created newSchedule for accommodation:', newSchedule);
+
+      setTravelPlans(prev => {
+        const updated = {
+          ...prev,
+          [selectedDay]: {
+            ...prev[selectedDay],
+            schedules: [...(prev[selectedDay]?.schedules || []), newSchedule]
+          }
+        };
+        console.log('Updated travelPlans:', updated);
+        return updated;
+      });
+      return newSchedule;
+    }
+
+    console.log('Processing as regular place');
+    // 일반 장소인 경우 기존 로직
     const newSchedule = {
       id: Date.now().toString(),
       name: place.name,
@@ -163,13 +218,19 @@ const usePlannerActions = ({
       duration: '2시간',
       notes: ''
     };
-    setTravelPlans(prev => ({
-      ...prev,
-      [selectedDay]: {
-        ...prev[selectedDay],
-        schedules: [...(prev[selectedDay]?.schedules || []), newSchedule]
-      }
-    }));
+    console.log('Created newSchedule for regular place:', newSchedule);
+
+    setTravelPlans(prev => {
+      const updated = {
+        ...prev,
+        [selectedDay]: {
+          ...prev[selectedDay],
+          schedules: [...(prev[selectedDay]?.schedules || []), newSchedule]
+        }
+      };
+      console.log('Updated travelPlans:', updated);
+      return updated;
+    });
     return newSchedule;
   }, [selectedDay, setTravelPlans]);
 
