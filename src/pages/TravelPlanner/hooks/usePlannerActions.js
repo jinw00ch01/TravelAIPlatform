@@ -303,7 +303,7 @@ const usePlannerActions = ({
 
       // 새로 저장 모드: savePlan 사용
       console.log('[usePlannerActions] 새로운 계획 저장 모드');
-      
+
       const response = await travelApi.savePlan(planData);
       
       if (response?.success && response.plan_id) {

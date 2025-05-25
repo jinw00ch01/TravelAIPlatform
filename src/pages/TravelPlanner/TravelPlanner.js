@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../../components/auth/AuthContext';
-import { 
+import {
   Box, Typography, Paper, Grid, IconButton
 } from '@mui/material';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
@@ -142,7 +142,7 @@ const TravelPlanner = ({ loadMode }) => {
   // refs
   const mainAccommodationPlanRef = useRef(null);
   const sidebarAccommodationPlanRef = useRef(null);
-
+  
   // 다이얼로그 핸들러 훅
   const dialogHandlers = useDialogHandlers();
 
@@ -365,7 +365,7 @@ const TravelPlanner = ({ loadMode }) => {
     return plannerGetDayTitle(dayNumber);
   }, [plannerGetDayTitle]);
   
-    const handleDayDragEnd = (result) => {
+  const handleDayDragEnd = (result) => {
     if (!result.destination) return;
 
     const newDayOrder = Array.from(dayOrder);
@@ -715,7 +715,7 @@ const TravelPlanner = ({ loadMode }) => {
           sidebarTab={sidebarTab}
           setSidebarTab={setSidebarTab}
           dayOrder={dayOrder}
-          travelPlans={travelPlans}
+                  travelPlans={travelPlans}
           selectedDay={selectedDay}
           setSelectedDay={setSelectedDay}
           getDayTitle={getDayTitle}
@@ -737,28 +737,28 @@ const TravelPlanner = ({ loadMode }) => {
           handleHotelSearchResults={handleHotelSearchResults}
           handleHotelSelect={handleHotelSelect}
           onAddAccommodationToSchedule={onAddAccommodationToSchedule}
-          dayOrderLength={dayOrder.length}
+                  dayOrderLength={dayOrder.length}
           forceRefreshSelectedDay={forceRefreshSelectedDay}
           // 항공편 관련 props
           flightSearchParams={flightSearchParams}
           setFlightSearchParams={setFlightSearchParams}
-          originCities={originCities}
-          destinationCities={destinationCities}
-          originSearchQuery={originSearchQuery}
-          setOriginSearchQuery={setOriginSearchQuery}
-          destinationSearchQuery={destinationSearchQuery}
-          setDestinationSearchQuery={setDestinationSearchQuery}
-          handleCitySearch={handleCitySearch}
+                  originCities={originCities}
+                  destinationCities={destinationCities}
+                  originSearchQuery={originSearchQuery}
+                  setOriginSearchQuery={setOriginSearchQuery}
+                  destinationSearchQuery={destinationSearchQuery}
+                  setDestinationSearchQuery={setDestinationSearchQuery}
+                  handleCitySearch={handleCitySearch}
           flightResults={flightResults}
           flightDictionaries={flightDictionaries}
-          airportInfoCache={airportInfoCache}
-          loadingAirportInfo={loadingAirportInfo}
-          isLoadingCities={isLoadingCities}
-          isLoadingFlights={isLoadingFlights}
+                  airportInfoCache={airportInfoCache}
+                  loadingAirportInfo={loadingAirportInfo}
+                  isLoadingCities={isLoadingCities}
+                  isLoadingFlights={isLoadingFlights}
           flightError={flightError}
-          handleFlightSearch={handleFlightSearch}
-          onAddFlightToSchedule={onAddFlightToSchedule}
-        />
+                  handleFlightSearch={handleFlightSearch}
+                  onAddFlightToSchedule={onAddFlightToSchedule}
+                />
 
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           <TravelPlannerHeader
@@ -783,8 +783,8 @@ const TravelPlanner = ({ loadMode }) => {
             tempTitle={tempTitle}
             setTempTitle={setTempTitle}
             setTravelPlans={setTravelPlans}
-            selectedDay={selectedDay}
-            showAllMarkers={showAllMarkers}
+                        selectedDay={selectedDay} 
+                        showAllMarkers={showAllMarkers}
             setShowAllMarkers={setShowAllMarkers}
             showMap={showMap}
             setShowMap={setShowMap}
@@ -797,8 +797,8 @@ const TravelPlanner = ({ loadMode }) => {
             handleScheduleDragEnd={handleScheduleDragEnd}
             renderScheduleItem={renderScheduleItem}
             travelPlans={travelPlans}
-            hideFlightMarkers={hideFlightMarkers}
-            selectedLocation={selectedLocation}
+                        hideFlightMarkers={hideFlightMarkers}
+                        selectedLocation={selectedLocation}
             mapResizeTrigger={mapResizeTrigger}
             // 숙소 관련 props
             mainAccommodationPlanRef={mainAccommodationPlanRef}
@@ -809,28 +809,28 @@ const TravelPlanner = ({ loadMode }) => {
             onAddAccommodationToSchedule={onAddAccommodationToSchedule}
             dayOrder={dayOrder}
             forceRefreshSelectedDay={forceRefreshSelectedDay}
-            isSidebarOpen={isSidebarOpen}
+                isSidebarOpen={isSidebarOpen}
             // 항공편 관련 props
             flightSearchParams={flightSearchParams}
             setFlightSearchParams={setFlightSearchParams}
-            originCities={originCities}
-            destinationCities={destinationCities}
-            originSearchQuery={originSearchQuery}
-            setOriginSearchQuery={setOriginSearchQuery}
-            destinationSearchQuery={destinationSearchQuery}
-            setDestinationSearchQuery={setDestinationSearchQuery}
-            handleCitySearch={handleCitySearch}
+                originCities={originCities}
+                destinationCities={destinationCities}
+                originSearchQuery={originSearchQuery}
+                setOriginSearchQuery={setOriginSearchQuery}
+                destinationSearchQuery={destinationSearchQuery}
+                setDestinationSearchQuery={setDestinationSearchQuery}
+                handleCitySearch={handleCitySearch}
             flightResults={flightResults}
             flightDictionaries={flightDictionaries}
-            airportInfoCache={airportInfoCache}
-            loadingAirportInfo={loadingAirportInfo}
-            isLoadingCities={isLoadingCities}
-            isLoadingFlights={isLoadingFlights}
+                airportInfoCache={airportInfoCache}
+                loadingAirportInfo={loadingAirportInfo}
+                isLoadingCities={isLoadingCities}
+                isLoadingFlights={isLoadingFlights}
             flightError={flightError}
-            handleFlightSearch={handleFlightSearch}
-            onAddFlightToSchedule={onAddFlightToSchedule}
+                handleFlightSearch={handleFlightSearch}
+                onAddFlightToSchedule={onAddFlightToSchedule}
             handleOpenPlannerFlightDetail={dialogHandlers.handleOpenPlannerFlightDetail}
-          />
+              />
         </Box>
 
         <TravelPlannerDialogs
@@ -883,7 +883,7 @@ const TravelPlanner = ({ loadMode }) => {
         />
 
         <AIChatWidget onSendMessage={handleAISendMessage} />
-      </Box>
+    </Box>
     </LocalizationProvider>
   );
 };

@@ -643,7 +643,7 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
     }
 
     console.log('[useTravelPlanLoader] 다중 항공편 정보를 일정에 추가 시도:', parsedFlightInfos.length, '개');
-    const formatTitle = (date, dayNum) => formatDateForTitleInternal(date, dayNum);
+    const formatTitle = (date, dayNum) => formatDateForTitleInternal(date, dayNum); 
     let updatedTravelPlans = { ...travelPlansData };
     
     // 각 항공편에 대해 일정 생성
@@ -655,27 +655,27 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
 
       console.log(`[useTravelPlanLoader] 항공편 ${index + 1} 처리 중:`, flightInfo.id || 'ID없음');
       const { schedulesByDay } = createFlightSchedules(flightInfo, newStartDate, dayOrderArray, formatTitle);
-      
-      if (schedulesByDay) {
-        Object.keys(schedulesByDay).forEach(dayKey => {
-          if (!updatedTravelPlans[dayKey]) {
-            const dateForTitle = new Date(newStartDate);
-            dateForTitle.setDate(dateForTitle.getDate() + parseInt(dayKey) - 1);
-            updatedTravelPlans[dayKey] = { 
-              title: formatDateForTitleInternal(dateForTitle, parseInt(dayKey)), 
-              schedules: [] 
-            };
-          }
-          
-          const schedules = schedulesByDay[dayKey];
-          if (schedules && schedules.length > 0) {
-            const existingSchedules = updatedTravelPlans[dayKey].schedules || [];
+    
+    if (schedulesByDay) {
+      Object.keys(schedulesByDay).forEach(dayKey => {
+        if (!updatedTravelPlans[dayKey]) {
+          const dateForTitle = new Date(newStartDate);
+          dateForTitle.setDate(dateForTitle.getDate() + parseInt(dayKey) - 1);
+          updatedTravelPlans[dayKey] = { 
+            title: formatDateForTitleInternal(dateForTitle, parseInt(dayKey)), 
+            schedules: [] 
+          };
+        }
+        
+        const schedules = schedulesByDay[dayKey];
+        if (schedules && schedules.length > 0) {
+          const existingSchedules = updatedTravelPlans[dayKey].schedules || [];
             // 항공편 일정을 기존 일정 앞에 추가 (시간 순서대로)
-            updatedTravelPlans[dayKey].schedules = [...schedules, ...existingSchedules];
+          updatedTravelPlans[dayKey].schedules = [...schedules, ...existingSchedules];
             console.log(`[useTravelPlanLoader] Day ${dayKey}에 항공편 ${index + 1} 일정 추가:`, schedules.length, '개');
-          }
-        });
-      }
+        }
+      });
+    }
     });
     
     console.log('[useTravelPlanLoader] 다중 항공편 정보 일정에 추가 완료');
@@ -737,11 +737,11 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
       } else if (result.loadedFlightInfo) {
         // 단일 항공편만 있는 경우 (하위 호환성)
         updatedTravelPlans = addFlightInfoToSchedules(
-          result.travelPlans,
-          result.loadedFlightInfo,
-          result.startDate,
-          result.dayOrder
-        );
+        result.travelPlans,
+        result.loadedFlightInfo,
+        result.startDate,
+        result.dayOrder
+      );
         console.log('[useTravelPlanLoader] 단일 항공편 처리 완료');
       } else {
         // 항공편이 없는 경우

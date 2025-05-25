@@ -208,166 +208,166 @@ export const handler = async (event) => {
 async function handleCreatePlan(userEmail, body) {
   console.log("새로운 계획 저장 처리 시작");
   
-  // paid_plan 숫자 처리
-  let paidPlan = 0;
-  if (typeof body.paid_plan === 'number') {
-    paidPlan = body.paid_plan;
-    console.log("받은 paid_plan:", paidPlan);
-  } else {
-    console.log("paid_plan이 숫자가 아니거나 없음. 기본값 0 사용");
-  }
-  
-  // 데이터 구조 확인 - title과 data가 있는지 체크
-  let title = "기본 여행 계획", data = {};
-  
-  if (body.title && body.data) {
-    title = body.title;
-    data = body.data;
-    console.log("정상 구조 - title, data 필드 발견");
-  } else if (body.plans && body.name) {
-    // 이전 코드 호환성 유지
-    title = body.name;
-    data = body.plans;
-    console.log("이전 구조 - plans, name 필드 발견. 변환 완료");
-  } else {
-    console.error("경고: 필수 필드(title/data 또는 name/plans)가 없습니다");
-    console.log("사용 가능한 필드:", Object.keys(body));
-    
-    // 테스트 데이터 생성 (개발 모드에서만)
-    if (DEV_MODE) {
-      title = "테스트 여행 계획";
-      data = { 1: { title: "1일차", schedules: [] } };
-      console.log("개발 모드: 테스트 데이터 사용");
+    // paid_plan 숫자 처리
+    let paidPlan = 0;
+    if (typeof body.paid_plan === 'number') {
+      paidPlan = body.paid_plan;
+      console.log("받은 paid_plan:", paidPlan);
     } else {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({ 
-          success: false, 
-          message: "필수 필드가 누락되었습니다. title과 data(또는 name과 plans)가 필요합니다." 
-        })
-      };
+      console.log("paid_plan이 숫자가 아니거나 없음. 기본값 0 사용");
     }
-  }
-  
-  console.log("처리할 데이터:", { title, dataLength: data ? Object.keys(data).length : 0 });
 
-  const now = new Date().toISOString();
+  // 데이터 구조 확인 - title과 data가 있는지 체크
+    let title = "기본 여행 계획", data = {};
+    
+    if (body.title && body.data) {
+      title = body.title;
+      data = body.data;
+      console.log("정상 구조 - title, data 필드 발견");
+    } else if (body.plans && body.name) {
+      // 이전 코드 호환성 유지
+      title = body.name;
+      data = body.plans;
+      console.log("이전 구조 - plans, name 필드 발견. 변환 완료");
+    } else {
+      console.error("경고: 필수 필드(title/data 또는 name/plans)가 없습니다");
+      console.log("사용 가능한 필드:", Object.keys(body));
+      
+      // 테스트 데이터 생성 (개발 모드에서만)
+      if (DEV_MODE) {
+        title = "테스트 여행 계획";
+        data = { 1: { title: "1일차", schedules: [] } };
+        console.log("개발 모드: 테스트 데이터 사용");
+      } else {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ 
+            success: false, 
+            message: "필수 필드가 누락되었습니다. title과 data(또는 name과 plans)가 필요합니다." 
+          })
+        };
+      }
+    }
+    
+    console.log("처리할 데이터:", { title, dataLength: data ? Object.keys(data).length : 0 });
+
+    const now = new Date().toISOString();
 
   // 현재 사용자의 plan 개수를 조회
-  const queryCmd = new QueryCommand({
-    TableName: SAVED_PLANS_TABLE,
-    KeyConditionExpression: "user_id = :uid",
-    ExpressionAttributeValues: {
-      ":uid": userEmail
-    }
-  });
+    const queryCmd = new QueryCommand({
+      TableName: SAVED_PLANS_TABLE,
+      KeyConditionExpression: "user_id = :uid",
+      ExpressionAttributeValues: {
+        ":uid": userEmail
+      }
+    });
 
-  console.log("쿼리 명령 생성됨:", JSON.stringify(queryCmd));
-  
-  try {
-    const queryResult = await docClient.send(queryCmd);
-    console.log("쿼리 결과:", JSON.stringify(queryResult));      
+    console.log("쿼리 명령 생성됨:", JSON.stringify(queryCmd));
     
-    function generateTimeBased8DigitId() {
-      const now = Date.now(); // 예: 1715947533457
-      const timePart = now % 10000000; // 마지막 7자리 (시간 순서)
-      const randomDigit = Math.floor(Math.random() * 10); // 0~9 하나 추가
-      return Number(`${timePart}${randomDigit}`); // 8자리 숫자
-    }
-    
-    const planId = generateTimeBased8DigitId();
-    console.log("생성할 planId:", planId);
+    try {
+      const queryResult = await docClient.send(queryCmd);
+      console.log("쿼리 결과:", JSON.stringify(queryResult));      
+      
+      function generateTimeBased8DigitId() {
+        const now = Date.now(); // 예: 1715947533457
+        const timePart = now % 10000000; // 마지막 7자리 (시간 순서)
+        const randomDigit = Math.floor(Math.random() * 10); // 0~9 하나 추가
+        return Number(`${timePart}${randomDigit}`); // 8자리 숫자
+      }
+      
+      const planId = generateTimeBased8DigitId();
+      console.log("생성할 planId:", planId);
 
     // 데이터 준비 - 항공편과 일정 분리하기
-    // NaN, Infinity 등 직렬화 불가능한 값 처리
-    const cleanData = (obj) => {
-      if (obj === null || obj === undefined) return obj;
-      try {
-        return JSON.parse(JSON.stringify(obj, (key, value) => {
-          if (typeof value === 'number' && !Number.isFinite(value)) {
-            return null;
-          }
-          return value;
-        }));
-      } catch (e) {
-        console.warn("데이터 정리 중 오류:", e.message);
-        return obj;
-      }
-    };
-
-    // 항공편 데이터 분리 및 처리
-    let flightDetails = [];
-    
-    // DynamoDB 형식인지 확인 - 배열 형태의 항공편 데이터인 경우
-    if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object') {
-      const keys = Object.keys(data[0]);
-      if (keys.length === 1 && keys[0] === 'M') {
-        console.log("DynamoDB 형식의 항공편 데이터 감지됨, 변환 시도...");
-        flightDetails = convertDynamoDBToJS(data);
-      } else {
-        // 일반 항공편 데이터
-        flightDetails = data;
-      }
-    } 
-    // 일정 데이터 내에서 항공편 정보가 있는 경우 (기존 구조)
-    else if (typeof data === 'object' && !Array.isArray(data)) {
-      // 일정 데이터의 경우 - 일자별 데이터에서 항공편 정보 추출
-      const schedules = [];
-      
-      Object.keys(data).forEach(day => {
-        if (data[day].schedules && Array.isArray(data[day].schedules)) {
-          data[day].schedules.forEach(schedule => {
-            if (schedule.type === 'Flight_Departure' || schedule.type === 'Flight_Return') {
-              // 항공편 정보 추출
-              flightDetails.push({
-                ...schedule,
-                day: parseInt(day, 10)
-              });
-            } else {
-              // 일반 일정 정보 추가
-              schedules.push({
-                ...schedule,
-                day: parseInt(day, 10)
-              });
+      // NaN, Infinity 등 직렬화 불가능한 값 처리
+      const cleanData = (obj) => {
+        if (obj === null || obj === undefined) return obj;
+        try {
+          return JSON.parse(JSON.stringify(obj, (key, value) => {
+            if (typeof value === 'number' && !Number.isFinite(value)) {
+              return null;
             }
-          });
+            return value;
+          }));
+        } catch (e) {
+          console.warn("데이터 정리 중 오류:", e.message);
+          return obj;
         }
-      });
+      };
+
+      // 항공편 데이터 분리 및 처리
+      let flightDetails = [];
       
-      // 일정 데이터가 없는 경우 기존 데이터 그대로 사용
-      if (schedules.length === 0) {
-        console.log("일정 내 항공편 정보 추출 실패, 전체 데이터 저장");
+      // DynamoDB 형식인지 확인 - 배열 형태의 항공편 데이터인 경우
+      if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object') {
+        const keys = Object.keys(data[0]);
+        if (keys.length === 1 && keys[0] === 'M') {
+          console.log("DynamoDB 형식의 항공편 데이터 감지됨, 변환 시도...");
+          flightDetails = convertDynamoDBToJS(data);
+        } else {
+          // 일반 항공편 데이터
+          flightDetails = data;
+        }
+      } 
+      // 일정 데이터 내에서 항공편 정보가 있는 경우 (기존 구조)
+      else if (typeof data === 'object' && !Array.isArray(data)) {
+        // 일정 데이터의 경우 - 일자별 데이터에서 항공편 정보 추출
+        const schedules = [];
+        
+        Object.keys(data).forEach(day => {
+          if (data[day].schedules && Array.isArray(data[day].schedules)) {
+            data[day].schedules.forEach(schedule => {
+              if (schedule.type === 'Flight_Departure' || schedule.type === 'Flight_Return') {
+                // 항공편 정보 추출
+                flightDetails.push({
+                  ...schedule,
+                  day: parseInt(day, 10)
+                });
+              } else {
+                // 일반 일정 정보 추가
+                schedules.push({
+                  ...schedule,
+                  day: parseInt(day, 10)
+                });
+              }
+            });
+          }
+        });
+        
+        // 일정 데이터가 없는 경우 기존 데이터 그대로 사용
+        if (schedules.length === 0) {
+          console.log("일정 내 항공편 정보 추출 실패, 전체 데이터 저장");
+        }
       }
-    }
-    
-    const itemToSave = {
-      user_id: userEmail,
-      plan_id: planId,
-      name: title,
-      paid_plan: paidPlan,
-      // 기존 추출된 flightDetails가 아니라, body.flightInfo를 우선 저장
-      flight_details: body.flightInfo && (Array.isArray(body.flightInfo) ? body.flightInfo.length > 0 : !!body.flightInfo)
-        ? JSON.stringify(body.flightInfo)
-        : JSON.stringify(cleanData(flightDetails)),
-      itinerary_schedules: JSON.stringify(cleanData(data)),
-      // 숙소 정보 저장 추가
-      accmo_info: body.accommodationInfo ? JSON.stringify(cleanData(body.accommodationInfo)) : null,
+      
+      const itemToSave = {
+        user_id: userEmail,
+        plan_id: planId,
+        name: title,
+        paid_plan: paidPlan,
+        // 기존 추출된 flightDetails가 아니라, body.flightInfo를 우선 저장
+        flight_details: body.flightInfo && (Array.isArray(body.flightInfo) ? body.flightInfo.length > 0 : !!body.flightInfo)
+          ? JSON.stringify(body.flightInfo)
+          : JSON.stringify(cleanData(flightDetails)),
+        itinerary_schedules: JSON.stringify(cleanData(data)),
+        // 숙소 정보 저장 추가
+        accmo_info: body.accommodationInfo ? JSON.stringify(cleanData(body.accommodationInfo)) : null,
       // shared_email 필드 추가
       shared_email: body.shared_email || null,
-      last_updated: now
-    };
+        last_updated: now
+      };
 
-    console.log("DynamoDB에 저장할 최종 아이템 구조:", Object.keys(itemToSave));
+      console.log("DynamoDB에 저장할 최종 아이템 구조:", Object.keys(itemToSave));
     console.log("저장될 shared_email 값:", itemToSave.shared_email);
-    
-    const putCmd = new PutCommand({
-      TableName: SAVED_PLANS_TABLE,
-      Item: itemToSave
-    });
-    
-    await docClient.send(putCmd);
-    console.log("DynamoDB 저장 완료.");
+      
+      const putCmd = new PutCommand({
+        TableName: SAVED_PLANS_TABLE,
+        Item: itemToSave
+      });
+      
+      await docClient.send(putCmd);
+      console.log("DynamoDB 저장 완료.");
 
     // 공유 이메일이 있는 경우 공유 참조 아이템들 생성
     if (body.shared_email && body.shared_email.trim()) {
@@ -375,36 +375,36 @@ async function handleCreatePlan(userEmail, body) {
       await createSharedReferences(userEmail, planId, body.shared_email);
     }
 
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({
-        success: true,
-        message: "여행 계획이 성공적으로 저장되었습니다.",
-        plan_id: planId
-      })
-    };
-  } catch (putError) {
-    console.error("데이터 저장 중 오류:", putError);
-    console.error("오류 세부 정보:", JSON.stringify({
-      code: putError.code,
-      name: putError.name,
-      message: putError.message,
-      requestId: putError.$metadata?.requestId,
-      cfId: putError.$metadata?.cfId
-    }));
-    
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ 
-        success: false,
-        message: "데이터 저장 중 오류가 발생했습니다.",
-        error: putError.message,
-        errorCode: putError.code || putError.name
-      })
-    };
-  }
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          success: true,
+          message: "여행 계획이 성공적으로 저장되었습니다.",
+          plan_id: planId
+        })
+      };
+    } catch (putError) {
+      console.error("데이터 저장 중 오류:", putError);
+      console.error("오류 세부 정보:", JSON.stringify({
+        code: putError.code,
+        name: putError.name,
+        message: putError.message,
+        requestId: putError.$metadata?.requestId,
+        cfId: putError.$metadata?.cfId
+      }));
+      
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({ 
+          success: false,
+          message: "데이터 저장 중 오류가 발생했습니다.",
+          error: putError.message,
+          errorCode: putError.code || putError.name
+        })
+      };
+    }
 }
 
 // 기존 계획 수정 함수
