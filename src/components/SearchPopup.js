@@ -137,7 +137,7 @@ const SearchPopup = ({ onSelect, onClose }) => {
             category: result.types.join(', ')
           }));
           setResults(processedResults);
-          console.log('최종 결과:', processedResults);
+          //console.log('최종 결과:', processedResults);
         } else {
           setError('검색 결과를 찾을 수 없습니다.');
           setResults([]);

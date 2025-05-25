@@ -28,7 +28,7 @@ function Footer() {
           </div>
         </nav>
         <p className="mt-8 text-center text-base text-gray-400">
-          &copy; 2023 AI 여행 서비스 플랫폼. All rights reserved.
+          &copy; WIND ROAD, All rights reserved.
         </p>
       </div>
     </footer>

@@ -53,6 +53,8 @@ const TravelPlannerSidebar = ({
   onAddAccommodationToSchedule,
   dayOrderLength,
   forceRefreshSelectedDay,
+  // 유효성 검사를 위한 추가 props
+  startDate,
   // 항공편 관련 props
   flightSearchParams,
   setFlightSearchParams,
@@ -209,6 +211,9 @@ const TravelPlannerSidebar = ({
               dayOrderLength={dayOrderLength}
               onForceRefreshDay={forceRefreshSelectedDay}
               isSidebarOpen={isSidebarOpen}
+              // 유효성 검사를 위한 추가 props
+              dayOrder={dayOrder}
+              startDate={startDate}
             />
           )}
           {sidebarTab === 'flight' && (

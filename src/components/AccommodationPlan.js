@@ -25,10 +25,13 @@ import {
   CardMedia,
   CardContent,
   CardActions,
-  Tooltip
+  Tooltip,
+  Alert,
+  AlertTitle
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import WarningIcon from '@mui/icons-material/Warning';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -37,6 +40,11 @@ import SearchPopup from './SearchPopup';
 import { Search as SearchIcon, Add as AddIcon, Sort as SortIcon, AttachMoney as AttachMoneyIcon, Star as StarIcon, Delete as DeleteIcon, ArrowUpward as ArrowUpwardIcon, ArrowDownward as ArrowDownwardIcon, LocationOn as LocationOnIcon, Info as InfoIcon } from '@mui/icons-material';
 import HotelMap from './HotelMap';
 import { travelApi } from '../services/api';
+import { 
+  validateAccommodationAddition, 
+  extractExistingAccommodations,
+  formatDateString 
+} from '../utils/accommodationValidation';
 
 const modalStyle = {
   position: 'absolute',
@@ -68,7 +76,10 @@ const AccommodationPlan = forwardRef(({
   onAddToSchedule,
   dayOrderLength,
   onForceRefreshDay,
-  isSidebarOpen
+  isSidebarOpen,
+  // 유효성 검사를 위한 추가 props
+  dayOrder,
+  startDate
 }, ref) => {
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -91,6 +102,7 @@ const AccommodationPlan = forwardRef(({
   const [roomData, setRoomData] = useState(null);
   const [selectedHotelId, setSelectedHotelId] = useState(null);
   const [hotelMapResizeTrigger, setHotelMapResizeTrigger] = useState(0);
+  const [validationAlert, setValidationAlert] = useState(null);
 
   const handleDateChange = (field, date) => {
     console.log(`${field} 날짜 변경:`, date);
@@ -534,6 +546,14 @@ const AccommodationPlan = forwardRef(({
     setSelectedHotel(null);
   };
 
+  // 날짜를 YYYY-MM-DD 형식으로 변환 (로컬 시간대 기준)
+  const formatDateLocal = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const handleBooking = (event, hotel) => {
     event.stopPropagation();
     console.log('[예약] 현재 formData:', formData);
@@ -557,8 +577,8 @@ const AccommodationPlan = forwardRef(({
     const totalChildren = rooms.reduce((sum, room) => sum + room.children, 0);
     const roomCount = rooms.length;
 
-    const formattedCheckIn = checkInDate.toISOString().split('T')[0];
-    const formattedCheckOut = checkOutDate.toISOString().split('T')[0];
+    const formattedCheckIn = formatDateLocal(checkInDate);
+    const formattedCheckOut = formatDateLocal(checkOutDate);
     const hotelName = encodeURIComponent(hotel.hotel_name);
 
     const bookingUrl = `https://www.booking.com/searchresults.ko.html?ss=${hotelName}&checkin=${formattedCheckIn}&checkout=${formattedCheckOut}&group_adults=${adults}&group_children=${totalChildren}&no_rooms=${roomCount}&lang=ko`;
@@ -584,6 +604,94 @@ const AccommodationPlan = forwardRef(({
     setIsDialogOpen(false);
   };
 
+  // 숙박편 추가 전 유효성 검사 함수
+  const validateAndAddAccommodation = (accommodationToAdd) => {
+    console.log('[AccommodationPlan] 숙박편 유효성 검사 시작');
+    
+    // 필수 데이터 확인
+    if (!travelPlans || !dayOrder || !startDate) {
+      alert('여행 계획 정보가 부족합니다. 페이지를 새로고침해주세요.');
+      return false;
+    }
+
+    if (!accommodationToAdd.checkIn || !accommodationToAdd.checkOut) {
+      alert('체크인/체크아웃 날짜가 설정되지 않았습니다.');
+      return false;
+    }
+
+    // 기존 숙박편 목록 추출
+    const existingAccommodations = extractExistingAccommodations(travelPlans, dayOrder);
+    
+    // 유효성 검사 수행
+    const validation = validateAccommodationAddition(
+      accommodationToAdd,
+      existingAccommodations,
+      startDate,
+      dayOrder
+    );
+
+    if (!validation.isValid) {
+      // 사용자 친화적인 오류 메시지 표시
+      const errorTitle = getValidationErrorTitle(validation.details.type);
+      
+      // Alert 메시지 설정
+      setValidationAlert({
+        severity: validation.details.type === 'INVALID_DATE_RANGE' ? 'error' : 'warning',
+        title: errorTitle,
+        message: validation.message
+      });
+      
+      // 3초 후 Alert 자동 숨김
+      setTimeout(() => setValidationAlert(null), 7000);
+      
+      const confirmMessage = `${errorTitle}\n\n${validation.message}\n\n그래도 추가하시겠습니까?`;
+      
+      // 심각한 오류의 경우 강제 추가 불허
+      if (validation.details.type === 'INVALID_DATE_RANGE') {
+        alert(validation.message);
+        return false;
+      }
+      
+      // 다른 오류의 경우 사용자 선택 허용
+      if (!window.confirm(confirmMessage)) {
+        return false;
+      }
+    } else {
+      // 유효성 검사 통과 시 Alert 제거
+      setValidationAlert(null);
+      
+      // 연속 숙박인 경우 정보 메시지 표시
+      if (validation.message.includes('연속 숙박')) {
+        setValidationAlert({
+          severity: 'info',
+          title: '✅ 연속 숙박 확인',
+          message: validation.message
+        });
+        
+        // 3초 후 Alert 자동 숨김
+        setTimeout(() => setValidationAlert(null), 7000);
+      }
+    }
+
+    return true;
+  };
+
+  // 유효성 검사 오류 타입별 제목 반환
+  const getValidationErrorTitle = (errorType) => {
+    switch (errorType) {
+      case 'INVALID_DATE_RANGE':
+        return '❌ 잘못된 날짜 범위';
+      case 'OUTSIDE_TRAVEL_PERIOD':
+        return '⚠️ 여행 기간 초과';
+      case 'DATE_CONFLICT':
+        return '⚠️ 숙박편 날짜 충돌';
+      case 'CONSECUTIVE_STAY':
+        return '✅ 연속 숙박 확인';
+      default:
+        return '⚠️ 유효성 검사 오류';
+    }
+  };
+
   const handleAddToPlanClick = async () => {
     if (!selectedHotel) {
       alert('먼저 상세 정보를 볼 호텔을 선택해주세요.');
@@ -598,21 +706,47 @@ const AccommodationPlan = forwardRef(({
         console.warn('[AccommodationPlan] travelPlans 상태와 dayOrderLength가 일치하지 않거나 travelPlans가 비어있습니다.', travelPlans, dayOrderLength);
     }
 
-    // 확인 팝업
-    if (window.confirm('이 숙소를 체크인~체크아웃 날짜 전체 일정에 추가하시겠습니까?')) {
+    // 숙박편 데이터 준비
+    const accommodationToAdd = {
+      hotel: selectedHotel,
+      roomList: roomData?.rooms,
+      checkIn: formData.checkIn,
+      checkOut: formData.checkOut,
+      lat: selectedHotel.latitude,
+      lng: selectedHotel.longitude
+    };
+
+    // 유효성 검사 수행
+    if (!validateAndAddAccommodation(accommodationToAdd)) {
+      return;
+    }
+
+    // 최종 확인 팝업
+    const checkInStr = formatDateString(formData.checkIn);
+    const checkOutStr = formatDateString(formData.checkOut);
+    const hotelName = selectedHotel.hotel_name_trans || selectedHotel.hotel_name;
+    
+    if (window.confirm(`${hotelName}\n(${checkInStr} ~ ${checkOutStr})\n\n이 숙소를 일정에 추가하시겠습니까?`)) {
       if (!onAddToSchedule) {
         alert('일정 추가 기능을 사용할 수 없습니다.');
         return;
       }
-      onAddToSchedule({
-        hotel: selectedHotel,
-        roomList: roomData.rooms,
-        checkIn: formData.checkIn,
-        checkOut: formData.checkOut,
-        lat: selectedHotel.latitude,
-        lng: selectedHotel.longitude
-      });
+      
+      onAddToSchedule(accommodationToAdd);
       if (onForceRefreshDay) onForceRefreshDay();
+      
+      // 성공 메시지 표시
+      setValidationAlert({
+        severity: 'success',
+        title: '✅ 숙박편 추가 완료',
+        message: `${hotelName}이(가) 여행 계획에 추가되었습니다.`
+      });
+      
+      // 3초 후 Alert 자동 숨김
+      setTimeout(() => setValidationAlert(null), 7000);
+      
+      // 모달 닫기
+      setModalOpen(false);
     }
   };
 
@@ -756,12 +890,25 @@ const AccommodationPlan = forwardRef(({
   useEffect(() => {
     if (!displayInMain) return;
     setHotelMapResizeTrigger(v => v + 1);
-    const timeout = setTimeout(() => setHotelMapResizeTrigger(v => v + 1), 350);
+    const timeout = setTimeout(() => setHotelMapResizeTrigger(v => v + 1), 7000);
     return () => clearTimeout(timeout);
   }, [isSidebarOpen, displayInMain]);
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* 유효성 검사 Alert */}
+      {validationAlert && (
+        <Alert 
+          severity={validationAlert.severity} 
+          onClose={() => setValidationAlert(null)}
+          sx={{ mb: 2 }}
+          icon={<WarningIcon />}
+        >
+          <AlertTitle>{validationAlert.title}</AlertTitle>
+          {validationAlert.message}
+        </Alert>
+      )}
+      
       {!displayInMain && (
         <Paper sx={{ p: 2, mb: 2 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -1306,19 +1453,46 @@ const AccommodationPlan = forwardRef(({
                                   variant="contained"
                                   color="primary"
                                   onClick={() => {
-                                    if (onAddToSchedule) {
-                                      onAddToSchedule({
-                                        hotel: selectedHotel,
-                                        room,
-                                        roomList: roomData.rooms,
-                                        checkIn: formData.checkIn,
-                                        checkOut: formData.checkOut,
-                                        lat: selectedHotel.latitude,
-                                        lng: selectedHotel.longitude
-                                      });
+                                    // 숙박편 데이터 준비
+                                    const accommodationToAdd = {
+                                      hotel: selectedHotel,
+                                      room,
+                                      roomList: roomData.rooms,
+                                      checkIn: formData.checkIn,
+                                      checkOut: formData.checkOut,
+                                      lat: selectedHotel.latitude,
+                                      lng: selectedHotel.longitude
+                                    };
+
+                                    // 유효성 검사 수행
+                                    if (!validateAndAddAccommodation(accommodationToAdd)) {
+                                      return;
                                     }
-                                    if (onForceRefreshDay) onForceRefreshDay();
-                                    setModalOpen(false);
+
+                                    // 최종 확인 및 추가
+                                    const checkInStr = formatDateString(formData.checkIn);
+                                    const checkOutStr = formatDateString(formData.checkOut);
+                                    const hotelName = selectedHotel.hotel_name_trans || selectedHotel.hotel_name;
+                                    const roomName = room.name || '선택된 객실';
+                                    
+                                    if (window.confirm(`${hotelName}\n${roomName}\n(${checkInStr} ~ ${checkOutStr})\n\n이 객실을 일정에 추가하시겠습니까?`)) {
+                                      if (onAddToSchedule) {
+                                        onAddToSchedule(accommodationToAdd);
+                                      }
+                                      if (onForceRefreshDay) onForceRefreshDay();
+                                      
+                                      // 성공 메시지 표시
+                                      setValidationAlert({
+                                        severity: 'success',
+                                        title: '✅ 숙박편 추가 완료',
+                                        message: `${hotelName} - ${roomName}이(가) 여행 계획에 추가되었습니다.`
+                                      });
+                                      
+                                      // 3초 후 Alert 자동 숨김
+                                      setTimeout(() => setValidationAlert(null), 7000);
+                                      
+                                      setModalOpen(false);
+                                    }
                                   }}
                                   fullWidth
                                 >

@@ -24,7 +24,7 @@ const TravelPlannerMainContent = ({
   setShowMap,
   handleOpenShareDialog,
   setIsSearchOpen,
-  accommodationToShow,
+  accommodationsToShow,
   findSameDayAccommodations,
   handleOpenAccommodationDetail,
   startDate,
@@ -34,6 +34,9 @@ const TravelPlannerMainContent = ({
   hideFlightMarkers,
   selectedLocation,
   mapResizeTrigger,
+  // 삭제 핸들러
+  handleDeleteAccommodation,
+  handleDeleteFlight,
   // 숙소 관련 props
   mainAccommodationPlanRef,
   accommodationFormData,
@@ -124,7 +127,7 @@ const TravelPlannerMainContent = ({
           </Box>
           <Box sx={{ flex: 1, display: 'grid', gridTemplateColumns: showMap ? { xs: '1fr', md: '1fr 1fr' } : '1fr', gap: 2, overflow: 'hidden' }}>
             <ScheduleList
-              accommodationToShow={accommodationToShow}
+              accommodationsToShow={accommodationsToShow}
               findSameDayAccommodations={findSameDayAccommodations}
               handleOpenAccommodationDetail={handleOpenAccommodationDetail}
               startDate={startDate}
@@ -133,6 +136,8 @@ const TravelPlannerMainContent = ({
               handleScheduleDragEnd={handleScheduleDragEnd}
               renderScheduleItem={renderScheduleItem}
               handleOpenPlannerFlightDetail={handleOpenPlannerFlightDetail}
+              handleDeleteAccommodation={handleDeleteAccommodation}
+              handleDeleteFlight={handleDeleteFlight}
             />
             {showMap && (
               <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: 1, overflow: 'hidden', height: '100%' }}>
@@ -162,6 +167,9 @@ const TravelPlannerMainContent = ({
           dayOrderLength={dayOrder.length}
           onForceRefreshDay={forceRefreshSelectedDay}
           isSidebarOpen={isSidebarOpen}
+          // 유효성 검사를 위한 추가 props
+          dayOrder={dayOrder}
+          startDate={startDate}
         />
       )}
       {sidebarTab === 'flight' && (

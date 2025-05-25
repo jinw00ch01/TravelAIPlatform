@@ -209,104 +209,147 @@ const TravelPlannerDialogs = ({
             </IconButton>
           </DialogTitle>
           <DialogContent dividers>
-            {/* 같은 날 다중 숙박편이 있는 경우 표시 */}
-            {selectedAccommodationForDialog.sameDayAccommodations && (
-              <Box sx={{ mb: 3, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
-                <Typography variant="h6" gutterBottom sx={{ color: '#1976d2' }}>
-                  같은 날 숙박편 ({selectedAccommodationForDialog.sameDayAccommodations.length}개)
-                </Typography>
-                {selectedAccommodationForDialog.sameDayAccommodations.map((accommodation, index) => {
-                  const hotel = accommodation.hotel || {};
-                  const room = accommodation.room || {};
-                  
-                  return (
-                    <Box key={index} sx={{ mb: 2, p: 1.5, bgcolor: 'white', borderRadius: 1, border: 1, borderColor: 'divider' }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
-                        {accommodation.isCheckOut && accommodation.isCheckIn ? '체크아웃 → 체크인' : 
-                         accommodation.isCheckOut ? '체크아웃' : '체크인'}: {hotel.hotel_name_trans || hotel.hotel_name || '호텔'}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" gutterBottom>
-                        객실: {room.name || '정보 없음'}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" gutterBottom>
-                        주소: {hotel.address || hotel.address_trans || '주소 정보 없음'}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        체크인: {accommodation.checkIn ? new Date(accommodation.checkIn).toLocaleDateString('ko-KR') : '-'} | 
-                        체크아웃: {accommodation.checkOut ? new Date(accommodation.checkOut).toLocaleDateString('ko-KR') : '-'}
-                      </Typography>
-                      {room.price && (
-                        <Typography variant="body2" color="primary" sx={{ fontWeight: 'bold', mt: 1 }}>
-                          가격: {room.price.toLocaleString()} {room.currency || 'KRW'}
-                        </Typography>
-                      )}
-                    </Box>
-                  );
-                })}
-                <Divider sx={{ my: 2 }} />
+            {/* 호텔 메인 이미지 */}
+            {(selectedAccommodationForDialog.hotel?.main_photo_url || selectedAccommodationForDialog.main_photo_url) && (
+              <Box sx={{ mb: 3, textAlign: 'center' }}>
+                <Box
+                  component="img"
+                  src={selectedAccommodationForDialog.hotel?.main_photo_url || selectedAccommodationForDialog.main_photo_url}
+                  alt={selectedAccommodationForDialog.hotel?.hotel_name_trans || selectedAccommodationForDialog.hotel?.hotel_name || selectedAccommodationForDialog.hotel_name_trans || selectedAccommodationForDialog.hotel_name || '호텔 이미지'}
+                  sx={{ 
+                    width: '100%', 
+                    maxHeight: 300, 
+                    objectFit: 'cover', 
+                    borderRadius: 2,
+                    boxShadow: 2
+                  }}
+                />
               </Box>
             )}
 
-            {/* 메인 호텔 정보 */} 
-            <Typography variant="h6" gutterBottom>
-              {selectedAccommodationForDialog.hotel?.hotel_name_trans || selectedAccommodationForDialog.hotel?.hotel_name || '호텔 이름 정보 없음'}
+            {/* 호텔 기본 정보 */} 
+            <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold', color: '#5D4037' }}>
+              {selectedAccommodationForDialog.hotel?.hotel_name_trans || 
+               selectedAccommodationForDialog.hotel?.hotel_name || 
+               selectedAccommodationForDialog.hotel_name_trans || 
+               selectedAccommodationForDialog.hotel_name || 
+               '호텔 이름 정보 없음'}
             </Typography>
-            <Typography variant="body1" gutterBottom>
-              주소: {selectedAccommodationForDialog.hotel?.address || selectedAccommodationForDialog.hotel?.address_trans || '주소 정보 없음'}
+            
+            <Typography variant="body1" gutterBottom sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+              📍 {selectedAccommodationForDialog.hotel?.address || 
+                   selectedAccommodationForDialog.hotel?.address_trans || 
+                   selectedAccommodationForDialog.address || 
+                   selectedAccommodationForDialog.address_trans || 
+                   '주소 정보 없음'}
             </Typography>
+            
             <Typography variant="body2" color="text.secondary" gutterBottom>
-              도시: {selectedAccommodationForDialog.hotel?.city_trans || selectedAccommodationForDialog.hotel?.city || '도시 정보 없음'}
-               ({selectedAccommodationForDialog.hotel?.countrycode || '국가 코드 없음'})
+              🏙️ {selectedAccommodationForDialog.hotel?.city_trans || 
+                   selectedAccommodationForDialog.hotel?.city || 
+                   '도시 정보 없음'} 
+              ({selectedAccommodationForDialog.hotel?.countrycode || '국가 코드 없음'})
             </Typography>
-            {selectedAccommodationForDialog.hotel?.checkin_from && (
+
+            {/* 체크인/체크아웃 날짜 정보 */}
+            <Box sx={{ my: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>📅 예약 정보</Typography>
               <Typography variant="body2" color="text.secondary">
-                체크인 시간: {selectedAccommodationForDialog.hotel.checkin_from}
-                {selectedAccommodationForDialog.hotel.checkin_until && selectedAccommodationForDialog.hotel.checkin_until !== "00:00" ? ` ~ ${selectedAccommodationForDialog.hotel.checkin_until}` : ''}
+                체크인: {selectedAccommodationForDialog.checkIn ? 
+                  new Date(selectedAccommodationForDialog.checkIn).toLocaleDateString('ko-KR') : 
+                  (selectedAccommodationForDialog.hotel?.checkIn ? 
+                    new Date(selectedAccommodationForDialog.hotel.checkIn).toLocaleDateString('ko-KR') : '-')}
               </Typography>
-            )}
-            {selectedAccommodationForDialog.hotel?.checkout_until && (
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                체크아웃 시간: {selectedAccommodationForDialog.hotel.checkout_from && selectedAccommodationForDialog.hotel.checkout_from !== "00:00" ? `${selectedAccommodationForDialog.hotel.checkout_from} ~ ` : ''}
-                {selectedAccommodationForDialog.hotel.checkout_until}
+              <Typography variant="body2" color="text.secondary">
+                체크아웃: {selectedAccommodationForDialog.checkOut ? 
+                  new Date(selectedAccommodationForDialog.checkOut).toLocaleDateString('ko-KR') : 
+                  (selectedAccommodationForDialog.hotel?.checkOut ? 
+                    new Date(selectedAccommodationForDialog.hotel.checkOut).toLocaleDateString('ko-KR') : '-')}
               </Typography>
+            </Box>
+
+            {/* 호텔 운영 시간 정보 */}
+            {(selectedAccommodationForDialog.hotel?.checkin_from || selectedAccommodationForDialog.hotel?.checkout_until) && (
+              <Box sx={{ my: 2 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>🕐 운영 시간</Typography>
+                {selectedAccommodationForDialog.hotel?.checkin_from && (
+                  <Typography variant="body2" color="text.secondary">
+                    체크인 시간: {selectedAccommodationForDialog.hotel.checkin_from}
+                    {selectedAccommodationForDialog.hotel.checkin_until && selectedAccommodationForDialog.hotel.checkin_until !== "00:00" ? 
+                      ` ~ ${selectedAccommodationForDialog.hotel.checkin_until}` : ''}
+                  </Typography>
+                )}
+                {selectedAccommodationForDialog.hotel?.checkout_until && (
+                  <Typography variant="body2" color="text.secondary">
+                    체크아웃 시간: {selectedAccommodationForDialog.hotel.checkout_from && selectedAccommodationForDialog.hotel.checkout_from !== "00:00" ? 
+                      `${selectedAccommodationForDialog.hotel.checkout_from} ~ ` : ''}
+                    {selectedAccommodationForDialog.hotel.checkout_until}
+                  </Typography>
+                )}
+              </Box>
             )}
+
+            {/* 호텔 설명 */}
             {selectedAccommodationForDialog.hotel?.hotel_description && (
-              <Box sx={{my: 2}}>
-                <Typography variant="subtitle2" sx={{fontWeight: 'bold'}}>호텔 설명</Typography>
-                <Typography variant="body2" paragraph sx={{whiteSpace: 'pre-line'}}>
+              <Box sx={{ my: 2 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>📝 호텔 설명</Typography>
+                <Typography variant="body2" paragraph sx={{ whiteSpace: 'pre-line', lineHeight: 1.6 }}>
                   {selectedAccommodationForDialog.hotel.hotel_description}
                 </Typography>
               </Box>
             )}
 
-            <Divider sx={{ my: 2 }} />
+            <Divider sx={{ my: 3 }} />
 
             {/* 객실 정보 */} 
-            <Typography variant="h6" gutterBottom>선택된 객실 정보</Typography>
-            {selectedAccommodationForDialog.room ? (
-              <Box>
-                <Typography variant="subtitle1">{selectedAccommodationForDialog.room.name || '객실 이름 정보 없음'}</Typography>
-                {selectedAccommodationForDialog.room.price && selectedAccommodationForDialog.room.currency && (
-                   <Typography variant="body1" sx={{fontWeight: 'bold', color: 'primary.main'}}>
-                     가격: {formatPrice(selectedAccommodationForDialog.room.price, selectedAccommodationForDialog.room.currency)}
-                   </Typography>
-                )}
-                {selectedAccommodationForDialog.room.bed_configurations && selectedAccommodationForDialog.room.bed_configurations.length > 0 && (
-                  <Typography variant="body2" color="text.secondary">
-                    침대: {selectedAccommodationForDialog.room.bed_configurations.map(bc => `${bc.count} ${bc.name}(s)`).join(', ')}
+            <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', color: '#1976d2' }}>
+              🛏️ 선택된 객실 정보
+            </Typography>
+            {(selectedAccommodationForDialog.room || selectedAccommodationForDialog.hotel?.room) ? (
+              <Box sx={{ p: 2, bgcolor: '#f8f9fa', borderRadius: 1, border: 1, borderColor: 'divider' }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
+                  {selectedAccommodationForDialog.room?.name || 
+                   selectedAccommodationForDialog.hotel?.room?.name || 
+                   '객실 이름 정보 없음'}
+                </Typography>
+                
+                {/* 가격 정보 */}
+                {(selectedAccommodationForDialog.room?.price || selectedAccommodationForDialog.hotel?.price || selectedAccommodationForDialog.price) && (
+                  <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'primary.main', mb: 1 }}>
+                    💰 {selectedAccommodationForDialog.room?.price ? 
+                         formatPrice(selectedAccommodationForDialog.room.price, selectedAccommodationForDialog.room.currency) :
+                         (selectedAccommodationForDialog.hotel?.price || selectedAccommodationForDialog.price)}
                   </Typography>
                 )}
-                {selectedAccommodationForDialog.room.room_surface_in_m2 && (
-                   <Typography variant="body2" color="text.secondary">크기: {selectedAccommodationForDialog.room.room_surface_in_m2} m²</Typography>
-                )}
-                {selectedAccommodationForDialog.room.description && (
-                  <Typography variant="body2" paragraph sx={{whiteSpace: 'pre-line', mt:1}}>
-                    {selectedAccommodationForDialog.room.description}
+
+                {/* 침대 정보 */}
+                {selectedAccommodationForDialog.room?.bed_configurations && selectedAccommodationForDialog.room.bed_configurations.length > 0 && (
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    🛏️ 침대: {selectedAccommodationForDialog.room.bed_configurations.map(bc => `${bc.count} ${bc.name}(s)`).join(', ')}
                   </Typography>
+                )}
+
+                {/* 객실 크기 */}
+                {selectedAccommodationForDialog.room?.room_surface_in_m2 && (
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    📐 크기: {selectedAccommodationForDialog.room.room_surface_in_m2} m²
+                  </Typography>
+                )}
+
+                {/* 객실 설명 */}
+                {selectedAccommodationForDialog.room?.description && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>객실 상세 정보</Typography>
+                    <Typography variant="body2" paragraph sx={{ whiteSpace: 'pre-line', lineHeight: 1.6 }}>
+                      {selectedAccommodationForDialog.room.description}
+                    </Typography>
+                  </Box>
                 )}
               </Box>
             ) : (
-              <Typography>선택된 객실 정보가 없습니다.</Typography>
+              <Typography color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                선택된 객실 정보가 없습니다.
+              </Typography>
             )}
           </DialogContent>
           <DialogActions>

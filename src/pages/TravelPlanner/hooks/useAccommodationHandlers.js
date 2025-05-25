@@ -31,32 +31,67 @@ const useAccommodationHandlers = () => {
 
   // 숙소를 일정에 추가하는 함수
   const addAccommodationToSchedule = useCallback((hotelToAdd, getDayTitle, setTravelPlans, startDate, dayOrder, setLoadedAccommodationInfo) => {
+    console.log('[useAccommodationHandlers] 숙박편 추가 시작:', hotelToAdd);
+    
     if (!hotelToAdd) {
+      console.error('[useAccommodationHandlers] 호텔 정보가 없습니다.');
       alert('호텔 정보가 없습니다.');
       return;
     }
 
-    let checkInDate = hotelToAdd.checkIn instanceof Date ? hotelToAdd.checkIn : new Date(hotelToAdd.checkIn);
-    let checkOutDate = hotelToAdd.checkOut instanceof Date ? hotelToAdd.checkOut : new Date(hotelToAdd.checkOut);
+    // 날짜 파싱 함수 (로컬 시간대 기준)
+    const parseDate = (dateInput) => {
+      if (dateInput instanceof Date) return dateInput;
+      
+      // YYYY-MM-DD 형식의 문자열인 경우 로컬 시간대로 파싱
+      if (typeof dateInput === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
+        const [year, month, day] = dateInput.split('-').map(Number);
+        return new Date(year, month - 1, day); // 월은 0부터 시작
+      }
+      
+      return new Date(dateInput);
+    };
 
-    console.log('[숙소추가] checkInDate:', checkInDate, 'checkOutDate:', checkOutDate);
-    console.log('[숙소추가] startDate:', startDate, 'dayOrder:', dayOrder);
+    let checkInDate = parseDate(hotelToAdd.checkIn);
+    let checkOutDate = parseDate(hotelToAdd.checkOut);
+
+    console.log('[useAccommodationHandlers] 원본 날짜 정보:', {
+      원본_checkInDate: checkInDate,
+      원본_checkOutDate: checkOutDate,
+      원본_startDate: startDate,
+      dayOrder
+    });
 
     if (isNaN(checkInDate.getTime()) || isNaN(checkOutDate.getTime())) {
+      console.error('[useAccommodationHandlers] 잘못된 날짜 형식');
       alert('체크인 또는 체크아웃 날짜가 올바르지 않습니다.');
       return;
     }
 
-    // 날짜를 0시로 맞추는 함수
+    // 날짜를 0시로 맞추는 함수 (로컬 시간대 기준)
     function toZeroTime(date) {
       const d = new Date(date);
       d.setHours(0, 0, 0, 0);
       return d;
     }
 
+    // 날짜를 YYYY-MM-DD 형식으로 변환 (로컬 시간대 기준)
+    function formatDateLocal(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
     const baseStart = toZeroTime(startDate);
     const checkInDateZero = toZeroTime(checkInDate);
     const checkOutDateZero = toZeroTime(checkOutDate);
+
+    console.log('[useAccommodationHandlers] 0시 조정 후 날짜:', {
+      baseStart: formatDateLocal(baseStart),
+      checkInDateZero: formatDateLocal(checkInDateZero),
+      checkOutDateZero: formatDateLocal(checkOutDateZero)
+    });
 
     // 1. 모든 날짜에 dayKey가 있는지 먼저 검사
     let allDaysExist = true;
@@ -67,7 +102,7 @@ const useAccommodationHandlers = () => {
       const dayKey = dayOrder[diff];
       if (!dayKey) {
         allDaysExist = false;
-        missingDay = checkDate.toISOString().split('T')[0];
+        missingDay = formatDateLocal(checkDate);
         break;
       }
       checkDate.setDate(checkDate.getDate() + 1);
@@ -76,7 +111,7 @@ const useAccommodationHandlers = () => {
     const dayKeyOut = dayOrder[diffOut];
     if (!dayKeyOut && allDaysExist) {
       allDaysExist = false;
-      missingDay = checkOutDateZero.toISOString().split('T')[0];
+      missingDay = formatDateLocal(checkOutDateZero);
     }
     if (!allDaysExist) {
       alert(`${missingDay} 날짜에 일정을 먼저 추가하세요.`);
@@ -86,8 +121,17 @@ const useAccommodationHandlers = () => {
     // hotelToAdd에 roomList가 없으면 빈 배열로 보장
     const hotelWithRoomList = {
       ...hotelToAdd,
-      roomList: hotelToAdd.roomList || []
+      roomList: hotelToAdd.roomList || [],
+      // 호텔 정보 정규화
+      hotel_id: hotelToAdd.hotel?.hotel_id || hotelToAdd.hotel_id || hotelToAdd.id,
+      hotel_name: hotelToAdd.hotel?.hotel_name || hotelToAdd.hotel_name || hotelToAdd.name,
+      hotel_name_trans: hotelToAdd.hotel?.hotel_name_trans || hotelToAdd.hotel_name_trans,
+      address: hotelToAdd.hotel?.address || hotelToAdd.address,
+      checkIn: formatDateLocal(checkInDateZero),
+      checkOut: formatDateLocal(checkOutDateZero)
     };
+
+    console.log('[useAccommodationHandlers] 정규화된 호텔 정보:', hotelWithRoomList);
 
     // loadedAccommodationInfo 업데이트
     setLoadedAccommodationInfo({
@@ -105,8 +149,8 @@ const useAccommodationHandlers = () => {
       let time = '숙박';
       if (currentDate.getTime() === checkInDateZero.getTime()) time = '체크인';
       const newSchedule = {
-        id: `hotel-${hotelWithRoomList.hotel_id || hotelWithRoomList.id}-${dayKey}`,
-        name: hotelWithRoomList.hotel_name || hotelWithRoomList.name,
+        id: `hotel-${hotelWithRoomList.hotel_id}-${dayKey}`,
+        name: hotelWithRoomList.hotel_name_trans || hotelWithRoomList.hotel_name,
         time,
         address: hotelWithRoomList.address,
         category: '숙소',
@@ -117,6 +161,8 @@ const useAccommodationHandlers = () => {
         lat: hotelWithRoomList.lat || hotelWithRoomList.latitude,
         lng: hotelWithRoomList.lng || hotelWithRoomList.longitude
       };
+      
+      console.log('[useAccommodationHandlers] 생성된 일정:', newSchedule);
       setTravelPlans(prevTravelPlans => {
         const updatedPlans = { ...prevTravelPlans };
         if (!updatedPlans[dayKey]) {
@@ -132,8 +178,8 @@ const useAccommodationHandlers = () => {
     // 체크아웃날 블록 추가
     if (dayKeyOut) {
       const outSchedule = {
-        id: `hotel-${hotelWithRoomList.hotel_id || hotelWithRoomList.id}-${dayKeyOut}-out`,
-        name: hotelWithRoomList.hotel_name || hotelWithRoomList.name,
+        id: `hotel-${hotelWithRoomList.hotel_id}-${dayKeyOut}-out`,
+        name: hotelWithRoomList.hotel_name_trans || hotelWithRoomList.hotel_name,
         time: '체크아웃',
         address: hotelWithRoomList.address,
         category: '숙소',
@@ -144,6 +190,8 @@ const useAccommodationHandlers = () => {
         lat: hotelWithRoomList.lat || hotelWithRoomList.latitude,
         lng: hotelWithRoomList.lng || hotelWithRoomList.longitude
       };
+      
+      console.log('[useAccommodationHandlers] 체크아웃 일정 생성:', outSchedule);
       setTravelPlans(prevTravelPlans => {
         const updatedPlans = { ...prevTravelPlans };
         if (!updatedPlans[dayKeyOut]) {
@@ -155,7 +203,8 @@ const useAccommodationHandlers = () => {
         return updatedPlans;
       });
     }
-    alert('숙소가 체크인부터 체크아웃까지의 일정에 추가되었습니다.');
+    console.log('[useAccommodationHandlers] 숙박편 추가 완료');
+    // alert는 AccommodationPlan.js에서 처리하므로 제거
   }, []);
 
   return {
