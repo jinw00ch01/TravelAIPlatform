@@ -117,16 +117,33 @@ async function handleBatchGetPlans(userEmail, planIds) {
     // 공유된 계획 조회
     const sharedPlanQuery = new ScanCommand({
       TableName: SAVED_PLANS_TABLE,
-      FilterExpression: "contains(shared_email, :email) AND attribute_exists(plan_id)",
+      FilterExpression: "attribute_exists(shared_email) AND shared_email <> :empty",
       ExpressionAttributeValues: {
-        ":email": userEmail
+        ":empty": ""
       }
     });
 
     const sharedResult = await docClient.send(sharedPlanQuery);
-    sharedPlans = (sharedResult.Items || []).filter(plan => 
-      missingPlanIds.includes(plan.plan_id)
-    );
+    
+    // shared_email 필드를 쉼표로 분리하여 정확히 일치하는지 확인하고 missingPlanIds에 포함된 것만 필터링
+    const filteredSharedPlans = (sharedResult.Items || []).filter(plan => {
+      if (!plan.shared_email || !missingPlanIds.includes(plan.plan_id)) return false;
+      
+      // 자신이 소유한 계획은 제외
+      if (plan.user_id === userEmail) return false;
+      
+      const sharedEmails = plan.shared_email.split(',').map(email => email.trim());
+      const isShared = sharedEmails.includes(userEmail);
+      
+      if (isShared) {
+        console.log(`✅ 공유 계획 확인: ${plan.plan_id} (${plan.name}) - 소유자: ${plan.user_id}`);
+        console.log(`   공유된 이메일들: ${plan.shared_email}`);
+      }
+      
+      return isShared;
+    });
+    
+    sharedPlans = filteredSharedPlans;
     
     console.log("공유된 계획 조회 결과:", sharedPlans.length, "개");
   }
@@ -187,34 +204,53 @@ async function handleSinglePlanGet(userEmail, planId) {
   
   const sharedPlanQuery = new ScanCommand({
     TableName: SAVED_PLANS_TABLE,
-    FilterExpression: "plan_id = :pid AND contains(shared_email, :email)",
+    FilterExpression: "plan_id = :pid AND attribute_exists(shared_email) AND shared_email <> :empty",
     ExpressionAttributeValues: {
       ":pid": planId,
-      ":email": userEmail
+      ":empty": ""
     }
   });
 
   const sharedResult = await docClient.send(sharedPlanQuery);
   
   if (sharedResult.Items && sharedResult.Items.length > 0) {
-    console.log("공유된 계획 발견");
-    const plan = sharedResult.Items[0];
+    // shared_email 필드를 쉼표로 분리하여 정확히 일치하는지 확인
+    const matchingPlan = sharedResult.Items.find(plan => {
+      if (!plan.shared_email) return false;
+      
+      // 자신이 소유한 계획은 제외
+      if (plan.user_id === userEmail) return false;
+      
+      const sharedEmails = plan.shared_email.split(',').map(email => email.trim());
+      const isShared = sharedEmails.includes(userEmail);
+      
+      if (isShared) {
+        console.log(`✅ 공유 계획 확인: ${plan.plan_id} (${plan.name}) - 소유자: ${plan.user_id}`);
+        console.log(`   공유된 이메일들: ${plan.shared_email}`);
+      }
+      
+      return isShared;
+    });
     
-    console.log("공유 계획 세부 정보:");
-    console.log("원래 소유자:", plan.user_id);
-    console.log("shared_email:", plan.shared_email);
-    
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({
-        success: true,
-        plan: plan,
-        single_request: true,
-        is_shared_with_me: true,
-        original_owner: plan.user_id
-      })
-    };
+    if (matchingPlan) {
+      console.log("공유된 계획 발견");
+      
+      console.log("공유 계획 세부 정보:");
+      console.log("원래 소유자:", matchingPlan.user_id);
+      console.log("shared_email:", matchingPlan.shared_email);
+      
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          success: true,
+          plan: matchingPlan,
+          single_request: true,
+          is_shared_with_me: true,
+          original_owner: matchingPlan.user_id
+        })
+      };
+    }
   }
 
   // 3. 계획을 찾을 수 없음

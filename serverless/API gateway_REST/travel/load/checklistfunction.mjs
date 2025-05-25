@@ -87,107 +87,60 @@ export const handler = async (event) => {
 
     console.log("사용자 소유 계획:", ownPlans.length, "개");
 
-    // 2. 공유받은 계획 조회 - 하이브리드 방식
+    // 2. 공유받은 계획 조회 - scan 방식으로 변경
     let sharedPlans = [];
     
     try {
-      console.log("공유받은 계획 조회 시작 (하이브리드)");
+      console.log("공유받은 계획 조회 시작 (scan 방식)");
       console.log("현재 사용자 이메일:", userEmail);
       
-      // 1) 먼저 새로운 GSI 방식 시도
-      const sharedRefQuery = new QueryCommand({
+      // shared_email 필드에서 현재 사용자 이메일을 포함하는 모든 계획 검색
+      const scanCmd = new ScanCommand({
         TableName: SAVED_PLANS_TABLE,
-        IndexName: "SharedToEmailIndex",
-        KeyConditionExpression: "shared_to_email = :email",
+        FilterExpression: "attribute_exists(shared_email) AND shared_email <> :empty AND contains(shared_email, :email)",
         ExpressionAttributeValues: {
+          ":empty": "",
           ":email": userEmail
         },
-        ProjectionExpression: "original_owner, original_plan_id, #typ, created_at",
+        ProjectionExpression: "plan_id, #nm, last_updated, paid_plan, shared_email, user_id",
         ExpressionAttributeNames: {
-          "#typ": "type"
+          "#nm": "name"
         }
       });
       
-      console.log("GSI를 사용한 공유 참조 조회 중...");
-      const sharedRefResult = await docClient.send(sharedRefQuery);
+      console.log("전체 테이블에서 공유 계획 검색 중...");
+      const scanResult = await docClient.send(scanCmd);
       
-      if (sharedRefResult.Items && sharedRefResult.Items.length > 0) {
-        console.log(`${sharedRefResult.Items.length}개의 공유 참조 발견`);
+      if (scanResult.Items && scanResult.Items.length > 0) {
+        console.log(`스캔에서 ${scanResult.Items.length}개의 공유 계획 발견`);
         
-        // 각 공유 참조에 대해 원본 계획 정보 조회
-        for (const refItem of sharedRefResult.Items) {
-          try {
-            const originalPlanQuery = new GetCommand({
-              TableName: SAVED_PLANS_TABLE,
-              Key: {
-                user_id: refItem.original_owner,
-                plan_id: refItem.original_plan_id
-              },
-              ProjectionExpression: "plan_id, #nm, last_updated, paid_plan, shared_email, user_id",
-              ExpressionAttributeNames: {
-                "#nm": "name"
-              }
-            });
-            
-            const originalPlanResult = await docClient.send(originalPlanQuery);
-            
-            if (originalPlanResult.Item) {
-              const sharedPlan = {
-                ...originalPlanResult.Item,
-                is_shared_with_me: true,
-                original_owner: refItem.original_owner,
-                shared_at: refItem.created_at
-              };
-              
-              sharedPlans.push(sharedPlan);
-              console.log(`공유 계획 추가: ${sharedPlan.plan_id} (${sharedPlan.name}) - 소유자: ${refItem.original_owner}`);
-            }
-          } catch (planQueryError) {
-            console.error(`원본 계획 조회 실패:`, planQueryError.message);
+        // shared_email 필드를 쉼표로 분리하여 정확히 일치하는지 확인
+        const filteredPlans = scanResult.Items.filter(plan => {
+          if (!plan.shared_email) return false;
+          
+          // 자신이 소유한 계획은 제외
+          if (plan.user_id === userEmail) return false;
+          
+          const sharedEmails = plan.shared_email.split(',').map(email => email.trim());
+          const isShared = sharedEmails.includes(userEmail);
+          
+          if (isShared) {
+            console.log(`✅ 공유 계획 확인: ${plan.plan_id} (${plan.name}) - 소유자: ${plan.user_id}`);
+            console.log(`   공유된 이메일들: ${plan.shared_email}`);
           }
-        }
-      }
-
-      // 2) GSI에서 찾지 못했으면 기존 방식으로 fallback (모든 계획 검색)
-      if (sharedPlans.length === 0) {
-        console.log("GSI에서 공유받은 계획 없음. 전체 테이블 스캔으로 fallback...");
+          
+          return isShared;
+        });
         
-        try {
-          // shared_email이 있는 모든 계획을 스캔
-          const scanCmd = new ScanCommand({
-            TableName: SAVED_PLANS_TABLE,
-            FilterExpression: "attribute_exists(shared_email) AND shared_email <> :empty AND contains(shared_email, :email)",
-            ExpressionAttributeValues: {
-              ":empty": "",
-              ":email": userEmail
-            },
-            ProjectionExpression: "plan_id, #nm, last_updated, paid_plan, shared_email, user_id",
-            ExpressionAttributeNames: {
-              "#nm": "name"
-            }
-          });
-          
-          console.log("전체 테이블에서 공유 계획 검색 중...");
-          const scanResult = await docClient.send(scanCmd);
-          
-          if (scanResult.Items && scanResult.Items.length > 0) {
-            console.log(`전체 스캔에서 ${scanResult.Items.length}개의 공유 계획 발견`);
-            
-            sharedPlans = scanResult.Items.map(plan => ({
-              ...plan,
-              is_shared_with_me: true,
-              original_owner: plan.user_id
-            }));
-            
-            sharedPlans.forEach(plan => {
-              console.log(`✅ 공유 계획: ${plan.plan_id} (${plan.name}) - 소유자: ${plan.user_id}`);
-            });
-          } else {
-            console.log("전체 스캔에서도 공유받은 계획 없음");
-          }
-        } catch (scanError) {
-          console.error("전체 스캔 실패:", scanError.message);
-        }
+        sharedPlans = filteredPlans.map(plan => ({
+          ...plan,
+          is_shared_with_me: true,
+          original_owner: plan.user_id
+        }));
+        
+        console.log(`최종 필터링된 공유 계획: ${sharedPlans.length}개`);
+      } else {
+        console.log("스캔에서 공유받은 계획 없음");
       }
 
       console.log("최종 공유받은 계획:", sharedPlans.length, "개");

@@ -181,27 +181,38 @@ const TravelPlanner = ({ loadMode }) => {
       }
 
       try {
-        // checklistfunction을 호출하여 플랜 목록을 가져와서 확인
-        const response = await fetch('https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/travel/checklist', {
+        // checkplanfunction을 호출하여 현재 계획의 상세 정보를 가져와서 확인
+        const response = await fetch('https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/travel/checkplan', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${user.token}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ mode: 'list' })
+          body: JSON.stringify({ plan_id: Number(planId) })
         });
 
         if (response.ok) {
           const data = await response.json();
-          if (data.success && data.plans) {
-            const currentPlanData = data.plans.find(plan => plan.plan_id === Number(planId));
-            if (currentPlanData && currentPlanData.is_shared_with_me === true) {
+          if (data.success && data.plan) {
+            // 계획의 소유자(user_id)와 현재 사용자 이메일을 비교
+            const planOwner = data.plan.user_id;
+            const currentUserEmail = user.email;
+            
+            console.log('[TravelPlanner] 계획 소유자:', planOwner);
+            console.log('[TravelPlanner] 현재 사용자:', currentUserEmail);
+            
+            if (planOwner !== currentUserEmail) {
               setIsSharedPlan(true);
               console.log('[TravelPlanner] 현재 플랜은 공유받은 플랜입니다.');
             } else {
               setIsSharedPlan(false);
+              console.log('[TravelPlanner] 현재 플랜은 본인 소유 플랜입니다.');
             }
+          } else {
+            setIsSharedPlan(false);
           }
+        } else {
+          setIsSharedPlan(false);
         }
       } catch (error) {
         console.error('[TravelPlanner] 공유 플랜 확인 중 오류:', error);
