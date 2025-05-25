@@ -4,6 +4,7 @@ import {
   Button, TextField, Box, Typography, IconButton, Divider
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import SearchPopup from '../../../components/SearchPopup';
 import {
@@ -52,6 +53,9 @@ const TravelPlannerDialogs = ({
   handleCloseShareDialog,
   sharedEmail,
   setSharedEmail,
+  sharedEmails,
+  handleAddSharedEmail,
+  handleRemoveSharedEmail,
   shareMessage,
   isSharing,
   handleSharePlan
@@ -311,21 +315,66 @@ const TravelPlannerDialogs = ({
       )}
 
       {/* 공유 다이얼로그 */}
-      <Dialog open={isShareDialogOpen} onClose={handleCloseShareDialog}>
+      <Dialog open={isShareDialogOpen} onClose={handleCloseShareDialog} maxWidth="sm" fullWidth>
         <DialogTitle>플랜 공유</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2 }}>
-            <TextField
-              autoFocus
-              fullWidth
-              label="공유할 이메일 주소"
-              type="email"
-              value={sharedEmail}
-              onChange={e => setSharedEmail(e.target.value)}
-              placeholder="example@email.com"
-              sx={{ mb: 2 }}
-              disabled={isSharing}
-            />
+            {/* 기존 공유된 이메일 목록 */}
+            {sharedEmails && sharedEmails.length > 0 && (
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>
+                  현재 공유된 이메일
+                </Typography>
+                {sharedEmails.map((email, index) => (
+                  <Box key={index} sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    mb: 1, 
+                    p: 1, 
+                    bgcolor: '#f5f5f5', 
+                    borderRadius: 1 
+                  }}>
+                    <Typography variant="body2" sx={{ flex: 1 }}>
+                      {email}
+                    </Typography>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleRemoveSharedEmail(index)}
+                      disabled={isSharing}
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                ))}
+              </Box>
+            )}
+
+            {/* 새 이메일 추가 */}
+            <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+              <TextField
+                fullWidth
+                label="새 이메일 주소 추가"
+                type="email"
+                value={sharedEmail}
+                onChange={e => setSharedEmail(e.target.value)}
+                placeholder="example@email.com"
+                disabled={isSharing}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && sharedEmail.trim()) {
+                    handleAddSharedEmail();
+                  }
+                }}
+              />
+              <Button
+                variant="outlined"
+                onClick={handleAddSharedEmail}
+                disabled={isSharing || !sharedEmail.trim()}
+                sx={{ minWidth: 'auto', px: 2 }}
+              >
+                +
+              </Button>
+            </Box>
+
             {shareMessage && (
               <Typography 
                 variant="body2" 
@@ -344,9 +393,9 @@ const TravelPlannerDialogs = ({
           <Button 
             onClick={handleSharePlan} 
             variant="contained" 
-            disabled={isSharing || !sharedEmail.trim()}
+            disabled={isSharing}
           >
-            {isSharing ? '공유 중...' : '공유하기'}
+            {isSharing ? '저장 중...' : '저장'}
           </Button>
         </DialogActions>
       </Dialog>

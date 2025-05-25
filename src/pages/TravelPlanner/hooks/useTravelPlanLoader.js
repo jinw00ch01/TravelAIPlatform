@@ -16,6 +16,7 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
   const [startDate, setStartDate] = useState(new Date());
   const [planId, setPlanId] = useState(null);
   const [planName, setPlanName] = useState(null);
+  const [sharedEmailFromLoader, setSharedEmailFromLoader] = useState('');
   const [isLoadingPlan, setIsLoadingPlan] = useState(true); 
   const [loadedFlightInfo, setLoadedFlightInfo] = useState(null);
   const [loadedFlightInfos, setLoadedFlightInfos] = useState([]); // 다중 항공편
@@ -36,6 +37,7 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
     setStartDate(initialDate);
     setPlanId(null);
     setPlanName(null);
+    setSharedEmailFromLoader('');
     setLoadedFlightInfo(null);
     setLoadedFlightInfos([]);
     setIsRoundTrip(false);
@@ -83,6 +85,7 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
     let newPlanId = null;
     let newStartDate = null;
     let planName = null;
+    let sharedEmail = null;
     let isDataProcessed = false;
     let parsedFlightInfo = null;
     let parsedFlightInfos = [];
@@ -109,6 +112,12 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
           console.log('[useTravelPlanLoader] 계획 제목 추출 성공:', planName);
         } else {
           console.log('[useTravelPlanLoader] 계획 제목(name) 없음!');
+        }
+        
+        // 공유 이메일 정보 저장
+        if (data.plan.shared_email) {
+          sharedEmail = data.plan.shared_email;
+          console.log('[useTravelPlanLoader] 공유 이메일 추출 성공:', sharedEmail);
         }
         
         // itinerary_schedules 파싱
@@ -224,6 +233,15 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
       } else if (data?.plan?.[0]?.name) {
         planName = data.plan[0].name;
         console.log('[useTravelPlanLoader] plan 배열[0]에서 name 추출:', planName);
+      }
+      
+      // shared_email 필드 확인
+      if (data?.plan && !Array.isArray(data.plan) && data.plan.shared_email) {
+        sharedEmail = data.plan.shared_email;
+        console.log('[useTravelPlanLoader] 단일 plan 객체에서 shared_email 추출:', sharedEmail);
+      } else if (data?.plan?.[0]?.shared_email) {
+        sharedEmail = data.plan[0].shared_email;
+        console.log('[useTravelPlanLoader] plan 배열[0]에서 shared_email 추출:', sharedEmail);
       }
 
       if (data?.plan?.[0]?.start_date) {
@@ -608,6 +626,7 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
       selectedDay: newSelectedDay,
       planId: newPlanId,
       planName: planName,
+      sharedEmail: sharedEmail,
       startDate: newStartDate || potentialStartDate,
       loadedFlightInfo: parsedFlightInfo,
       loadedFlightInfos: parsedFlightInfos,
@@ -742,8 +761,9 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
       setLoadedAccommodationInfo(result.loadedAccommodationInfo);
       setLoadedAccommodationInfos(result.loadedAccommodationInfos);
       setPlanName(result.planName);
+      setSharedEmailFromLoader(result.sharedEmail || '');
       
-      console.log('[useTravelPlanLoader] 최종 상태 업데이트 완료. newStartDate:', result.startDate);
+      console.log('[useTravelPlanLoader] 최종 상태 업데이트 완료. newStartDate:', result.startDate, 'sharedEmail:', result.sharedEmail);
 
       // accommodationInfo 처리 로직 추가
       if (result.loadedAccommodationInfo?.hotel) {
@@ -877,7 +897,8 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
     loadedAccommodationInfo,
     loadedAccommodationInfos, // 다중 숙박편
     planName,
-    setPlanName
+    setPlanName,
+    sharedEmailFromLoader
   };
 };
 

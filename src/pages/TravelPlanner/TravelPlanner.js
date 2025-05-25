@@ -54,7 +54,8 @@ const TravelPlanner = ({ loadMode }) => {
     loadedFlightInfos, // 다중 항공편
     isRoundTrip,
     loadError,
-    loadedAccommodationInfos // 다중 숙박편
+    loadedAccommodationInfos, // 다중 숙박편
+    sharedEmailFromLoader
   } = useTravelPlanLoader(user, planIdFromUrl, loadMode);
 
   const {
@@ -133,6 +134,9 @@ const TravelPlanner = ({ loadMode }) => {
   const [planTitle, setPlanTitle] = useState('');
   const [isEditingPlanTitle, setIsEditingPlanTitle] = useState(false);
   const [tempPlanTitle, setTempPlanTitle] = useState('');
+  
+  // 계획 공유 이메일 상태
+  const [sharedEmailFromPlan, setSharedEmailFromPlan] = useState('');
 
   // refs
   const mainAccommodationPlanRef = useRef(null);
@@ -156,6 +160,16 @@ const TravelPlanner = ({ loadMode }) => {
       setPlanTitle('새 여행 계획');
     }
   }, [planId, planName]);
+
+  // 로드된 계획의 공유 이메일 정보 설정
+  useEffect(() => {
+    if (sharedEmailFromLoader) {
+      setSharedEmailFromPlan(sharedEmailFromLoader);
+      console.log('[TravelPlanner] 로드된 공유 이메일 설정:', sharedEmailFromLoader);
+    } else {
+      setSharedEmailFromPlan('');
+    }
+  }, [sharedEmailFromLoader]);
 
   const accommodationToShow = useMemo(() => {
     console.log('Calculating accommodationToShow with:', {
@@ -733,7 +747,7 @@ const TravelPlanner = ({ loadMode }) => {
             setShowAllMarkers={setShowAllMarkers}
             showMap={showMap}
             setShowMap={setShowMap}
-            handleOpenShareDialog={dialogHandlers.handleOpenShareDialog}
+            handleOpenShareDialog={() => dialogHandlers.handleOpenShareDialog(sharedEmailFromPlan)}
             setIsSearchOpen={dialogHandlers.setIsSearchOpen}
             accommodationToShow={accommodationToShow}
             findSameDayAccommodations={findSameDayAccommodations}
@@ -818,6 +832,9 @@ const TravelPlanner = ({ loadMode }) => {
           handleCloseShareDialog={dialogHandlers.handleCloseShareDialog}
           sharedEmail={dialogHandlers.sharedEmail}
           setSharedEmail={dialogHandlers.setSharedEmail}
+          sharedEmails={dialogHandlers.sharedEmails}
+          handleAddSharedEmail={dialogHandlers.handleAddSharedEmail}
+          handleRemoveSharedEmail={dialogHandlers.handleRemoveSharedEmail}
           shareMessage={dialogHandlers.shareMessage}
           isSharing={dialogHandlers.isSharing}
           handleSharePlan={() => dialogHandlers.handleSharePlan(plannerHandleSharePlan, planId)}

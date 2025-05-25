@@ -112,7 +112,7 @@ const TravelPlannerMainContent = ({
               <Button
                 variant="outlined"
                 size="small"
-                onClick={() => handleOpenShareDialog()}
+                onClick={handleOpenShareDialog}
                 color="primary"
               >
                 플랜 공유

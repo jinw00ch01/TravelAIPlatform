@@ -11,6 +11,7 @@ const useDialogHandlers = () => {
   const [isAccommodationDetailOpen, setIsAccommodationDetailOpen] = useState(false);
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const [sharedEmail, setSharedEmail] = useState('');
+  const [sharedEmails, setSharedEmails] = useState([]);
   const [shareMessage, setShareMessage] = useState('');
   const [isSharing, setIsSharing] = useState(false);
 
@@ -60,7 +61,15 @@ const useDialogHandlers = () => {
   }, []);
 
   // 공유 다이얼로그 핸들러
-  const handleOpenShareDialog = useCallback(() => {
+  const handleOpenShareDialog = useCallback((currentSharedEmails = []) => {
+    // 기존 공유된 이메일들을 로드
+    const emailArray = Array.isArray(currentSharedEmails) 
+      ? currentSharedEmails 
+      : typeof currentSharedEmails === 'string' 
+        ? currentSharedEmails.split(',').map(email => email.trim()).filter(email => email)
+        : [];
+    
+    setSharedEmails(emailArray);
     setIsShareDialogOpen(true);
     setShareMessage('');
   }, []);
@@ -68,15 +77,38 @@ const useDialogHandlers = () => {
   const handleCloseShareDialog = useCallback(() => {
     setIsShareDialogOpen(false);
     setSharedEmail('');
+    setSharedEmails([]);
+    setShareMessage('');
+  }, []);
+
+  const handleAddSharedEmail = useCallback(() => {
+    const email = sharedEmail.trim();
+    if (!email) return;
+    
+    // 이메일 형식 검증
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setShareMessage('올바른 이메일 형식을 입력해주세요.');
+      return;
+    }
+    
+    // 중복 검사
+    if (sharedEmails.includes(email)) {
+      setShareMessage('이미 추가된 이메일입니다.');
+      return;
+    }
+    
+    setSharedEmails(prev => [...prev, email]);
+    setSharedEmail('');
+    setShareMessage('');
+  }, [sharedEmail, sharedEmails]);
+
+  const handleRemoveSharedEmail = useCallback((index) => {
+    setSharedEmails(prev => prev.filter((_, i) => i !== index));
     setShareMessage('');
   }, []);
 
   const handleSharePlan = useCallback(async (plannerHandleSharePlan, planId) => {
-    if (!sharedEmail.trim()) {
-      setShareMessage('공유할 이메일을 입력해주세요.');
-      return;
-    }
-
     if (!planId || planId === 'new') {
       setShareMessage('저장된 계획만 공유할 수 있습니다. 먼저 계획을 저장해주세요.');
       return;
@@ -86,10 +118,12 @@ const useDialogHandlers = () => {
     setShareMessage('');
 
     try {
-      const result = await plannerHandleSharePlan(sharedEmail.trim());
+      // 현재 공유된 이메일 목록을 문자열로 변환
+      const sharedEmailString = sharedEmails.join(',');
+      const result = await plannerHandleSharePlan(sharedEmailString);
       
       if (result.success) {
-        setShareMessage(result.message);
+        setShareMessage(result.message || '공유 설정이 저장되었습니다.');
         setTimeout(() => {
           handleCloseShareDialog();
         }, 2000);
@@ -102,7 +136,7 @@ const useDialogHandlers = () => {
     } finally {
       setIsSharing(false);
     }
-  }, [sharedEmail, handleCloseShareDialog]);
+  }, [sharedEmails, handleCloseShareDialog]);
 
   return {
     // 상태들
@@ -118,6 +152,7 @@ const useDialogHandlers = () => {
     isShareDialogOpen,
     sharedEmail,
     setSharedEmail,
+    sharedEmails,
     shareMessage,
     isSharing,
     
@@ -131,6 +166,8 @@ const useDialogHandlers = () => {
     handleCloseAccommodationDetail,
     handleOpenShareDialog,
     handleCloseShareDialog,
+    handleAddSharedEmail,
+    handleRemoveSharedEmail,
     handleSharePlan
   };
 };
