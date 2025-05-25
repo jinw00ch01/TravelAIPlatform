@@ -128,29 +128,51 @@ function ListPage() {
         </div>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {plans.map((plan, index) => (
-            <div 
-              key={plan.plan_id || index} 
-              className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow"
-            >
-              <div className="p-5">
-                <h2 className="text-xl font-semibold text-gray-800 mb-2 truncate">
-                  {plan.name}
-                </h2>
-                <p className="text-gray-500 text-sm mb-4">
-                  마지막 수정: {new Date(plan.last_updated || Date.now()).toLocaleDateString()}
-                </p>
-                <div className="flex justify-end">
-                  <Link 
-                    to={`/planner/${plan.plan_id}`}
-                    className="text-primary hover:text-primary-dark font-medium"
-                  >
-                    자세히 보기
-                  </Link>
+          {plans.map((plan, index) => {
+            // 공유받은 플랜인지 확인
+            const isSharedPlan = plan.is_shared_with_me === true;
+            const ownerEmail = plan.original_owner || plan.user_id || '알 수 없음';
+            
+            return (
+              <div 
+                key={plan.plan_id || index} 
+                className={`border rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow ${
+                  isSharedPlan 
+                    ? 'bg-sky-50 border-sky-200' 
+                    : 'bg-white border-gray-200'
+                }`}
+              >
+                <div className="p-5">
+                  <div className="flex items-center gap-2 mb-2">
+                    <h2 className="text-xl font-semibold text-gray-800 truncate">
+                      {plan.name}
+                    </h2>
+                    {isSharedPlan && (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-sky-100 text-sky-800">
+                        공유된 플랜
+                      </span>
+                    )}
+                  </div>
+                  {isSharedPlan && (
+                    <p className="text-sky-700 text-sm mb-2">
+                      공유자: {ownerEmail}
+                    </p>
+                  )}
+                  <p className="text-gray-500 text-sm mb-4">
+                    마지막 수정: {new Date(plan.last_updated || Date.now()).toLocaleDateString()}
+                  </p>
+                  <div className="flex justify-end">
+                    <Link 
+                      to={`/planner/${plan.plan_id}`}
+                      className="text-primary hover:text-primary-dark font-medium"
+                    >
+                      자세히 보기
+                    </Link>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
