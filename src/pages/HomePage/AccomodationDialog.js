@@ -53,6 +53,8 @@ const AccomodationDialog = ({
   initialAdults = 2,
   initialChildren = 0,
   selectedAccommodation,
+  isMultipleMode = false, // 다중 선택 모드 여부
+  selectedAccommodations = [], // 이미 선택된 숙박편들 (다중 모드에서 사용)
 }) => {
   /* --------------------- 검색조건 State --------------------- */
   const [selectedPlace, setSelectedPlace] = useState(null); // { name, lat, lng }
@@ -216,7 +218,7 @@ const AccomodationDialog = ({
     setSelectedRoomKey(room.id);
     const checkInWithTime = combineDateTime(checkIn, hotel.checkin_from);
     const checkOutWithTime = combineDateTime(checkOut, hotel.checkout_until);
-    onSelectAccommodation({ hotel, room, checkIn: checkInWithTime, checkOut: checkOutWithTime, adults, children });
+    onSelectAccommodation({ hotel, room, checkIn: checkInWithTime, checkOut: checkOutWithTime, adults, children }, isMultipleMode);
     onClose();
   };
 
@@ -240,7 +242,14 @@ const AccomodationDialog = ({
       <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 border-b flex justify-between items-center">
-          <h2 className="text-xl font-bold">숙박 검색</h2>
+          <div>
+            <h2 className="text-xl font-bold">숙박 검색</h2>
+            {isMultipleMode && (
+              <p className="text-sm text-gray-600 mt-1">
+                다중 선택 모드 - 이미 선택된 숙박편: {selectedAccommodations.length}개
+              </p>
+            )}
+          </div>
           <Button variant="ghost" className="rounded-full p-1 hover:bg-gray-100" onClick={onClose}>
             <X className="h-6 w-6" />
           </Button>
