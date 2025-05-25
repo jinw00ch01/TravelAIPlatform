@@ -451,12 +451,25 @@ async function handleUpdatePlan(userEmail, body) {
         };
       }
       
-      // shared_email로 접근하는 경우, 원래 소유자의 user_id 사용
+      // 공유받은 사용자가 shared_email을 수정하려고 하는 경우 차단
+      if (updateType === 'shared_email' || (body.shared_email !== undefined && updateType !== 'plan_data')) {
+        return {
+          statusCode: 403,
+          headers,
+          body: JSON.stringify({
+            success: false,
+            message: "공유 설정은 원래 소유자만 수정할 수 있습니다. 공유자에게 문의하세요.",
+            owner_email: sharedResult.Items[0].user_id
+          })
+        };
+      }
+      
+      // shared_email로 접근하는 경우, 원래 소유자의 user_id 사용 (계획 데이터만 수정 가능)
       const originalOwner = sharedResult.Items[0].user_id;
-      return await performUpdate(originalOwner, planId, body, updateType, now);
+      return await performUpdate(originalOwner, planId, body, updateType, now, true); // isSharedUser 플래그 추가
     } else {
       // 소유자가 직접 수정하는 경우
-      return await performUpdate(userEmail, planId, body, updateType, now);
+      return await performUpdate(userEmail, planId, body, updateType, now, false);
     }
     
   } catch (error) {
@@ -474,7 +487,7 @@ async function handleUpdatePlan(userEmail, body) {
 }
 
 // 실제 업데이트 수행 함수
-async function performUpdate(userId, planId, body, updateType, now) {
+async function performUpdate(userId, planId, body, updateType, now, isSharedUser = false) {
   let updateExpression = "SET last_updated = :now";
   let expressionAttributeValues = { ":now": now };
   let expressionAttributeNames = {};
@@ -521,7 +534,11 @@ async function performUpdate(userId, planId, body, updateType, now) {
     }
     
   } else if (updateType === 'shared_email') {
-    // 공유 이메일만 수정
+    // 공유 이메일만 수정 (공유받은 사용자는 수정 불가)
+    if (isSharedUser) {
+      throw new Error("공유받은 사용자는 공유 설정을 수정할 수 없습니다.");
+    }
+    
     console.log("shared_email 수정 모드");
     console.log("업데이트할 shared_email 값:", body.shared_email);
     updateExpression += ", shared_email = :shared";
@@ -561,8 +578,13 @@ async function performUpdate(userId, planId, body, updateType, now) {
     }
     
     if (body.shared_email !== undefined) {
-      updateExpression += ", shared_email = :shared";
-      expressionAttributeValues[":shared"] = body.shared_email || null;
+      // 공유받은 사용자는 공유 설정 수정 불가
+      if (isSharedUser) {
+        console.log("공유받은 사용자가 shared_email 수정 시도 - 무시됨");
+      } else {
+        updateExpression += ", shared_email = :shared";
+        expressionAttributeValues[":shared"] = body.shared_email || null;
+      }
     }
     
     if (body.paid_plan !== undefined) {

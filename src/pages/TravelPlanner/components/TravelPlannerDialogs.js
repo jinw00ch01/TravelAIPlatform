@@ -58,7 +58,8 @@ const TravelPlannerDialogs = ({
   handleRemoveSharedEmail,
   shareMessage,
   isSharing,
-  handleSharePlan
+  handleSharePlan,
+  isSharedPlan
 }) => {
   return (
     <>
@@ -319,84 +320,110 @@ const TravelPlannerDialogs = ({
         <DialogTitle>플랜 공유</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2 }}>
-            {/* 기존 공유된 이메일 목록 */}
-            {sharedEmails && sharedEmails.length > 0 && (
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>
-                  현재 공유된 이메일
+            {isSharedPlan ? (
+              // 공유받은 플랜인 경우
+              <Box sx={{ 
+                p: 3, 
+                bgcolor: '#e3f2fd', 
+                borderRadius: 2, 
+                border: '1px solid #2196f3',
+                textAlign: 'center'
+              }}>
+                <Typography variant="h6" sx={{ mb: 2, color: '#1976d2' }}>
+                  공유받은 플랜입니다
                 </Typography>
-                {sharedEmails.map((email, index) => (
-                  <Box key={index} sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    mb: 1, 
-                    p: 1, 
-                    bgcolor: '#f5f5f5', 
-                    borderRadius: 1 
-                  }}>
-                    <Typography variant="body2" sx={{ flex: 1 }}>
-                      {email}
-                    </Typography>
-                    <IconButton 
-                      size="small" 
-                      onClick={() => handleRemoveSharedEmail(index)}
-                      disabled={isSharing}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Box>
-                ))}
+                <Typography variant="body1" sx={{ mb: 2 }}>
+                  이 플랜의 공유 설정은 원래 소유자만 수정할 수 있습니다.
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  공유 설정을 변경하려면 공유자에게 문의하세요.
+                </Typography>
               </Box>
-            )}
+            ) : (
+              // 본인 소유 플랜인 경우
+              <>
+                {/* 기존 공유된 이메일 목록 */}
+                {sharedEmails && sharedEmails.length > 0 && (
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>
+                      현재 공유된 이메일
+                    </Typography>
+                    {sharedEmails.map((email, index) => (
+                      <Box key={index} sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        mb: 1, 
+                        p: 1, 
+                        bgcolor: '#f5f5f5', 
+                        borderRadius: 1 
+                      }}>
+                        <Typography variant="body2" sx={{ flex: 1 }}>
+                          {email}
+                        </Typography>
+                        <IconButton 
+                          size="small" 
+                          onClick={() => handleRemoveSharedEmail(index)}
+                          disabled={isSharing}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
 
-            {/* 새 이메일 추가 */}
-            <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-              <TextField
-                fullWidth
-                label="새 이메일 주소 추가"
-                type="email"
-                value={sharedEmail}
-                onChange={e => setSharedEmail(e.target.value)}
-                placeholder="example@email.com"
-                disabled={isSharing}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && sharedEmail.trim()) {
-                    handleAddSharedEmail();
-                  }
-                }}
-              />
-              <Button
-                variant="outlined"
-                onClick={handleAddSharedEmail}
-                disabled={isSharing || !sharedEmail.trim()}
-                sx={{ minWidth: 'auto', px: 2 }}
-              >
-                +
-              </Button>
-            </Box>
+                {/* 새 이메일 추가 */}
+                <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                  <TextField
+                    fullWidth
+                    label="새 이메일 주소 추가"
+                    type="email"
+                    value={sharedEmail}
+                    onChange={e => setSharedEmail(e.target.value)}
+                    placeholder="example@email.com"
+                    disabled={isSharing}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && sharedEmail.trim()) {
+                        handleAddSharedEmail();
+                      }
+                    }}
+                  />
+                  <Button
+                    variant="outlined"
+                    onClick={handleAddSharedEmail}
+                    disabled={isSharing || !sharedEmail.trim()}
+                    sx={{ minWidth: 'auto', px: 2 }}
+                  >
+                    +
+                  </Button>
+                </Box>
 
-            {shareMessage && (
-              <Typography 
-                variant="body2" 
-                color={shareMessage.includes('성공') ? 'success.main' : 'error.main'}
-                sx={{ mt: 1 }}
-              >
-                {shareMessage}
-              </Typography>
+                {shareMessage && (
+                  <Typography 
+                    variant="body2" 
+                    color={shareMessage.includes('성공') ? 'success.main' : 'error.main'}
+                    sx={{ mt: 1 }}
+                  >
+                    {shareMessage}
+                  </Typography>
+                )}
+              </>
             )}
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseShareDialog} disabled={isSharing}>
-            취소
+            {isSharedPlan ? '닫기' : '취소'}
           </Button>
-          <Button 
-            onClick={handleSharePlan} 
-            variant="contained" 
-            disabled={isSharing}
-          >
-            {isSharing ? '저장 중...' : '저장'}
-          </Button>
+          {!isSharedPlan && (
+            <Button 
+              onClick={handleSharePlan} 
+              variant="contained" 
+              disabled={isSharing}
+            >
+              {isSharing ? '저장 중...' : '저장'}
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
     </>

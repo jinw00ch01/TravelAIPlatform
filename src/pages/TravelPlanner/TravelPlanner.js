@@ -137,6 +137,7 @@ const TravelPlanner = ({ loadMode }) => {
   
   // 계획 공유 이메일 상태
   const [sharedEmailFromPlan, setSharedEmailFromPlan] = useState('');
+  const [isSharedPlan, setIsSharedPlan] = useState(false);
 
   // refs
   const mainAccommodationPlanRef = useRef(null);
@@ -170,6 +171,46 @@ const TravelPlanner = ({ loadMode }) => {
       setSharedEmailFromPlan('');
     }
   }, [sharedEmailFromLoader]);
+
+  // 현재 플랜이 공유받은 플랜인지 확인
+  useEffect(() => {
+    const checkIfSharedPlan = async () => {
+      if (!planId || !user?.email) {
+        setIsSharedPlan(false);
+        return;
+      }
+
+      try {
+        // checklistfunction을 호출하여 플랜 목록을 가져와서 확인
+        const response = await fetch('https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/travel/checklist', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${user.token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ mode: 'list' })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.plans) {
+            const currentPlanData = data.plans.find(plan => plan.plan_id === Number(planId));
+            if (currentPlanData && currentPlanData.is_shared_with_me === true) {
+              setIsSharedPlan(true);
+              console.log('[TravelPlanner] 현재 플랜은 공유받은 플랜입니다.');
+            } else {
+              setIsSharedPlan(false);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[TravelPlanner] 공유 플랜 확인 중 오류:', error);
+        setIsSharedPlan(false);
+      }
+    };
+
+    checkIfSharedPlan();
+  }, [planId, user?.email, user?.token]);
 
   const accommodationToShow = useMemo(() => {
     console.log('Calculating accommodationToShow with:', {
@@ -838,6 +879,7 @@ const TravelPlanner = ({ loadMode }) => {
           shareMessage={dialogHandlers.shareMessage}
           isSharing={dialogHandlers.isSharing}
           handleSharePlan={() => dialogHandlers.handleSharePlan(plannerHandleSharePlan, planId)}
+          isSharedPlan={isSharedPlan}
         />
 
         <AIChatWidget onSendMessage={handleAISendMessage} />
