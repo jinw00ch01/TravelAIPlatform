@@ -10,15 +10,17 @@ import amadeusApi from "../../utils/amadeusApi";
 import { cn } from "../../lib/utils";
 
 // 재사용되는 DatePicker용 커스텀 입력
-const CustomInput = React.forwardRef(({ value, onClick, placeholder }, ref) => (
+const CustomInput = React.forwardRef(({ value, onClick, placeholder, disabled }, ref) => (
   <Button
     variant="outline"
     className={cn(
       "w-full sm:w-[200px] justify-center text-center font-normal bg-white",
-      !value && "text-gray-400"
+      !value && "text-gray-400",
+      disabled && "opacity-50 cursor-not-allowed bg-gray-100"
     )}
-    onClick={onClick}
+    onClick={disabled ? undefined : onClick}
     ref={ref}
+    disabled={disabled}
   >
     {/* Calendar icon */}
     <svg
@@ -48,6 +50,8 @@ const FlightDialog = ({
   initialInfantCount = 0,
   defaultStartDate = null,
   defaultEndDate = null,
+  isMultipleMode = false, // 다중 선택 모드 여부
+  selectedFlights = [], // 이미 선택된 항공편들 (다중 모드에서 사용)
 }) => {
   // --------------------- state ---------------------
   // 검색 입력 및 도시 결과 상태
@@ -69,6 +73,7 @@ const FlightDialog = ({
   const [travelClass, setTravelClass] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [nonStop, setNonStop] = useState(false);
+  const [isOneWay, setIsOneWay] = useState(false); // 편도/왕복 선택 상태
 
   // 로딩 & 결과
   const [isLoadingFlights, setIsLoadingFlights] = useState(false);
@@ -81,6 +86,17 @@ const FlightDialog = ({
   const [airportInfoCache, setAirportInfoCache] = useState({});
   // 사용자가 이 다이얼로그에서 선택한 항공편을 표시하기 위한 로컬 state
   const [selectedFlightIdLocal, setSelectedFlightIdLocal] = useState(null);
+  // 다중 선택 모드에서 이미 선택된 항공편 ID들
+  const selectedFlightIds = selectedFlights.map(f => f.id);
+
+  // 편도/왕복 선택 핸들러
+  const handleTripTypeChange = (oneWay) => {
+    setIsOneWay(oneWay);
+    if (oneWay) {
+      // 편도 선택 시 오는날 초기화
+      setEndDate(null);
+    }
+  };
 
   // 초기값 세팅 (대략 30일 후 기본 출발일 등)
   useEffect(() => {
@@ -96,6 +112,9 @@ const FlightDialog = ({
 
       if (defaultEndDate) {
         setEndDate(defaultEndDate);
+        setIsOneWay(false); // 귀국일이 있으면 왕복으로 설정
+      } else {
+        setIsOneWay(false); // 기본값은 왕복
       }
 
       // 인원 수 동기화
@@ -246,8 +265,8 @@ const FlightDialog = ({
     setSelectedFlightIdLocal(flight.id);
     
     // 부모 컴포넌트로 항공편 정보와 함께 dictionaries와 airportInfoCache도 전달
-    // 이를 통해 공항 위경도 정보가 함께 전달됨
-    onSelectFlight(flight, dictionaries, airportInfoCache);
+    // 다중 선택 모드 여부도 함께 전달
+    onSelectFlight(flight, dictionaries, airportInfoCache, isMultipleMode);
   };
 
   // isOpen이 false 일 때 다이얼로그를 렌더링하지 않음
@@ -259,7 +278,14 @@ const FlightDialog = ({
       <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="p-4 border-b flex justify-between items-center">
-          <h2 className="text-xl font-bold">항공편 검색</h2>
+          <div>
+            <h2 className="text-xl font-bold">항공편 검색</h2>
+            {isMultipleMode && (
+              <p className="text-sm text-gray-600 mt-1">
+                다중 선택 모드 - 이미 선택된 항공편: {selectedFlights.length}개
+              </p>
+            )}
+          </div>
           <Button variant="ghost" className="rounded-full p-1 hover:bg-gray-100" onClick={onClose}>
             <X className="h-6 w-6" />
           </Button>
@@ -345,6 +371,29 @@ const FlightDialog = ({
               </div>
             </div>
 
+            {/* 편도/왕복 선택 */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">여행 유형</label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={!isOneWay ? "default" : "outline"}
+                  className={`flex-1 ${!isOneWay ? "bg-blue-500 hover:bg-blue-600 text-white" : "border-gray-300 text-gray-700 hover:bg-gray-50"}`}
+                  onClick={() => handleTripTypeChange(false)}
+                >
+                  왕복
+                </Button>
+                <Button
+                  type="button"
+                  variant={isOneWay ? "default" : "outline"}
+                  className={`flex-1 ${isOneWay ? "bg-blue-500 hover:bg-blue-600 text-white" : "border-gray-300 text-gray-700 hover:bg-gray-50"}`}
+                  onClick={() => handleTripTypeChange(true)}
+                >
+                  편도
+                </Button>
+              </div>
+            </div>
+
             {/* 날짜 선택 */}
             <div className="mb-4">
               <label className="block text-sm font-medium mb-1">가는 날 *</label>
@@ -361,7 +410,9 @@ const FlightDialog = ({
               />
             </div>
             <div className="mb-4">
-              <label className="block text-sm font-medium mb-1">오는 날 (선택사항)</label>
+              <label className={`block text-sm font-medium mb-1 ${isOneWay ? "text-gray-400" : ""}`}>
+                오는 날 {isOneWay ? "(편도 선택됨)" : "(선택사항)"}
+              </label>
               <DatePicker
                 selected={endDate}
                 onChange={(date) => setEndDate(date)}
@@ -371,9 +422,13 @@ const FlightDialog = ({
                 minDate={startDate}
                 dateFormat="yyyy/MM/dd"
                 locale={ko}
-                placeholderText="오는 날"
+                placeholderText={isOneWay ? "편도 항공편" : "오는 날"}
                 customInput={<CustomInput />}
+                disabled={isOneWay}
               />
+              {isOneWay && (
+                <p className="text-xs text-gray-500 mt-1">편도 항공편을 선택했습니다. 오는 날은 설정할 수 없습니다.</p>
+              )}
             </div>
 
             {/* 인원 */}
@@ -543,21 +598,41 @@ const FlightDialog = ({
                     );
                   };
 
+                  // 이미 선택된 항공편인지 확인
+                  const isAlreadySelected = selectedFlightIds.includes(flight.id);
+                  const isCurrentlySelected = selectedFlightIdLocal === flight.id;
+
                   return (
                     <div
                       key={flight.id}
                       onClick={() => handleFlightSelect(flight)}
                       className={cn(
-                        "flex flex-col p-4 mb-4 border cursor-pointer hover:border-blue-500 rounded-lg shadow",
-                        selectedFlightIdLocal === flight.id ? "border-2 border-blue-600 bg-blue-50" : "border-gray-200"
+                        "flex flex-col p-4 mb-4 border cursor-pointer hover:border-blue-500 rounded-lg shadow relative",
+                        isCurrentlySelected ? "border-2 border-blue-600 bg-blue-50" : 
+                        isAlreadySelected ? "border-2 border-green-500 bg-green-50" : "border-gray-200"
                       )}
                     >
                       <div className="flex justify-between items-center mb-2">
-                        <div className="text-lg font-bold">
-                          {isRoundTrip ? "왕복: " : "편도: "}
-                          {getCityLabel(outboundFirstSegment.departure.iataCode)} → {getCityLabel(outboundLastSegment.arrival.iataCode)}
+                        <div className="flex items-center gap-2">
+                          <div className="text-lg font-bold">
+                            {getCityLabel(outboundFirstSegment.departure.iataCode)} → {getCityLabel(outboundLastSegment.arrival.iataCode)}
+                          </div>
+                          <div className={`text-xs px-2 py-1 rounded-full font-medium ${
+                            isRoundTrip 
+                              ? "bg-blue-100 text-blue-700" 
+                              : "bg-orange-100 text-orange-700"
+                          }`}>
+                            {isRoundTrip ? "왕복" : "편도"}
+                          </div>
                         </div>
-                        <div className="text-lg font-bold text-blue-600">{priceFormatted}원</div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-lg font-bold text-blue-600">{priceFormatted}원</div>
+                          {isAlreadySelected && (
+                            <div className="bg-green-500 text-white text-xs px-2 py-1 rounded-full">
+                              선택됨
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       {/* 가는 편 */}

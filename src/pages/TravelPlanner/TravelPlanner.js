@@ -61,8 +61,10 @@ const TravelPlanner = ({ loadMode }) => {
     planName, setPlanName,
     isLoadingPlan,
     loadedFlightInfo,
+    loadedFlightInfos, // 다중 항공편
     isRoundTrip,
-    loadError
+    loadError,
+    loadedAccommodationInfos // 다중 숙박편
   } = useTravelPlanLoader(user, planIdFromUrl, loadMode);
 
   const {
@@ -415,7 +417,20 @@ const TravelPlanner = ({ loadMode }) => {
                 }}
                 onClick={() => {
                   if (schedule.hotelDetails) {
-                    handleOpenAccommodationDetail(schedule.hotelDetails);
+                    // 현재 날짜 계산
+                    const currentDate = new Date(startDate);
+                    currentDate.setDate(currentDate.getDate() + selectedDay - 1);
+                    
+                    // 같은 날의 다른 숙박편들 찾기
+                    const sameDayAccommodations = findSameDayAccommodations(currentDate);
+                    
+                    // 다중 숙박편 정보가 있으면 함께 전달
+                    const accommodationToShow = {
+                      ...schedule.hotelDetails,
+                      sameDayAccommodations: sameDayAccommodations.length > 1 ? sameDayAccommodations : null
+                    };
+                    
+                    handleOpenAccommodationDetail(accommodationToShow);
                   } else {
                     handleScheduleClick(schedule);
                   }
@@ -556,7 +571,15 @@ const TravelPlanner = ({ loadMode }) => {
   }, []);
 
   // 숙박 상세 팝업 핸들러 추가
-  const handleOpenAccommodationDetail = useCallback(() => {
+  const handleOpenAccommodationDetail = useCallback((accommodationData = null) => {
+    // 특정 숙박편 데이터가 전달된 경우 해당 데이터 사용
+    if (accommodationData) {
+      setSelectedAccommodationForDialog(accommodationData);
+      setIsAccommodationDetailOpen(true);
+      return;
+    }
+    
+    // 기본 동작: 현재 로드된 숙박편 정보 사용
     if (loadedAccommodationInfo) {
       setSelectedAccommodationForDialog(loadedAccommodationInfo);
       setIsAccommodationDetailOpen(true);
@@ -567,6 +590,34 @@ const TravelPlanner = ({ loadMode }) => {
     setIsAccommodationDetailOpen(false);
     setSelectedAccommodationForDialog(null);
   }, []);
+
+  // 같은 날에 체크아웃과 체크인이 있는 숙박편들을 찾는 함수
+  const findSameDayAccommodations = useCallback((targetDate) => {
+    if (!loadedAccommodationInfos || loadedAccommodationInfos.length <= 1) {
+      return [];
+    }
+
+    const targetDateStr = targetDate.toISOString().split('T')[0];
+    const sameDayAccommodations = [];
+
+    loadedAccommodationInfos.forEach(accommodation => {
+      const checkInDate = new Date(accommodation.checkIn);
+      const checkOutDate = new Date(accommodation.checkOut);
+      const checkInDateStr = checkInDate.toISOString().split('T')[0];
+      const checkOutDateStr = checkOutDate.toISOString().split('T')[0];
+
+      // 해당 날짜에 체크인 또는 체크아웃이 있는 숙박편 찾기
+      if (checkInDateStr === targetDateStr || checkOutDateStr === targetDateStr) {
+        sameDayAccommodations.push({
+          ...accommodation,
+          isCheckIn: checkInDateStr === targetDateStr,
+          isCheckOut: checkOutDateStr === targetDateStr
+        });
+      }
+    });
+
+    return sameDayAccommodations;
+  }, [loadedAccommodationInfos]);
 
   // 사이드바 <-> 메인 AccommodationPlan 연동 핸들러
   const handleSidebarPlaceSelect = useCallback((place) => {
@@ -623,7 +674,9 @@ const TravelPlanner = ({ loadMode }) => {
       travelPlans,
       startDate,
       loadedFlightInfo,
-      isRoundTrip
+      loadedFlightInfos, // 다중 항공편
+      isRoundTrip,
+      loadedAccommodationInfos // 다중 숙박편
     },
     {
       setPlanId,
@@ -1050,6 +1103,8 @@ const TravelPlanner = ({ loadMode }) => {
                   <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: 1, p: 2, overflow: 'auto' }}>
                     <Typography variant="h6" sx={{ mb: 2 }}>일정 목록</Typography>
                     
+
+
                     {/* 고정된 숙박 정보 박스 */}
                     {accommodationToShow && accommodationToShow.hotelDetails && (
                       <Paper 
@@ -1062,7 +1117,22 @@ const TravelPlanner = ({ loadMode }) => {
                           cursor: 'pointer',
                           '&:hover': { boxShadow: 3, borderColor: 'primary.main' }
                         }}
-                        onClick={() => handleOpenAccommodationDetail(accommodationToShow.hotelDetails)}
+                        onClick={() => {
+                          // 현재 날짜 계산
+                          const currentDate = new Date(startDate);
+                          currentDate.setDate(currentDate.getDate() + selectedDay - 1);
+                          
+                          // 같은 날의 다른 숙박편들 찾기
+                          const sameDayAccommodations = findSameDayAccommodations(currentDate);
+                          
+                          // 다중 숙박편 정보가 있으면 함께 전달
+                          const accommodationData = {
+                            ...accommodationToShow.hotelDetails,
+                            sameDayAccommodations: sameDayAccommodations.length > 1 ? sameDayAccommodations : null
+                          };
+                          
+                          handleOpenAccommodationDetail(accommodationData);
+                        }}
                       >
                         <Grid container spacing={1} alignItems="center">
                           {(accommodationToShow.hotelDetails.hotel?.main_photo_url || accommodationToShow.hotelDetails.main_photo_url) && (
@@ -1106,7 +1176,7 @@ const TravelPlanner = ({ loadMode }) => {
 
                     {/* 고정된 항공편 정보 박스 */}
                     {currentPlan.schedules
-                      .filter(schedule => schedule.type === 'Flight_Departure' || schedule.type === 'Flight_Return')
+                      .filter(schedule => schedule.type === 'Flight_Departure' || schedule.type === 'Flight_Return' || schedule.type === 'Flight_OneWay')
                       .map((flightSchedule, index) => (
                         <Paper
                           key={`fixed-flight-${flightSchedule.id || index}`}
@@ -1123,9 +1193,12 @@ const TravelPlanner = ({ loadMode }) => {
                         >
                           <Grid container spacing={1} alignItems="center">
                             <Grid item xs={12}>
-                              <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: '#0277bd' }}>
-                                {flightSchedule.time} {flightSchedule.name}
-                              </Typography>
+                                                          <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: '#0277bd' }}>
+                              {flightSchedule.time} {flightSchedule.name}
+                              {flightSchedule.type === 'Flight_OneWay' && (
+                                <span style={{ fontSize: '0.8rem', marginLeft: '8px', color: '#ff9800' }}>(편도)</span>
+                              )}
+                            </Typography>
                               <Typography variant="body2" color="info.main" sx={{fontSize: '0.8rem'}}>
                                 {flightSchedule.address} {/* 출발지 -> 도착지 공항 코드 등 */}
                               </Typography>
@@ -1164,6 +1237,7 @@ const TravelPlanner = ({ loadMode }) => {
                               .filter(schedule => 
                                 schedule.type !== 'Flight_Departure' && 
                                 schedule.type !== 'Flight_Return' && 
+                                schedule.type !== 'Flight_OneWay' && // 편도 항공편 제외
                                 schedule.type !== 'accommodation'  // 숙소 일정 제외
                               )
                               .map((schedule, index) => renderScheduleItem(schedule, index))}
@@ -1370,7 +1444,45 @@ const TravelPlanner = ({ loadMode }) => {
               </IconButton>
             </DialogTitle>
             <DialogContent dividers>
-              {/* 호텔 정보 */} 
+              {/* 같은 날 다중 숙박편이 있는 경우 표시 */}
+              {selectedAccommodationForDialog.sameDayAccommodations && (
+                <Box sx={{ mb: 3, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+                  <Typography variant="h6" gutterBottom sx={{ color: '#1976d2' }}>
+                    같은 날 숙박편 ({selectedAccommodationForDialog.sameDayAccommodations.length}개)
+                  </Typography>
+                  {selectedAccommodationForDialog.sameDayAccommodations.map((accommodation, index) => {
+                    const hotel = accommodation.hotel || {};
+                    const room = accommodation.room || {};
+                    
+                    return (
+                      <Box key={index} sx={{ mb: 2, p: 1.5, bgcolor: 'white', borderRadius: 1, border: 1, borderColor: 'divider' }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
+                          {accommodation.isCheckOut && accommodation.isCheckIn ? '체크아웃 → 체크인' : 
+                           accommodation.isCheckOut ? '체크아웃' : '체크인'}: {hotel.hotel_name_trans || hotel.hotel_name || '호텔'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                          객실: {room.name || '정보 없음'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                          주소: {hotel.address || hotel.address_trans || '주소 정보 없음'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          체크인: {accommodation.checkIn ? new Date(accommodation.checkIn).toLocaleDateString('ko-KR') : '-'} | 
+                          체크아웃: {accommodation.checkOut ? new Date(accommodation.checkOut).toLocaleDateString('ko-KR') : '-'}
+                        </Typography>
+                        {room.price && (
+                          <Typography variant="body2" color="primary" sx={{ fontWeight: 'bold', mt: 1 }}>
+                            가격: {room.price.toLocaleString()} {room.currency || 'KRW'}
+                          </Typography>
+                        )}
+                      </Box>
+                    );
+                  })}
+                  <Divider sx={{ my: 2 }} />
+                </Box>
+              )}
+
+              {/* 메인 호텔 정보 */} 
               <Typography variant="h6" gutterBottom>
                 {selectedAccommodationForDialog.hotel?.hotel_name_trans || selectedAccommodationForDialog.hotel?.hotel_name || '호텔 이름 정보 없음'}
               </Typography>

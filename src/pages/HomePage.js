@@ -23,6 +23,7 @@ export const HomePage = () => {
   const fileInputRef = useRef(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState(""); // WebSocket 상태 메시지용
+  const [validationErrors, setValidationErrors] = useState([]); // 검증 오류 메시지용
   const [searchText, setSearchText] = useState("");
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
@@ -35,13 +36,17 @@ export const HomePage = () => {
   const [isFlightDialogOpen, setIsFlightDialogOpen] = useState(false);
   const [isAccommodationDialogOpen, setIsAccommodationDialogOpen] = useState(false);
   
-  // 선택한 항공편 정보 저장
-  const [selectedFlight, setSelectedFlight] = useState(null);
-  // 선택한 숙소(호텔+객실) 정보 저장
-  const [selectedAccommodation, setSelectedAccommodation] = useState(null);
+  // 선택한 항공편들 정보 저장 (다중 선택 지원)
+  const [selectedFlights, setSelectedFlights] = useState([]);
+  // 선택한 숙소들(호텔+객실) 정보 저장 (다중 선택 지원)
+  const [selectedAccommodations, setSelectedAccommodations] = useState([]);
   // 선택한 항공편의 dictionaries(항공사 등)와 공항 정보 캐시
   const [selectedFlightDictionaries, setSelectedFlightDictionaries] = useState({});
   const [airportInfoCache, setAirportInfoCache] = useState({});
+  
+  // 하위 호환성을 위한 단일 선택 getter (기존 코드와의 호환성)
+  const selectedFlight = selectedFlights.length > 0 ? selectedFlights[0] : null;
+  const selectedAccommodation = selectedAccommodations.length > 0 ? selectedAccommodations[0] : null;
 
   // 항공편 정보와 공항 정보를 합쳐서 확장된 항공편 정보를 만드는 함수
   const enrichFlightWithAirportInfo = useCallback((flight) => {
@@ -103,8 +108,8 @@ export const HomePage = () => {
     return enrichedFlight;
   }, [airportInfoCache]);
 
-  // 항공편 선택 함수 업데이트
-  const selectFlight = useCallback((flight, dictionaries, newAirportInfoCache) => {
+  // 항공편 선택 함수 업데이트 (다중 선택 지원)
+  const selectFlight = useCallback((flight, dictionaries, newAirportInfoCache, isMultiple = false) => {
     if (!flight) return;
     
     // 새로운 공항 정보가 있으면 캐시에 추가
@@ -116,10 +121,43 @@ export const HomePage = () => {
     const enrichedFlight = enrichFlightWithAirportInfo(flight);
     
     console.log('[HomePage] Selected flight with airport info:', enrichedFlight);
-    setSelectedFlight(enrichedFlight);
-    setSelectedFlightDictionaries(dictionaries || {});
+    
+    if (isMultiple) {
+      // 다중 선택 모드: 기존 항공편 목록에 추가
+      setSelectedFlights(prev => {
+        // 중복 방지: 같은 ID의 항공편이 이미 있으면 교체
+        const existingIndex = prev.findIndex(f => f.id === enrichedFlight.id);
+        if (existingIndex >= 0) {
+          const newFlights = [...prev];
+          newFlights[existingIndex] = enrichedFlight;
+          return newFlights;
+        } else {
+          return [...prev, enrichedFlight];
+        }
+      });
+    } else {
+      // 단일 선택 모드: 기존 항공편 교체
+      setSelectedFlights([enrichedFlight]);
+    }
+    
+    setSelectedFlightDictionaries(prev => ({...prev, ...dictionaries}));
     setIsFlightDialogOpen(false);
   }, [enrichFlightWithAirportInfo]);
+
+  // 항공편 제거 함수
+  const removeFlight = useCallback((flightId) => {
+    setSelectedFlights(prev => prev.filter(f => f.id !== flightId));
+  }, []);
+
+  // 항공편 순서 변경 함수
+  const reorderFlights = useCallback((fromIndex, toIndex) => {
+    setSelectedFlights(prev => {
+      const newFlights = [...prev];
+      const [removed] = newFlights.splice(fromIndex, 1);
+      newFlights.splice(toIndex, 0, removed);
+      return newFlights;
+    });
+  }, []);
 
   // 컴포넌트 언마운트 시 WebSocket 연결 정리
   useEffect(() => {
@@ -128,6 +166,285 @@ export const HomePage = () => {
       websocketService.disconnect();
     };
   }, []);
+
+  // ==================== 날짜 검증 로직 ====================
+  
+  /**
+   * 다중 항공편 날짜 검증
+   * @param {Array} flights - 선택된 항공편들 정보
+   * @param {Date} userStartDate - 사용자가 선택한 출국일
+   * @param {Date} userEndDate - 사용자가 선택한 귀국일
+   * @returns {Object} { isValid: boolean, errors: string[] }
+   */
+  const validateMultipleFlightDates = (flights, userStartDate, userEndDate) => {
+    if (!flights || flights.length === 0 || !userStartDate) {
+      return { isValid: true, errors: [] }; // 항공편이 없으면 검증 통과
+    }
+
+    const errors = [];
+
+    // 왕복편과 편도편 혼재 검증
+    const hasRoundTrip = flights.some(f => f.itineraries.length > 1);
+    const hasOneWay = flights.some(f => f.itineraries.length === 1);
+    
+    if (hasRoundTrip && hasOneWay) {
+      errors.push('왕복편과 편도편을 동시에 선택할 수 없습니다.');
+      return { isValid: false, errors };
+    }
+
+    if (hasRoundTrip && flights.length > 1) {
+      errors.push('왕복편은 1개만 선택할 수 있습니다.');
+      return { isValid: false, errors };
+    }
+
+    // 단일 왕복편인 경우
+    if (hasRoundTrip) {
+      const flight = flights[0];
+      const outboundSegment = flight.itineraries[0].segments[0];
+      const inboundSegment = flight.itineraries[1].segments[0];
+      
+      const flightDepartureDate = new Date(outboundSegment.departure.at);
+      const returnDepartureDate = new Date(inboundSegment.departure.at);
+      
+      const userStartDateOnly = new Date(userStartDate.getFullYear(), userStartDate.getMonth(), userStartDate.getDate());
+      const userEndDateOnly = new Date(userEndDate.getFullYear(), userEndDate.getMonth(), userEndDate.getDate());
+      const flightDepartureDateOnly = new Date(flightDepartureDate.getFullYear(), flightDepartureDate.getMonth(), flightDepartureDate.getDate());
+      const returnDepartureDateOnly = new Date(returnDepartureDate.getFullYear(), returnDepartureDate.getMonth(), returnDepartureDate.getDate());
+      
+      if (flightDepartureDateOnly.getTime() !== userStartDateOnly.getTime()) {
+        errors.push(`왕복편 출발일(${flightDepartureDateOnly.toLocaleDateString('ko-KR')})이 설정한 출국일(${userStartDateOnly.toLocaleDateString('ko-KR')})과 일치하지 않습니다.`);
+      }
+      
+      if (returnDepartureDateOnly.getTime() !== userEndDateOnly.getTime()) {
+        errors.push(`왕복편 귀국일(${returnDepartureDateOnly.toLocaleDateString('ko-KR')})이 설정한 귀국일(${userEndDateOnly.toLocaleDateString('ko-KR')})과 일치하지 않습니다.`);
+      }
+    }
+
+    // 다중 편도편인 경우
+    if (hasOneWay) {
+      if (!userEndDate) {
+        errors.push('편도 항공편을 선택했습니다. 귀국일을 설정해주세요.');
+        return { isValid: false, errors };
+      }
+
+      // 항공편들을 출발 날짜 순으로 정렬
+      const sortedFlights = [...flights].sort((a, b) => {
+        const dateA = new Date(a.itineraries[0].segments[0].departure.at);
+        const dateB = new Date(b.itineraries[0].segments[0].departure.at);
+        return dateA.getTime() - dateB.getTime();
+      });
+
+      const userStartDateOnly = new Date(userStartDate.getFullYear(), userStartDate.getMonth(), userStartDate.getDate());
+      const userEndDateOnly = new Date(userEndDate.getFullYear(), userEndDate.getMonth(), userEndDate.getDate());
+
+      // 첫 번째 항공편이 출국일과 일치하는지 확인
+      const firstFlightDate = new Date(sortedFlights[0].itineraries[0].segments[0].departure.at);
+      const firstFlightDateOnly = new Date(firstFlightDate.getFullYear(), firstFlightDate.getMonth(), firstFlightDate.getDate());
+      
+      if (firstFlightDateOnly.getTime() !== userStartDateOnly.getTime()) {
+        errors.push(`첫 번째 항공편 출발일(${firstFlightDateOnly.toLocaleDateString('ko-KR')})이 설정한 출국일(${userStartDateOnly.toLocaleDateString('ko-KR')})과 일치하지 않습니다.`);
+      }
+
+      // 마지막 항공편이 귀국일과 일치하는지 확인
+      const lastFlight = sortedFlights[sortedFlights.length - 1];
+      const lastFlightDate = new Date(lastFlight.itineraries[0].segments[0].departure.at);
+      const lastFlightDateOnly = new Date(lastFlightDate.getFullYear(), lastFlightDate.getMonth(), lastFlightDate.getDate());
+      
+      if (lastFlightDateOnly.getTime() !== userEndDateOnly.getTime()) {
+        errors.push(`마지막 항공편 출발일(${lastFlightDateOnly.toLocaleDateString('ko-KR')})이 설정한 귀국일(${userEndDateOnly.toLocaleDateString('ko-KR')})과 일치하지 않습니다.`);
+      }
+
+      // 중간 항공편들이 출국일-귀국일 사이에 있는지 확인
+      for (let i = 1; i < sortedFlights.length - 1; i++) {
+        const flightDate = new Date(sortedFlights[i].itineraries[0].segments[0].departure.at);
+        const flightDateOnly = new Date(flightDate.getFullYear(), flightDate.getMonth(), flightDate.getDate());
+        
+        if (flightDateOnly.getTime() <= userStartDateOnly.getTime() || flightDateOnly.getTime() >= userEndDateOnly.getTime()) {
+          errors.push(`${i + 1}번째 항공편 출발일(${flightDateOnly.toLocaleDateString('ko-KR')})이 출국일과 귀국일 사이에 있지 않습니다.`);
+        }
+      }
+    }
+
+    return { isValid: errors.length === 0, errors };
+  };
+
+  /**
+   * 다중 숙박편 날짜 검증
+   * @param {Array} accommodations - 선택된 숙박편들 정보
+   * @param {Date} userStartDate - 사용자가 선택한 출국일
+   * @param {Date} userEndDate - 사용자가 선택한 귀국일
+   * @returns {Object} { isValid: boolean, errors: string[] }
+   */
+  const validateMultipleAccommodationDates = (accommodations, userStartDate, userEndDate) => {
+    if (!accommodations || accommodations.length === 0 || !userStartDate || !userEndDate) {
+      return { isValid: true, errors: [] }; // 숙박편이 없으면 검증 통과
+    }
+
+    const errors = [];
+    const userStartDateOnly = new Date(userStartDate.getFullYear(), userStartDate.getMonth(), userStartDate.getDate());
+    const userEndDateOnly = new Date(userEndDate.getFullYear(), userEndDate.getMonth(), userEndDate.getDate());
+
+    // 숙박편들을 체크인 날짜 순으로 정렬
+    const sortedAccommodations = [...accommodations].sort((a, b) => {
+      return new Date(a.checkIn).getTime() - new Date(b.checkIn).getTime();
+    });
+
+    // 각 숙박편 개별 검증
+    sortedAccommodations.forEach((accommodation, index) => {
+      const checkInDate = new Date(accommodation.checkIn);
+      const checkOutDate = new Date(accommodation.checkOut);
+      const checkInDateOnly = new Date(checkInDate.getFullYear(), checkInDate.getMonth(), checkInDate.getDate());
+      const checkOutDateOnly = new Date(checkOutDate.getFullYear(), checkOutDate.getMonth(), checkOutDate.getDate());
+
+      // 체크인이 체크아웃보다 이전인지 확인
+      if (checkInDateOnly.getTime() >= checkOutDateOnly.getTime()) {
+        errors.push(`${index + 1}번째 숙박편: 체크인 날짜가 체크아웃 날짜와 같거나 늦습니다.`);
+      }
+
+      // 첫 번째 숙박편의 체크인이 출국일 이후인지 확인
+      if (index === 0 && checkInDateOnly.getTime() < userStartDateOnly.getTime()) {
+        errors.push(`첫 번째 숙박편 체크인 날짜(${checkInDateOnly.toLocaleDateString('ko-KR')})가 출국일(${userStartDateOnly.toLocaleDateString('ko-KR')})보다 이릅니다.`);
+      }
+
+      // 마지막 숙박편의 체크아웃이 귀국일 이전인지 확인
+      if (index === sortedAccommodations.length - 1 && checkOutDateOnly.getTime() > userEndDateOnly.getTime()) {
+        errors.push(`마지막 숙박편 체크아웃 날짜(${checkOutDateOnly.toLocaleDateString('ko-KR')})가 귀국일(${userEndDateOnly.toLocaleDateString('ko-KR')})보다 늦습니다.`);
+      }
+    });
+
+    // 숙박편 간 연결성 검증 (이전 체크아웃 = 다음 체크인)
+    for (let i = 0; i < sortedAccommodations.length - 1; i++) {
+      const currentCheckOut = new Date(sortedAccommodations[i].checkOut);
+      const nextCheckIn = new Date(sortedAccommodations[i + 1].checkIn);
+      
+      const currentCheckOutDateOnly = new Date(currentCheckOut.getFullYear(), currentCheckOut.getMonth(), currentCheckOut.getDate());
+      const nextCheckInDateOnly = new Date(nextCheckIn.getFullYear(), nextCheckIn.getMonth(), nextCheckIn.getDate());
+
+      if (currentCheckOutDateOnly.getTime() !== nextCheckInDateOnly.getTime()) {
+        errors.push(`${i + 1}번째 숙박편 체크아웃 날짜(${currentCheckOutDateOnly.toLocaleDateString('ko-KR')})와 ${i + 2}번째 숙박편 체크인 날짜(${nextCheckInDateOnly.toLocaleDateString('ko-KR')})가 연결되지 않습니다.`);
+      }
+    }
+
+    // 날짜별 숙박편 개수 검증 (각 날짜마다 1개 또는 2개만 허용)
+    const dateAccommodationCount = {};
+    
+    sortedAccommodations.forEach((accommodation, index) => {
+      const checkInDate = new Date(accommodation.checkIn);
+      const checkOutDate = new Date(accommodation.checkOut);
+      
+      // 체크인 날짜부터 체크아웃 날짜 전날까지 카운트
+      let currentDate = new Date(checkInDate.getFullYear(), checkInDate.getMonth(), checkInDate.getDate());
+      const endDate = new Date(checkOutDate.getFullYear(), checkOutDate.getMonth(), checkOutDate.getDate());
+      
+      while (currentDate.getTime() < endDate.getTime()) {
+        const dateKey = currentDate.toISOString().split('T')[0];
+        dateAccommodationCount[dateKey] = (dateAccommodationCount[dateKey] || 0) + 1;
+        
+        if (dateAccommodationCount[dateKey] > 2) {
+          errors.push(`${currentDate.toLocaleDateString('ko-KR')} 날짜에 3개 이상의 숙박편이 겹칩니다. 최대 2개까지만 허용됩니다.`);
+        }
+        
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+    });
+
+    // 출국일부터 귀국일까지 모든 날짜에 숙박편이 있는지 확인
+    let checkDate = new Date(userStartDateOnly);
+    while (checkDate.getTime() < userEndDateOnly.getTime()) {
+      const dateKey = checkDate.toISOString().split('T')[0];
+      if (!dateAccommodationCount[dateKey]) {
+        errors.push(`${checkDate.toLocaleDateString('ko-KR')} 날짜에 숙박편이 없습니다.`);
+      }
+      checkDate.setDate(checkDate.getDate() + 1);
+    }
+
+    return { isValid: errors.length === 0, errors };
+  };
+
+  /**
+   * 항공편과 숙박편 간의 호환성 검증
+   * @param {Object} flight - 선택된 항공편 정보
+   * @param {Object} accommodation - 선택된 숙박편 정보
+   * @returns {Object} { isValid: boolean, error: string }
+   */
+  const validateFlightAccommodationCompatibility = (flight, accommodation) => {
+    if (!flight || !accommodation) {
+      return { isValid: true, error: null };
+    }
+
+    const isRoundTrip = flight.itineraries.length > 1;
+    const checkOutDate = new Date(accommodation.checkOut);
+
+    // 왕복편인 경우 오는 편 출발 시간과 체크아웃 시간 비교
+    if (isRoundTrip) {
+      const inboundDeparture = new Date(flight.itineraries[1].segments[0].departure.at);
+      const departureDateOnly = new Date(inboundDeparture.getFullYear(), inboundDeparture.getMonth(), inboundDeparture.getDate());
+      const checkOutDateOnly = new Date(checkOutDate.getFullYear(), checkOutDate.getMonth(), checkOutDate.getDate());
+      
+      if (departureDateOnly.getTime() === checkOutDateOnly.getTime()) {
+        const departureHour = inboundDeparture.getHours();
+        const checkOutHour = parseInt(accommodation.hotel.checkout_until.split(':')[0]);
+        
+        if (departureHour < checkOutHour + 2) { // 체크아웃 후 최소 2시간 여유 필요
+          return {
+            isValid: false,
+            error: `귀국 항공편 출발 시간(${inboundDeparture.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })})이 호텔 체크아웃 시간(${accommodation.hotel.checkout_until}) 이후 2시간 이내입니다. 공항 이동 시간이 부족할 수 있습니다.`
+          };
+        }
+      }
+    }
+
+    return { isValid: true, error: null };
+  };
+
+  /**
+   * 전체 검증 실행 (다중 선택 지원)
+   * @returns {Object} { isValid: boolean, errors: string[] }
+   */
+  const validateAllSelections = () => {
+    const errors = [];
+
+    // 필수 필드 검증
+    if (!searchText.trim()) {
+      errors.push('여행 요구사항을 입력해주세요.');
+    }
+    if (!startDate) {
+      errors.push('출국일을 선택해주세요.');
+    }
+    if (!endDate) {
+      errors.push('귀국일을 선택해주세요.');
+    }
+
+    // 날짜 순서 검증
+    if (startDate && endDate && startDate >= endDate) {
+      errors.push('귀국일은 출국일보다 늦어야 합니다.');
+    }
+
+    // 다중 항공편 날짜 검증
+    const flightValidation = validateMultipleFlightDates(selectedFlights, startDate, endDate);
+    if (!flightValidation.isValid) {
+      errors.push(...flightValidation.errors);
+    }
+
+    // 다중 숙박편 날짜 검증
+    const accommodationValidation = validateMultipleAccommodationDates(selectedAccommodations, startDate, endDate);
+    if (!accommodationValidation.isValid) {
+      errors.push(...accommodationValidation.errors);
+    }
+
+    // 항공편-숙박편 호환성 검증 (첫 번째 항공편과 첫 번째 숙박편만 검증)
+    if (selectedFlights.length > 0 && selectedAccommodations.length > 0) {
+      const compatibilityValidation = validateFlightAccommodationCompatibility(selectedFlights[0], selectedAccommodations[0]);
+      if (!compatibilityValidation.isValid) {
+        errors.push(compatibilityValidation.error);
+      }
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  };
 
   // 선택한 항공편의 공항 세부정보(한글 공항/도시명 등) 동기화
   useEffect(() => {
@@ -161,17 +478,17 @@ export const HomePage = () => {
     });
   }, [selectedFlight, airportInfoCache]);
 
-  // 공항 정보가 업데이트 되면 선택된 항공편 정보도 업데이트 (무한 루프 방지)
+  // 공항 정보가 업데이트 되면 선택된 항공편들 정보도 업데이트 (무한 루프 방지)
   useEffect(() => {
-    if (!selectedFlight) return;
+    if (selectedFlights.length === 0) return;
     if (Object.keys(airportInfoCache).length === 0) return;
 
-    const enriched = enrichFlightWithAirportInfo(selectedFlight);
+    const enrichedFlights = selectedFlights.map(flight => enrichFlightWithAirportInfo(flight));
     // 변경 사항이 있을 때만 업데이트(문자열 비교 단순 사용)
-    if (JSON.stringify(enriched) !== JSON.stringify(selectedFlight)) {
-      setSelectedFlight(enriched);
+    if (JSON.stringify(enrichedFlights) !== JSON.stringify(selectedFlights)) {
+      setSelectedFlights(enrichedFlights);
     }
-  }, [airportInfoCache]);
+  }, [airportInfoCache, selectedFlights, enrichFlightWithAirportInfo]);
 
   const processTextFile = async (file) => {
     return new Promise((resolve, reject) => {
@@ -248,10 +565,21 @@ export const HomePage = () => {
   };
 
   const handleSearch = async () => {
-    if (!searchText.trim()) {
-      console.warn('Search text is empty');
+    // 전체 검증 실행
+    const validation = validateAllSelections();
+    
+    if (!validation.isValid) {
+      // 검증 실패 시 오류 메시지 상태에 저장
+      setValidationErrors(validation.errors);
+      // 3초 후 오류 메시지 제거
+      setTimeout(() => {
+        setValidationErrors([]);
+      }, 5000);
       return;
     }
+
+    // 검증 성공 시 오류 메시지 제거
+    setValidationErrors([]);
 
     setIsProcessing(true); // 로딩 시작
     setProcessingStatus("연결을 준비 중입니다...");
@@ -297,11 +625,26 @@ export const HomePage = () => {
         children: childCount,
       };
       
-      if (selectedFlight) {
-        planDetails.flightInfo = selectedFlight;
+      // 다중 항공편 정보 추가
+      if (selectedFlights.length > 0) {
+        if (selectedFlights.length === 1) {
+          // 하위 호환성을 위해 단일 항공편은 기존 방식 유지
+          planDetails.flightInfo = selectedFlights[0];
+        } else {
+          // 다중 항공편은 새로운 방식으로 전송
+          planDetails.flightInfos = selectedFlights;
+        }
       }
-      if (selectedAccommodation) {
-        planDetails.accommodationInfo = selectedAccommodation;
+      
+      // 다중 숙박편 정보 추가
+      if (selectedAccommodations.length > 0) {
+        if (selectedAccommodations.length === 1) {
+          // 하위 호환성을 위해 단일 숙박편은 기존 방식 유지
+          planDetails.accommodationInfo = selectedAccommodations[0];
+        } else {
+          // 다중 숙박편은 새로운 방식으로 전송
+          planDetails.accommodationInfos = selectedAccommodations;
+        }
       }
 
       console.log('[HomePage] 전송할 계획 세부사항:', planDetails);
@@ -339,7 +682,9 @@ export const HomePage = () => {
           console.log('[HomePage] 페이지 이동 실행:', targetUrl);
           navigate(targetUrl, { 
             state: { 
-              flightData: selectedFlight, 
+              flightData: selectedFlights.length > 0 ? selectedFlights[0] : null, // 하위 호환성
+              flightDatas: selectedFlights, // 다중 항공편 데이터
+              accommodationDatas: selectedAccommodations, // 다중 숙박편 데이터
               isNewPlan: true,
               planId: generatedPlanId
             } 
@@ -368,12 +713,49 @@ export const HomePage = () => {
     setInfantCount(prev => Math.max(0, prev + increment));
   };
 
-  // 숙소 선택 핸들러
-  const selectAccommodation = useCallback((accom) => {
+  // 숙소 선택 핸들러 (다중 선택 지원)
+  const selectAccommodation = useCallback((accom, isMultiple = false) => {
     if (!accom) return;
     console.log('[HomePage] Selected accommodation:', accom);
-    setSelectedAccommodation(accom);
+    
+    if (isMultiple) {
+      // 다중 선택 모드: 기존 숙박편 목록에 추가
+      setSelectedAccommodations(prev => {
+        // 중복 방지: 같은 호텔+객실 조합이 이미 있으면 교체
+        const existingIndex = prev.findIndex(a => 
+          a.hotel.hotel_id === accom.hotel.hotel_id && 
+          a.room.id === accom.room.id &&
+          a.checkIn.getTime() === accom.checkIn.getTime()
+        );
+        if (existingIndex >= 0) {
+          const newAccommodations = [...prev];
+          newAccommodations[existingIndex] = accom;
+          return newAccommodations;
+        } else {
+          return [...prev, accom];
+        }
+      });
+    } else {
+      // 단일 선택 모드: 기존 숙박편 교체
+      setSelectedAccommodations([accom]);
+    }
+    
     setIsAccommodationDialogOpen(false);
+  }, []);
+
+  // 숙박편 제거 함수
+  const removeAccommodation = useCallback((index) => {
+    setSelectedAccommodations(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  // 숙박편 순서 변경 함수
+  const reorderAccommodations = useCallback((fromIndex, toIndex) => {
+    setSelectedAccommodations(prev => {
+      const newAccommodations = [...prev];
+      const [removed] = newAccommodations.splice(fromIndex, 1);
+      newAccommodations.splice(toIndex, 0, removed);
+      return newAccommodations;
+    });
   }, []);
 
   const CustomInput = React.forwardRef(({ value, onClick, placeholder }, ref) => (
@@ -519,6 +901,26 @@ export const HomePage = () => {
                   </div>
                 </div>
               )}
+
+              {/* 검증 오류 메시지 표시 영역 */}
+              {validationErrors.length > 0 && (
+                <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <X className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-red-700 text-sm font-medium mb-1">다음 문제를 해결해주세요:</p>
+                      <ul className="text-red-600 text-sm space-y-1">
+                        {validationErrors.map((error, index) => (
+                          <li key={index} className="flex items-start gap-1">
+                            <span className="text-red-400 mt-1">•</span>
+                            <span>{error}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Date selection section */}
@@ -598,158 +1000,213 @@ export const HomePage = () => {
               <div className="flex flex-wrap items-start gap-4 mt-2">
                 {/* 검색 버튼들 */}
                 <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    className="bg-blue-500 hover:bg-blue-600 text-white" 
-                    onClick={() => setIsFlightDialogOpen(true)}
-                  >
-                    항공편 검색
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    className="bg-green-500 hover:bg-green-600 text-white" 
-                    onClick={() => setIsAccommodationDialogOpen(true)}
-                  >
-                    숙박 검색
-                  </Button>
+                  <div className="flex flex-col gap-1">
+                    <Button 
+                      variant="outline" 
+                      className="bg-blue-500 hover:bg-blue-600 text-white" 
+                      onClick={() => setIsFlightDialogOpen(true)}
+                    >
+                      항공편 검색
+                    </Button>
+                    {selectedFlights.length > 0 && (
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className="bg-blue-400 hover:bg-blue-500 text-white text-xs" 
+                        onClick={() => setIsFlightDialogOpen(true)}
+                      >
+                        + 항공편 추가
+                      </Button>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Button 
+                      variant="outline" 
+                      className="bg-green-500 hover:bg-green-600 text-white" 
+                      onClick={() => setIsAccommodationDialogOpen(true)}
+                    >
+                      숙박 검색
+                    </Button>
+                    {selectedAccommodations.length > 0 && (
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className="bg-green-400 hover:bg-green-500 text-white text-xs" 
+                        onClick={() => setIsAccommodationDialogOpen(true)}
+                      >
+                        + 숙박 추가
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 {/* 선택된 항공편/숙박 요약 카드 */}
                 <div className="flex flex-wrap gap-4 w-full">
-                  {selectedFlight && (
-                    <Card className="relative p-4 shadow bg-white flex-1 min-w-[260px]">
-                      {/* 기존 항공편 요약 내용 유지 */}
-                      {(() => {
-                        const formatDuration = (durationStr) => {
-                          if (!durationStr) return "-";
-                          return durationStr.replace("PT", "").replace("H", "시간 ").replace("M", "분").trim();
-                        };
-
-                        const getCityLabel = (code) => {
-                          const info = airportInfoCache[code] || {};
-                          return (
-                            info.koreanMunicipalityName ||
-                            info.koreanFullName ||
-                            info.koreanName ||
-                            info.name ||
-                            code
-                          );
-                        };
-
-                        const isRoundTrip = selectedFlight.itineraries.length > 1;
-                        const outbound = selectedFlight.itineraries[0];
-                        const outFirst = outbound.segments[0];
-                        const outLast = outbound.segments[outbound.segments.length - 1];
-                        const outCarrierName =
-                          selectedFlightDictionaries?.carriers?.[outFirst.carrierCode] ||
-                          outFirst.carrierCode;
-                        const outStops = outbound.segments.length - 1;
-                        const outStopsText = outStops === 0 ? "직항" : `${outStops}회 경유`;
-                        const outDuration = formatDuration(outbound.duration);
-
-                        let inboundSection = null;
-                        if (isRoundTrip) {
-                          const inbound = selectedFlight.itineraries[1];
-                          const inFirst = inbound.segments[0];
-                          const inLast = inbound.segments[inbound.segments.length - 1];
-                          const inCarrierName =
-                            selectedFlightDictionaries?.carriers?.[inFirst.carrierCode] ||
-                            inFirst.carrierCode;
-                          const inStops = inbound.segments.length - 1;
-                          const inStopsText = inStops === 0 ? "직항" : `${inStops}회 경유`;
-                          const inDuration = formatDuration(inbound.duration);
-
-                          inboundSection = (
-                            <div className="mt-3 text-sm">
-                              <div className="font-medium text-gray-600 mb-0.5">오는 편</div>
-                              <div className="text-sm mb-0.5">
-                                {new Date(inFirst.departure.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: true })}
-                                <span className="text-gray-400 mx-1">→</span>
-                                {new Date(inLast.arrival.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: true })}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {inCarrierName} | {inStopsText} | 총 소요시간: {inDuration}
-                              </div>
-                            </div>
-                          );
-                        }
-
-                        const price = parseInt(selectedFlight.price.grandTotal || selectedFlight.price.total).toLocaleString();
-
-                        return (
-                          <>
-                            <div className="flex justify-between items-center mb-3">
-                              <div className="text-sm font-semibold">
-                                {isRoundTrip ? "왕복" : "편도"}: {getCityLabel(outFirst.departure.iataCode)} → {getCityLabel(outLast.arrival.iataCode)}
-                              </div>
-                              <div className="text-sm font-bold text-blue-600">{price}원</div>
-                            </div>
-                            <div className="text-sm">
-                              <div className="font-medium text-gray-600 mb-0.5">가는 편</div>
-                              <div className="text-sm mb-0.5">
-                                {new Date(outFirst.departure.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: true })}
-                                <span className="text-gray-400 mx-1">→</span>
-                                {new Date(outLast.arrival.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: true })}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {outCarrierName} | {outStopsText} | 총 소요시간: {outDuration}
-                              </div>
-                            </div>
-                            {inboundSection}
-
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="absolute top-2 right-2"
-                              onClick={() => {
-                                setSelectedFlight(null);
-                                setSelectedFlightDictionaries({});
-                              }}
-                            >
-                              <X className="h-4 w-4 text-gray-500" />
-                            </Button>
-                          </>
-                        );
-                      })()}
-                    </Card>
-                  )}
-
-                  {selectedAccommodation && (
-                    <Card className="relative p-4 shadow bg-white flex-1 min-w-[260px]">
-                      {(() => {
-                        const { hotel, room } = selectedAccommodation;
-                        return (
-                          <>
-                            <div className="flex justify-between items-center mb-3">
-                              <div className="text-sm font-semibold">숙소: {hotel.hotel_name_trans || hotel.hotel_name}</div>
-                              {room.price && (
-                                <div className="text-sm font-bold text-green-600">{room.price.toLocaleString()} {room.currency}</div>
-                              )}
-                            </div>
-                            <div className="text-sm text-gray-700">{room.name}</div>
+                  {/* 다중 항공편 표시 */}
+                  {selectedFlights.length > 0 && (
+                    <div className="w-full">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">선택된 항공편 ({selectedFlights.length}개)</h4>
+                      <div className="space-y-2">
+                        {selectedFlights.map((flight, index) => (
+                          <Card key={flight.id} className="relative p-3 shadow bg-white">
                             {(() => {
-                              const dIn = selectedAccommodation.checkIn ? format(new Date(selectedAccommodation.checkIn), 'yyyy/MM/dd') : '';
-                              const dOut = selectedAccommodation.checkOut ? format(new Date(selectedAccommodation.checkOut), 'yyyy/MM/dd') : '';
+                              const formatDuration = (durationStr) => {
+                                if (!durationStr) return "-";
+                                return durationStr.replace("PT", "").replace("H", "시간 ").replace("M", "분").trim();
+                              };
+
+                              const getCityLabel = (code) => {
+                                const info = airportInfoCache[code] || {};
+                                return (
+                                  info.koreanMunicipalityName ||
+                                  info.koreanFullName ||
+                                  info.koreanName ||
+                                  info.name ||
+                                  code
+                                );
+                              };
+
+                              const isRoundTrip = flight.itineraries.length > 1;
+                              const outbound = flight.itineraries[0];
+                              const outFirst = outbound.segments[0];
+                              const outLast = outbound.segments[outbound.segments.length - 1];
+                              const outCarrierName =
+                                selectedFlightDictionaries?.carriers?.[outFirst.carrierCode] ||
+                                outFirst.carrierCode;
+                              const outStops = outbound.segments.length - 1;
+                              const outStopsText = outStops === 0 ? "직항" : `${outStops}회 경유`;
+                              const outDuration = formatDuration(outbound.duration);
+                              const price = parseInt(flight.price.grandTotal || flight.price.total).toLocaleString();
+
                               return (
                                 <>
-                                  <div className="text-xs text-gray-500">체크인 {dIn} {selectedAccommodation.hotel.checkin_from}{selectedAccommodation.hotel.checkin_until !== '정보 없음' ? ` ~ ${selectedAccommodation.hotel.checkin_until}` : ''}</div>
-                                  <div className="text-xs text-gray-500 mb-1">체크아웃 {dOut} {selectedAccommodation.hotel.checkout_from !== '정보 없음' ? `${selectedAccommodation.hotel.checkout_from} ~ ` : ''}{selectedAccommodation.hotel.checkout_until}</div>
+                                  <div className="flex justify-between items-center mb-2">
+                                    <div className="text-sm font-semibold">
+                                      #{index + 1} {isRoundTrip ? "왕복" : "편도"}: {getCityLabel(outFirst.departure.iataCode)} → {getCityLabel(outLast.arrival.iataCode)}
+                                    </div>
+                                    <div className="text-sm font-bold text-blue-600">{price}원</div>
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {new Date(outFirst.departure.at).toLocaleDateString('ko-KR')} {new Date(outFirst.departure.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                                    <span className="mx-1">→</span>
+                                    {new Date(outLast.arrival.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                                    <span className="ml-2">{outCarrierName} | {outStopsText}</span>
+                                  </div>
+                                  
+                                  {/* 순서 변경 버튼 */}
+                                  <div className="absolute top-2 right-8 flex gap-1">
+                                    {index > 0 && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6"
+                                        onClick={() => reorderFlights(index, index - 1)}
+                                      >
+                                        ↑
+                                      </Button>
+                                    )}
+                                    {index < selectedFlights.length - 1 && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6"
+                                        onClick={() => reorderFlights(index, index + 1)}
+                                      >
+                                        ↓
+                                      </Button>
+                                    )}
+                                  </div>
+
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="absolute top-2 right-2"
+                                    onClick={() => removeFlight(flight.id)}
+                                  >
+                                    <X className="h-4 w-4 text-gray-500" />
+                                  </Button>
                                 </>
                               );
                             })()}
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="absolute top-2 right-2"
-                              onClick={() => setSelectedAccommodation(null)}
-                            >
-                              <X className="h-4 w-4 text-gray-500" />
-                            </Button>
-                          </>
-                        );
-                      })()}
-                    </Card>
+                          </Card>
+                        ))}
+                      </div>
+                    </div>
                   )}
+
+                  {/* 다중 숙박편 표시 */}
+                  {selectedAccommodations.length > 0 && (
+                    <div className="w-full">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">선택된 숙박편 ({selectedAccommodations.length}개)</h4>
+                      <div className="space-y-2">
+                        {selectedAccommodations.map((accommodation, index) => (
+                          <Card key={`${accommodation.hotel.hotel_id}-${index}`} className="relative p-3 shadow bg-white">
+                            {(() => {
+                              const { hotel, room } = accommodation;
+                              return (
+                                <>
+                                  <div className="flex justify-between items-center mb-2">
+                                    <div className="text-sm font-semibold">
+                                      #{index + 1} {hotel.hotel_name_trans || hotel.hotel_name}
+                                    </div>
+                                    {room.price && (
+                                      <div className="text-sm font-bold text-green-600">{room.price.toLocaleString()} {room.currency}</div>
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-gray-700">{room.name}</div>
+                                  {(() => {
+                                    const dIn = accommodation.checkIn ? format(new Date(accommodation.checkIn), 'yyyy/MM/dd') : '';
+                                    const dOut = accommodation.checkOut ? format(new Date(accommodation.checkOut), 'yyyy/MM/dd') : '';
+                                    return (
+                                      <>
+                                        <div className="text-xs text-gray-500">체크인 {dIn} {hotel.checkin_from}{hotel.checkin_until !== '정보 없음' ? ` ~ ${hotel.checkin_until}` : ''}</div>
+                                        <div className="text-xs text-gray-500 mb-1">체크아웃 {dOut} {hotel.checkout_from !== '정보 없음' ? `${hotel.checkout_from} ~ ` : ''}{hotel.checkout_until}</div>
+                                      </>
+                                    );
+                                  })()}
+                                  
+                                  {/* 순서 변경 버튼 */}
+                                  <div className="absolute top-2 right-8 flex gap-1">
+                                    {index > 0 && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6"
+                                        onClick={() => reorderAccommodations(index, index - 1)}
+                                      >
+                                        ↑
+                                      </Button>
+                                    )}
+                                    {index < selectedAccommodations.length - 1 && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6"
+                                        onClick={() => reorderAccommodations(index, index + 1)}
+                                      >
+                                        ↓
+                                      </Button>
+                                    )}
+                                  </div>
+
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="absolute top-2 right-2"
+                                    onClick={() => removeAccommodation(index)}
+                                  >
+                                    <X className="h-4 w-4 text-gray-500" />
+                                  </Button>
+                                </>
+                              );
+                            })()}
+                          </Card>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+
                 </div>
               </div>
             </div>
@@ -775,6 +1232,8 @@ export const HomePage = () => {
           initialInfantCount={infantCount}
           defaultStartDate={startDate}
           defaultEndDate={endDate}
+          isMultipleMode={selectedFlights.length > 0} // 이미 항공편이 선택되어 있으면 다중 모드
+          selectedFlights={selectedFlights}
         />
 
         {/* 숙박 검색 다이얼로그 */}
@@ -787,6 +1246,8 @@ export const HomePage = () => {
           initialAdults={adultCount}
           initialChildren={childCount}
           selectedAccommodation={selectedAccommodation}
+          isMultipleMode={selectedAccommodations.length > 0} // 이미 숙박편이 선택되어 있으면 다중 모드
+          selectedAccommodations={selectedAccommodations}
         />
       </div>
     </div>

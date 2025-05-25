@@ -18,9 +18,11 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
   const [planName, setPlanName] = useState(null);
   const [isLoadingPlan, setIsLoadingPlan] = useState(true); 
   const [loadedFlightInfo, setLoadedFlightInfo] = useState(null);
+  const [loadedFlightInfos, setLoadedFlightInfos] = useState([]); // 다중 항공편
   const [isRoundTrip, setIsRoundTrip] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [loadedAccommodationInfo, setLoadedAccommodationInfo] = useState(null);
+  const [loadedAccommodationInfos, setLoadedAccommodationInfos] = useState([]); // 다중 숙박편
   
   const { createFlightSchedules } = useFlightHandlers();
 
@@ -35,9 +37,11 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
     setPlanId(null);
     setPlanName(null);
     setLoadedFlightInfo(null);
+    setLoadedFlightInfos([]);
     setIsRoundTrip(false);
     setLoadError(null);
     setLoadedAccommodationInfo(null);
+    setLoadedAccommodationInfos([]);
     setIsLoadingPlan(false);
   }, []);
 
@@ -81,8 +85,10 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
     let planName = null;
     let isDataProcessed = false;
     let parsedFlightInfo = null;
+    let parsedFlightInfos = [];
     let roundTripFlag = false;
     let parsedAccommodationInfo = null;
+    let parsedAccommodationInfos = [];
 
     // checkplanfunction API에서 받은 데이터 구조 확인 및 처리 (plan이 배열이 아니라 객체인 경우)
     if (data?.plan?.itinerary_schedules && typeof data.plan.itinerary_schedules === 'string') {
@@ -257,10 +263,27 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
         }
       }
 
-      // LoadPlanFunction_NEW 응답에서 accommodationInfo 처리 (최상위 레벨에 추가됨)
-      if (data?.accommodationInfo) {
+      // LoadPlanFunction_NEW 응답에서 다중 항공편/숙박편 정보 처리
+      if (data?.flightInfos && Array.isArray(data.flightInfos) && data.flightInfos.length > 0) {
+        parsedFlightInfos = data.flightInfos;
+        parsedFlightInfo = data.flightInfos[0]; // 하위 호환성
+        roundTripFlag = data.isRoundTrip || false;
+        console.log('[useTravelPlanLoader] LoadPlanFunction_NEW 응답에서 다중 항공편 설정', { 개수: parsedFlightInfos.length, 왕복: roundTripFlag });
+      } else if (data?.flightInfo) {
+        parsedFlightInfo = data.flightInfo;
+        parsedFlightInfos = [data.flightInfo];
+        roundTripFlag = data.isRoundTrip || false;
+        console.log('[useTravelPlanLoader] LoadPlanFunction_NEW 응답에서 단일 항공편 설정 (하위 호환성)');
+      }
+
+      if (data?.accommodationInfos && Array.isArray(data.accommodationInfos) && data.accommodationInfos.length > 0) {
+        parsedAccommodationInfos = data.accommodationInfos;
+        parsedAccommodationInfo = data.accommodationInfos[0]; // 하위 호환성
+        console.log('[useTravelPlanLoader] LoadPlanFunction_NEW 응답에서 다중 숙박편 설정', { 개수: parsedAccommodationInfos.length });
+      } else if (data?.accommodationInfo) {
         parsedAccommodationInfo = data.accommodationInfo;
-        console.log('[useTravelPlanLoader] LoadPlanFunction_NEW 응답에서 accommodationInfo 설정', parsedAccommodationInfo);
+        parsedAccommodationInfos = [data.accommodationInfo];
+        console.log('[useTravelPlanLoader] LoadPlanFunction_NEW 응답에서 단일 숙박편 설정 (하위 호환성)');
       }
 
       if (data?.plannerData && Object.keys(data.plannerData).length > 0) {
@@ -587,45 +610,66 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
       planName: planName,
       startDate: newStartDate || potentialStartDate,
       loadedFlightInfo: parsedFlightInfo,
+      loadedFlightInfos: parsedFlightInfos,
       isRoundTrip: roundTripFlag,
-      loadedAccommodationInfo: parsedAccommodationInfo
+      loadedAccommodationInfo: parsedAccommodationInfo,
+      loadedAccommodationInfos: parsedAccommodationInfos
     };
   }, []);
 
-  // 항공편 정보를 일정에 추가하는 함수
-  const addFlightInfoToSchedules = useCallback((travelPlansData, parsedFlightInfo, newStartDate, dayOrderArray) => {
-    if (!parsedFlightInfo || !parsedFlightInfo.itineraries || parsedFlightInfo.itineraries.length === 0) {
+  // 다중 항공편 정보를 일정에 추가하는 함수
+  const addFlightInfosToSchedules = useCallback((travelPlansData, parsedFlightInfos, newStartDate, dayOrderArray) => {
+    if (!parsedFlightInfos || parsedFlightInfos.length === 0) {
       return travelPlansData;
     }
 
-    console.log('[useTravelPlanLoader] 항공편 정보를 일정에 추가 시도');
-    const formatTitle = (date, dayNum) => formatDateForTitleInternal(date, dayNum); 
-    const { schedulesByDay } = createFlightSchedules(parsedFlightInfo, newStartDate, dayOrderArray, formatTitle);
+    console.log('[useTravelPlanLoader] 다중 항공편 정보를 일정에 추가 시도:', parsedFlightInfos.length, '개');
+    const formatTitle = (date, dayNum) => formatDateForTitleInternal(date, dayNum);
+    let updatedTravelPlans = { ...travelPlansData };
     
-    const updatedTravelPlans = { ...travelPlansData };
+    // 각 항공편에 대해 일정 생성
+    parsedFlightInfos.forEach((flightInfo, index) => {
+      if (!flightInfo || !flightInfo.itineraries || flightInfo.itineraries.length === 0) {
+        console.warn(`[useTravelPlanLoader] 항공편 ${index + 1} 데이터가 유효하지 않음`);
+        return;
+      }
+
+      console.log(`[useTravelPlanLoader] 항공편 ${index + 1} 처리 중:`, flightInfo.id || 'ID없음');
+      const { schedulesByDay } = createFlightSchedules(flightInfo, newStartDate, dayOrderArray, formatTitle);
+      
+      if (schedulesByDay) {
+        Object.keys(schedulesByDay).forEach(dayKey => {
+          if (!updatedTravelPlans[dayKey]) {
+            const dateForTitle = new Date(newStartDate);
+            dateForTitle.setDate(dateForTitle.getDate() + parseInt(dayKey) - 1);
+            updatedTravelPlans[dayKey] = { 
+              title: formatDateForTitleInternal(dateForTitle, parseInt(dayKey)), 
+              schedules: [] 
+            };
+          }
+          
+          const schedules = schedulesByDay[dayKey];
+          if (schedules && schedules.length > 0) {
+            const existingSchedules = updatedTravelPlans[dayKey].schedules || [];
+            // 항공편 일정을 기존 일정 앞에 추가 (시간 순서대로)
+            updatedTravelPlans[dayKey].schedules = [...schedules, ...existingSchedules];
+            console.log(`[useTravelPlanLoader] Day ${dayKey}에 항공편 ${index + 1} 일정 추가:`, schedules.length, '개');
+          }
+        });
+      }
+    });
     
-    if (schedulesByDay) {
-      Object.keys(schedulesByDay).forEach(dayKey => {
-        if (!updatedTravelPlans[dayKey]) {
-          const dateForTitle = new Date(newStartDate);
-          dateForTitle.setDate(dateForTitle.getDate() + parseInt(dayKey) - 1);
-          updatedTravelPlans[dayKey] = { 
-            title: formatDateForTitleInternal(dateForTitle, parseInt(dayKey)), 
-            schedules: [] 
-          };
-        }
-        
-        const schedules = schedulesByDay[dayKey];
-        if (schedules && schedules.length > 0) {
-          const existingSchedules = updatedTravelPlans[dayKey].schedules || [];
-          updatedTravelPlans[dayKey].schedules = [...schedules, ...existingSchedules];
-        }
-      });
-    }
-    console.log('[useTravelPlanLoader] 항공편 정보 일정에 추가 완료');
-    
+    console.log('[useTravelPlanLoader] 다중 항공편 정보 일정에 추가 완료');
     return updatedTravelPlans;
   }, [createFlightSchedules]);
+
+  // 단일 항공편 정보를 일정에 추가하는 함수 (하위 호환성)
+  const addFlightInfoToSchedules = useCallback((travelPlansData, parsedFlightInfo, newStartDate, dayOrderArray) => {
+    if (!parsedFlightInfo) {
+      return travelPlansData;
+    }
+    return addFlightInfosToSchedules(travelPlansData, [parsedFlightInfo], newStartDate, dayOrderArray);
+  }, [addFlightInfosToSchedules]);
 
   const loadTravelPlanInternal = useCallback(async () => {
     if (loadMode === 'none') {
@@ -638,8 +682,10 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
     setIsLoadingPlan(true);
     setLoadError(null);
     setLoadedFlightInfo(null);
+    setLoadedFlightInfos([]);
     setIsRoundTrip(false);
     setLoadedAccommodationInfo(null);
+    setLoadedAccommodationInfos([]);
     
     const potentialStartDate = startDate || new Date(); 
 
@@ -658,13 +704,31 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
         result = await loadNewestPlan(potentialStartDate);
       }
 
-      // 항공편 정보 추가
-      const updatedTravelPlans = addFlightInfoToSchedules(
-        result.travelPlans,
-        result.loadedFlightInfo,
-        result.startDate,
-        result.dayOrder
-      );
+      // 다중 항공편 정보 추가
+      let updatedTravelPlans;
+      if (result.loadedFlightInfos && result.loadedFlightInfos.length > 0) {
+        // 다중 항공편이 있는 경우
+        updatedTravelPlans = addFlightInfosToSchedules(
+          result.travelPlans,
+          result.loadedFlightInfos,
+          result.startDate,
+          result.dayOrder
+        );
+        console.log('[useTravelPlanLoader] 다중 항공편 처리 완료:', result.loadedFlightInfos.length, '개');
+      } else if (result.loadedFlightInfo) {
+        // 단일 항공편만 있는 경우 (하위 호환성)
+        updatedTravelPlans = addFlightInfoToSchedules(
+          result.travelPlans,
+          result.loadedFlightInfo,
+          result.startDate,
+          result.dayOrder
+        );
+        console.log('[useTravelPlanLoader] 단일 항공편 처리 완료');
+      } else {
+        // 항공편이 없는 경우
+        updatedTravelPlans = result.travelPlans;
+        console.log('[useTravelPlanLoader] 항공편 없음');
+      }
       
       // 상태 업데이트
       setTravelPlans(updatedTravelPlans);
@@ -673,8 +737,10 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
       setPlanId(result.planId);
       setStartDate(result.startDate);
       setLoadedFlightInfo(result.loadedFlightInfo);
+      setLoadedFlightInfos(result.loadedFlightInfos);
       setIsRoundTrip(result.isRoundTrip);
       setLoadedAccommodationInfo(result.loadedAccommodationInfo);
+      setLoadedAccommodationInfos(result.loadedAccommodationInfos);
       setPlanName(result.planName);
       
       console.log('[useTravelPlanLoader] 최종 상태 업데이트 완료. newStartDate:', result.startDate);
@@ -805,9 +871,11 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
     planId, setPlanId,
     isLoadingPlan,
     loadedFlightInfo,
+    loadedFlightInfos, // 다중 항공편
     isRoundTrip,
     loadError,
     loadedAccommodationInfo,
+    loadedAccommodationInfos, // 다중 숙박편
     planName,
     setPlanName
   };
