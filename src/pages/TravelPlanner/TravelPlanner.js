@@ -984,9 +984,9 @@ const TravelPlanner = ({ loadMode }) => {
                 )}
               </Box>
             ) : (
-              <Typography variant="h6">
+            <Typography variant="h6">
                 {sidebarTab === 'accommodation' ? '숙소 검색 결과' : '항공편 검색 결과'}
-              </Typography>
+            </Typography>
             )}
           </Box>
 
@@ -1031,7 +1031,7 @@ const TravelPlanner = ({ loadMode }) => {
                       size="small"
                       onClick={() => setShowMap(v => !v)}
                     >
-                      {showMap ? '지도 숨기기' : '지도 보이기'}
+                                            {showMap ? '지도 숨기기' : '지도 보이기'}
                     </Button>
                     <Button
                       variant="outlined"
