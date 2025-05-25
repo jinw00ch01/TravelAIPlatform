@@ -24,6 +24,9 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
   const [loadError, setLoadError] = useState(null);
   const [loadedAccommodationInfo, setLoadedAccommodationInfo] = useState(null);
   const [loadedAccommodationInfos, setLoadedAccommodationInfos] = useState([]); // 다중 숙박편
+  const [isSharedPlan, setIsSharedPlan] = useState(false);
+  const [sharedEmails, setSharedEmails] = useState([]);
+  const [originalOwner, setOriginalOwner] = useState(null);
   
   const { createFlightSchedules } = useFlightHandlers();
 
@@ -44,6 +47,9 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
     setLoadError(null);
     setLoadedAccommodationInfo(null);
     setLoadedAccommodationInfos([]);
+    setIsSharedPlan(false);
+    setSharedEmails([]);
+    setOriginalOwner(null);
     setIsLoadingPlan(false);
   }, []);
 
@@ -119,6 +125,14 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
           sharedEmail = data.plan.shared_email;
           console.log('[useTravelPlanLoader] 공유 이메일 추출 성공:', sharedEmail);
         }
+        
+        // 공유 상태 확인 (is_shared_with_me 필드 또는 original_owner 필드로 판단)
+        const isSharedWithMe = data.is_shared_with_me === true || data.plan.is_shared_with_me === true;
+        console.log('[useTravelPlanLoader] 공유 상태 확인:', { 
+          is_shared_with_me: data.is_shared_with_me, 
+          plan_is_shared_with_me: data.plan.is_shared_with_me,
+          isSharedWithMe 
+        });
         
         // itinerary_schedules 파싱
         const parsedSchedules = JSON.parse(data.plan.itinerary_schedules);
@@ -619,6 +633,18 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
       newSelectedDay = '1';
     }
 
+    // 공유 이메일 배열 파싱
+    let parsedSharedEmails = [];
+    if (sharedEmail) {
+      parsedSharedEmails = sharedEmail.split(',').map(email => email.trim()).filter(email => email);
+    }
+    
+    // 공유 상태 확인 (is_shared_with_me 필드로 판단)
+    const isSharedWithMe = data?.is_shared_with_me === true || data?.plan?.is_shared_with_me === true;
+    
+    // 원래 소유자 정보 추출
+    const originalOwner = data?.original_owner || data?.plan?.original_owner || data?.plan?.user_id;
+    
     // 최종 반환 데이터
     return {
       travelPlans: newTravelPlans,
@@ -627,6 +653,9 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
       planId: newPlanId,
       planName: planName,
       sharedEmail: sharedEmail,
+      sharedEmails: parsedSharedEmails,
+      isSharedPlan: isSharedWithMe,
+      originalOwner: originalOwner,
       startDate: newStartDate || potentialStartDate,
       loadedFlightInfo: parsedFlightInfo,
       loadedFlightInfos: parsedFlightInfos,
@@ -762,8 +791,11 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
       setLoadedAccommodationInfos(result.loadedAccommodationInfos);
       setPlanName(result.planName);
       setSharedEmailFromLoader(result.sharedEmail || '');
+      setIsSharedPlan(result.isSharedPlan || false);
+      setSharedEmails(result.sharedEmails || []);
+      setOriginalOwner(result.originalOwner || null);
       
-      console.log('[useTravelPlanLoader] 최종 상태 업데이트 완료. newStartDate:', result.startDate, 'sharedEmail:', result.sharedEmail);
+      console.log('[useTravelPlanLoader] 최종 상태 업데이트 완료. newStartDate:', result.startDate, 'sharedEmail:', result.sharedEmail, 'isSharedPlan:', result.isSharedPlan, 'sharedEmails:', result.sharedEmails, 'originalOwner:', result.originalOwner);
 
       // 다중 숙박편 정보 처리 로직 추가
       if (result.loadedAccommodationInfos && result.loadedAccommodationInfos.length > 0) {
@@ -985,7 +1017,10 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
     loadedAccommodationInfos, // 다중 숙박편
     planName,
     setPlanName,
-    sharedEmailFromLoader
+    sharedEmailFromLoader,
+    isSharedPlan,
+    sharedEmails,
+    originalOwner
   };
 };
 

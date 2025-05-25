@@ -118,8 +118,8 @@ const useDialogHandlers = () => {
     setShareMessage('');
 
     try {
-      // 현재 공유된 이메일 목록을 문자열로 변환
-      const sharedEmailString = sharedEmails.join(',');
+      // 현재 공유된 이메일 목록을 문자열로 변환 (비어있으면 null)
+      const sharedEmailString = sharedEmails.length > 0 ? sharedEmails.join(',') : null;
       const result = await plannerHandleSharePlan(sharedEmailString);
       
       if (result.success) {

@@ -38,7 +38,10 @@ const TravelPlanner = ({ loadMode }) => {
     loadedFlightInfo,
     loadedFlightInfos, // 다중 항공편
     isRoundTrip,
-    loadedAccommodationInfos // 다중 숙박편
+    loadedAccommodationInfos, // 다중 숙박편
+    isSharedPlan: isSharedPlanFromLoader,
+    sharedEmails: sharedEmailsFromLoader,
+    originalOwner
   } = useTravelPlanLoader(user, planIdFromUrl, loadMode);
 
   const {
@@ -115,7 +118,6 @@ const TravelPlanner = ({ loadMode }) => {
   
   // 계획 공유 이메일 상태
   const [sharedEmailFromPlan, setSharedEmailFromPlan] = useState('');
-  const [isSharedPlan, setIsSharedPlan] = useState(false);
 
   // refs
   const mainAccommodationPlanRef = useRef(null);
@@ -221,7 +223,7 @@ const TravelPlanner = ({ loadMode }) => {
                   source: 'travelPlans' // 출처 표시
                 });
                 console.log('[accommodationsToShow] 숙박편 추가:', accommodationKey);
-              } else {
+            } else {
                 console.log('[accommodationsToShow] 중복 숙박편 스킵:', accommodationKey);
               }
             }
@@ -235,8 +237,8 @@ const TravelPlanner = ({ loadMode }) => {
       // travelPlans에서 실제로 존재하는 숙박편들만 확인
       const existingAccommodationIds = new Set();
       dayOrder.forEach(dayKey => {
-        const dayPlan = travelPlans[dayKey];
-        if (dayPlan?.schedules) {
+      const dayPlan = travelPlans[dayKey];
+      if (dayPlan?.schedules) {
           dayPlan.schedules.forEach(schedule => {
             if (schedule.type === 'accommodation' && schedule.hotelDetails) {
               const hotelId = schedule.hotelDetails.hotel?.hotel_id || schedule.hotelDetails.hotel_id;
@@ -919,15 +921,15 @@ const TravelPlanner = ({ loadMode }) => {
             setShowAllMarkers={setShowAllMarkers}
             showMap={showMap}
             setShowMap={setShowMap}
-            handleOpenShareDialog={() => dialogHandlers.handleOpenShareDialog(sharedEmailFromPlan)}
+            handleOpenShareDialog={() => dialogHandlers.handleOpenShareDialog(sharedEmailsFromLoader)}
             setIsSearchOpen={dialogHandlers.setIsSearchOpen}
             accommodationsToShow={accommodationsToShow}
             findSameDayAccommodations={findSameDayAccommodations}
             handleOpenAccommodationDetail={dialogHandlers.handleOpenAccommodationDetail}
             handleScheduleDragEnd={handleScheduleDragEnd}
             renderScheduleItem={renderScheduleItem}
-            hideFlightMarkers={hideFlightMarkers}
-            selectedLocation={selectedLocation}
+                        hideFlightMarkers={hideFlightMarkers}
+                        selectedLocation={selectedLocation}
             mapResizeTrigger={mapResizeTrigger}
             // 삭제 핸들러
             handleDeleteAccommodation={handleDeleteAccommodation}
@@ -941,7 +943,7 @@ const TravelPlanner = ({ loadMode }) => {
             onAddAccommodationToSchedule={onAddAccommodationToSchedule}
             dayOrder={dayOrder}
             forceRefreshSelectedDay={forceRefreshSelectedDay}
-            isSidebarOpen={isSidebarOpen}
+                isSidebarOpen={isSidebarOpen}
             // 유효성 검사를 위한 추가 props
             startDate={startDate}
             travelPlans={travelPlans}
@@ -1014,7 +1016,9 @@ const TravelPlanner = ({ loadMode }) => {
           shareMessage={dialogHandlers.shareMessage}
           isSharing={dialogHandlers.isSharing}
           handleSharePlan={() => dialogHandlers.handleSharePlan(plannerHandleSharePlan, planId)}
-          isSharedPlan={isSharedPlan}
+          isSharedPlan={isSharedPlanFromLoader}
+          sharedEmailsFromLoader={sharedEmailsFromLoader}
+          originalOwner={originalOwner}
         />
 
         <AIChatWidget onSendMessage={handleAISendMessage} />

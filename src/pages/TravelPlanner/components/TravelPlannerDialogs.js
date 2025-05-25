@@ -59,7 +59,11 @@ const TravelPlannerDialogs = ({
   shareMessage,
   isSharing,
   handleSharePlan,
-  isSharedPlan
+  isSharedPlan,
+  // 로더에서 받은 실제 공유 이메일 목록
+  sharedEmailsFromLoader,
+  // 원래 소유자 정보
+  originalOwner
 }) => {
   return (
     <>
@@ -365,23 +369,70 @@ const TravelPlannerDialogs = ({
           <Box sx={{ pt: 2 }}>
             {isSharedPlan ? (
               // 공유받은 플랜인 경우
-              <Box sx={{ 
-                p: 3, 
-                bgcolor: '#e3f2fd', 
-                borderRadius: 2, 
-                border: '1px solid #2196f3',
-                textAlign: 'center'
-              }}>
-                <Typography variant="h6" sx={{ mb: 2, color: '#1976d2' }}>
-                  공유받은 플랜입니다
-                </Typography>
-                <Typography variant="body1" sx={{ mb: 2 }}>
-                  이 플랜의 공유 설정은 원래 소유자만 수정할 수 있습니다.
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  공유 설정을 변경하려면 공유자에게 문의하세요.
-                </Typography>
-              </Box>
+              <>
+                <Box sx={{ 
+                  p: 3, 
+                  bgcolor: '#e3f2fd', 
+                  borderRadius: 2, 
+                  border: '1px solid #2196f3',
+                  textAlign: 'center',
+                  mb: 3
+                }}>
+                  <Typography variant="h6" sx={{ mb: 2, color: '#1976d2' }}>
+                    공유받은 플랜입니다
+                  </Typography>
+                  <Typography variant="body1" sx={{ mb: 2 }}>
+                    이 플랜의 공유 설정은 원래 소유자만 수정할 수 있습니다.
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    공유 설정을 변경하려면 공유자에게 문의하세요.
+                  </Typography>
+                </Box>
+
+                {/* 현재 공유된 이메일 목록 표시 (읽기 전용) */}
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>
+                    공유 멤버
+                  </Typography>
+                  
+                  {/* 원래 소유자 표시 */}
+                  {originalOwner && (
+                    <Box sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      mb: 1, 
+                      p: 1, 
+                      bgcolor: '#e8f5e8', 
+                      borderRadius: 1 
+                    }}>
+                      <Typography variant="body2" sx={{ flex: 1 }}>
+                        {originalOwner}
+                      </Typography>
+                      <Typography variant="caption" color="primary.main" sx={{ fontWeight: 'bold' }}>
+                        (공유자)
+                      </Typography>
+                    </Box>
+                  )}
+                  
+                  {/* 공유받은 사용자들 표시 */}
+                  {sharedEmailsFromLoader && sharedEmailsFromLoader.map((email, index) => (
+                    <Box key={index} sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      mb: 1, 
+                      p: 1, 
+                      bgcolor: '#f5f5f5', 
+                      borderRadius: 1 
+                    }}>
+                      <Typography variant="body2" sx={{ flex: 1 }}>
+                        {email}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+
+
+              </>
             ) : (
               // 본인 소유 플랜인 경우
               <>
@@ -456,7 +507,7 @@ const TravelPlannerDialogs = ({
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseShareDialog} disabled={isSharing}>
-            {isSharedPlan ? '닫기' : '취소'}
+            닫기
           </Button>
           {!isSharedPlan && (
             <Button 

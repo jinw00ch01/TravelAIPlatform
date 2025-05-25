@@ -210,26 +210,32 @@ const usePlannerActions = ({
       return { success: false, message: '저장된 계획만 공유할 수 있습니다.' };
     }
 
-    if (!sharedEmail || !sharedEmail.trim()) {
-      console.error('[usePlannerActions] 공유: 유효한 이메일이 없습니다');
-      return { success: false, message: '공유할 이메일을 입력해주세요.' };
-    }
-
     try {
-      console.log('[usePlannerActions] 계획 공유 시작:', { planId, sharedEmail: sharedEmail.trim() });
+      // 이메일이 비어있으면 null을 보내서 공유 해제
+      const emailToSend = (sharedEmail && sharedEmail.trim()) ? sharedEmail.trim() : null;
+      
+      console.log('[usePlannerActions] 계획 공유 시작:', { planId, sharedEmail: emailToSend });
       
       const response = await travelApi.updateTravelPlan(
         planId, 
-        { shared_email: sharedEmail.trim() },
+        { shared_email: emailToSend },
         'shared_email'
       );
 
       if (response?.success) {
         console.log('[usePlannerActions] 계획 공유 완료:', response);
-        return { 
-          success: true, 
-          message: `${sharedEmail.trim()}로 플랜이 성공적으로 공유되었습니다!` 
-        };
+        
+        if (emailToSend) {
+          return { 
+            success: true, 
+            message: `${emailToSend}로 플랜이 성공적으로 공유되었습니다!` 
+          };
+        } else {
+          return { 
+            success: true, 
+            message: '플랜 공유가 해제되었습니다.' 
+          };
+        }
       } else {
         console.error('[usePlannerActions] 공유 실패:', response?.message);
         return { 
