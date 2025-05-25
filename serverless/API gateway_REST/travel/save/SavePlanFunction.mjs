@@ -10,7 +10,7 @@
  */
 
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, PutCommand, UpdateCommand, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, PutCommand, UpdateCommand, QueryCommand, GetCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
 import jwt from "jsonwebtoken";
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || "ap-northeast-2" });
@@ -359,6 +359,7 @@ async function handleCreatePlan(userEmail, body) {
     };
 
     console.log("DynamoDB에 저장할 최종 아이템 구조:", Object.keys(itemToSave));
+    console.log("저장될 shared_email 값:", itemToSave.shared_email);
     
     const putCmd = new PutCommand({
       TableName: SAVED_PLANS_TABLE,
@@ -367,6 +368,12 @@ async function handleCreatePlan(userEmail, body) {
     
     await docClient.send(putCmd);
     console.log("DynamoDB 저장 완료.");
+
+    // 공유 이메일이 있는 경우 공유 참조 아이템들 생성
+    if (body.shared_email && body.shared_email.trim()) {
+      console.log("공유 참조 아이템 생성 시작");
+      await createSharedReferences(userEmail, planId, body.shared_email);
+    }
 
     return {
       statusCode: 200,
@@ -516,9 +523,12 @@ async function performUpdate(userId, planId, body, updateType, now) {
   } else if (updateType === 'shared_email') {
     // 공유 이메일만 수정
     console.log("shared_email 수정 모드");
+    console.log("업데이트할 shared_email 값:", body.shared_email);
     updateExpression += ", shared_email = :shared";
     expressionAttributeValues[":shared"] = body.shared_email || null;
     
+    // 공유 참조 아이템들도 업데이트
+    await updateSharedReferences(userId, planId, body.shared_email);
   } else if (updateType === 'paid_plan') {
     // 유료 플랜 상태만 수정
     console.log("paid_plan 수정 모드");
@@ -590,4 +600,109 @@ async function performUpdate(userId, planId, body, updateType, now) {
       updated_item: result.Attributes
     })
   };
+}
+
+// 공유 참조 아이템 생성 함수
+async function createSharedReferences(originalOwner, planId, sharedEmailString) {
+  if (!sharedEmailString || !sharedEmailString.trim()) {
+    console.log("공유할 이메일이 없음");
+    return;
+  }
+
+  // 쉼표로 분리된 이메일들 처리
+  const emailList = sharedEmailString.split(',')
+    .map(email => email.trim())
+    .filter(email => email && email.includes('@'));
+
+  console.log(`${emailList.length}개의 이메일에 대한 공유 참조 생성:`, emailList);
+
+  // 기존 공유 참조 아이템들 삭제
+  await deleteExistingSharedReferences(originalOwner, planId);
+
+  // 새로운 공유 참조 아이템들 생성
+  for (const email of emailList) {
+    try {
+      const sharedRefItem = {
+        user_id: "shared_reference",
+        plan_id: `${originalOwner}#${planId}`,
+        shared_to_email: email,
+        original_owner: originalOwner,
+        original_plan_id: planId,
+        type: "shared_reference",
+        created_at: new Date().toISOString()
+      };
+
+      const putRefCmd = new PutCommand({
+        TableName: SAVED_PLANS_TABLE,
+        Item: sharedRefItem
+      });
+
+      await docClient.send(putRefCmd);
+      console.log(`공유 참조 생성 완료: ${email} -> ${originalOwner}#${planId}`);
+    } catch (error) {
+      console.error(`공유 참조 생성 실패 (${email}):`, error.message);
+    }
+  }
+}
+
+// 기존 공유 참조 아이템 삭제 함수
+async function deleteExistingSharedReferences(originalOwner, planId) {
+  try {
+    console.log(`기존 공유 참조 삭제 시작: ${originalOwner}#${planId}`);
+    
+    // 기존 공유 참조 아이템들 조회
+    const queryCmd = new QueryCommand({
+      TableName: SAVED_PLANS_TABLE,
+      KeyConditionExpression: "user_id = :uid",
+      FilterExpression: "original_owner = :owner AND original_plan_id = :pid",
+      ExpressionAttributeValues: {
+        ":uid": "shared_reference",
+        ":owner": originalOwner,
+        ":pid": planId
+      }
+    });
+
+    const existingRefs = await docClient.send(queryCmd);
+    
+    if (existingRefs.Items && existingRefs.Items.length > 0) {
+      console.log(`${existingRefs.Items.length}개의 기존 공유 참조 발견`);
+      
+      // 각 참조 아이템 삭제
+      for (const refItem of existingRefs.Items) {
+        try {
+          const deleteRefCmd = new DeleteCommand({
+            TableName: SAVED_PLANS_TABLE,
+            Key: {
+              user_id: refItem.user_id,
+              plan_id: refItem.plan_id
+            }
+          });
+          
+          await docClient.send(deleteRefCmd);
+          console.log(`공유 참조 삭제 완료: ${refItem.plan_id}`);
+        } catch (deleteError) {
+          console.error(`공유 참조 삭제 실패 (${refItem.plan_id}):`, deleteError.message);
+        }
+      }
+    } else {
+      console.log("삭제할 기존 공유 참조 없음");
+    }
+  } catch (error) {
+    console.error("기존 공유 참조 삭제 중 오류:", error.message);
+  }
+}
+
+// 공유 이메일 업데이트 시 참조 아이템들도 업데이트
+async function updateSharedReferences(originalOwner, planId, newSharedEmailString) {
+  console.log("공유 참조 업데이트 시작");
+  
+  // 기존 참조들 삭제
+  await deleteExistingSharedReferences(originalOwner, planId);
+  
+  // 새로운 참조들 생성
+  if (newSharedEmailString && newSharedEmailString.trim()) {
+    await createSharedReferences(originalOwner, planId, newSharedEmailString);
+  }
+  
+  console.log("공유 참조 업데이트 완료");
 } 
