@@ -1,35 +1,25 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../../components/auth/AuthContext';
-import {
-  Box, Button, Typography, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Paper, IconButton, Tabs, Tab, List, ListItem, ListItemText, Divider,
-  Grid, Rating
+import { 
+  Box, Typography, Paper, Grid, IconButton
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import { format as formatDateFns } from 'date-fns';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
-import SearchIcon from '@mui/icons-material/Search';
-import CloseIcon from '@mui/icons-material/Close';
-import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
-import { format as formatDateFns } from 'date-fns';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import useTravelPlanLoader from './hooks/useTravelPlanLoader';
 import useFlightHandlers from './hooks/useFlightHandlers';
 import usePlannerActions from './hooks/usePlannerActions';
 import useAccommodationHandlers from './hooks/useAccommodationHandlers';
 import useAIMessageHandler from './hooks/useAIMessageHandler';
-import AccommodationPlan from '../../components/AccommodationPlan';
-import FlightPlanComponent from '../../components/FlightPlan';
-import MapboxComponent from '../../components/MapboxComponent';
-import SearchPopup from '../../components/SearchPopup';
-import {
-    formatPrice,
-    renderFareDetails,
-    renderItineraryDetails
-} from '../../utils/flightFormatters';
+import useDialogHandlers from './hooks/useDialogHandlers';
+import TravelPlannerSidebar from './components/TravelPlannerSidebar';
+import TravelPlannerHeader from './components/TravelPlannerHeader';
+import TravelPlannerMainContent from './components/TravelPlannerMainContent';
+import TravelPlannerDialogs from './components/TravelPlannerDialogs';
 import AIChatWidget from './components/AIChatWidget';
 import { useParams } from 'react-router-dom';
 
@@ -127,39 +117,29 @@ const TravelPlanner = ({ loadMode }) => {
     planId, setPlanId
   });
 
+  // UI 상태들
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [sidebarTab, setSidebarTab] = useState('schedule');
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [showAllMarkers, setShowAllMarkers] = useState(false);
   const [showMap, setShowMap] = useState(true);
   const [hideFlightMarkers, setHideFlightMarkers] = useState(true);
-  const [isDateEditDialogOpen, setIsDateEditDialogOpen] = useState(false);
-  const [tempStartDate, setTempStartDate] = useState(null);
   const [editTitleMode, setEditTitleMode] = useState(false);
   const [tempTitle, setTempTitle] = useState('');
   const [loadedAccommodationInfo, setLoadedAccommodationInfo] = useState(null);
   const [mapResizeTrigger, setMapResizeTrigger] = useState(0);
+  const [selectedLocation, setSelectedLocation] = useState(null);
 
-  const mainAccommodationPlanRef = useRef(null);
-  const sidebarAccommodationPlanRef = useRef(null);
-  
-  const [selectedFlightForPlannerDialog, setSelectedFlightForPlannerDialog] = useState(null);
-  const [isPlannerFlightDetailOpen, setIsPlannerFlightDetailOpen] = useState(false);
-
-  // 숙박 상세 팝업용 상태 추가
-  const [selectedAccommodationForDialog, setSelectedAccommodationForDialog] = useState(null);
-  const [isAccommodationDetailOpen, setIsAccommodationDetailOpen] = useState(false);
-
-  // 계획 제목 관리를 위한 상태 추가
+  // 계획 제목 관리를 위한 상태
   const [planTitle, setPlanTitle] = useState('');
   const [isEditingPlanTitle, setIsEditingPlanTitle] = useState(false);
   const [tempPlanTitle, setTempPlanTitle] = useState('');
 
-  // 플랜 공유 관련 상태 추가
-  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
-  const [sharedEmail, setSharedEmail] = useState('');
-  const [shareMessage, setShareMessage] = useState('');
-  const [isSharing, setIsSharing] = useState(false);
+  // refs
+  const mainAccommodationPlanRef = useRef(null);
+  const sidebarAccommodationPlanRef = useRef(null);
+
+  // 다이얼로그 핸들러 훅
+  const dialogHandlers = useDialogHandlers();
 
   const currentPlan = travelPlans[selectedDay] || { title: '', schedules: [] };
 
@@ -330,23 +310,7 @@ const TravelPlanner = ({ loadMode }) => {
     return plannerGetDayTitle(dayNumber);
   }, [plannerGetDayTitle]);
   
-  const handleOpenDateEditDialog = () => {
-    setTempStartDate(startDate);
-    setIsDateEditDialogOpen(true);
-  };
-
-  const handleTempDateChange = (newDate) => {
-    setTempStartDate(newDate);
-  };
-
-  const handleConfirmDateChange = () => {
-    if (tempStartDate) {
-      plannerHandleDateChange(tempStartDate);
-    }
-    setIsDateEditDialogOpen(false);
-  };
-  
-  const handleDayDragEnd = (result) => {
+    const handleDayDragEnd = (result) => {
     if (!result.destination) return;
 
     const newDayOrder = Array.from(dayOrder);
@@ -369,8 +333,6 @@ const TravelPlanner = ({ loadMode }) => {
     setTravelPlans(newTravelPlans);
     setSelectedDay(result.destination.index + 1);
   };
-
-  const [selectedLocation, setSelectedLocation] = useState(null);
 
   const handleScheduleClick = (schedule) => {
     if (schedule.lat && schedule.lng) {
@@ -430,7 +392,7 @@ const TravelPlanner = ({ loadMode }) => {
                       sameDayAccommodations: sameDayAccommodations.length > 1 ? sameDayAccommodations : null
                     };
                     
-                    handleOpenAccommodationDetail(accommodationToShow);
+                    dialogHandlers.handleOpenAccommodationDetail(accommodationToShow);
                   } else {
                     handleScheduleClick(schedule);
                   }
@@ -553,43 +515,10 @@ const TravelPlanner = ({ loadMode }) => {
 
   const onAddPlace = useCallback((place) => {
     handleAddPlace(place);
-    setIsSearchOpen(false);
-  }, [handleAddPlace, setIsSearchOpen]);
+    dialogHandlers.setIsSearchOpen(false);
+  }, [handleAddPlace, dialogHandlers]);
 
-  const handleOpenPlannerFlightDetail = useCallback((flightScheduleItem) => {
-    if (flightScheduleItem?.flightOfferDetails?.flightOfferData) {
-      setSelectedFlightForPlannerDialog(flightScheduleItem.flightOfferDetails);
-      setIsPlannerFlightDetailOpen(true);
-    } else {
-      console.warn('Flight detail not found in schedule item:', flightScheduleItem);
-    }
-  }, []);
-  
-  const handleClosePlannerFlightDetail = useCallback(() => {
-    setIsPlannerFlightDetailOpen(false);
-    setSelectedFlightForPlannerDialog(null);
-  }, []);
 
-  // 숙박 상세 팝업 핸들러 추가
-  const handleOpenAccommodationDetail = useCallback((accommodationData = null) => {
-    // 특정 숙박편 데이터가 전달된 경우 해당 데이터 사용
-    if (accommodationData) {
-      setSelectedAccommodationForDialog(accommodationData);
-      setIsAccommodationDetailOpen(true);
-      return;
-    }
-    
-    // 기본 동작: 현재 로드된 숙박편 정보 사용
-    if (loadedAccommodationInfo) {
-      setSelectedAccommodationForDialog(loadedAccommodationInfo);
-      setIsAccommodationDetailOpen(true);
-    }
-  }, [loadedAccommodationInfo]);
-
-  const handleCloseAccommodationDetail = useCallback(() => {
-    setIsAccommodationDetailOpen(false);
-    setSelectedAccommodationForDialog(null);
-  }, []);
 
   // 같은 날에 체크아웃과 체크인이 있는 숙박편들을 찾는 함수
   const findSameDayAccommodations = useCallback((targetDate) => {
@@ -717,51 +646,7 @@ const TravelPlanner = ({ loadMode }) => {
     }
   }, [planId, plannerHandleImmediateUpdate, openSaveDialog]);
 
-  // 플랜 공유 핸들러
-  const handleOpenShareDialog = useCallback(() => {
-    setIsShareDialogOpen(true);
-    setShareMessage('');
-  }, []);
 
-  const handleCloseShareDialog = useCallback(() => {
-    setIsShareDialogOpen(false);
-    setSharedEmail('');
-    setShareMessage('');
-  }, []);
-
-  const handleSharePlan = useCallback(async () => {
-    if (!sharedEmail.trim()) {
-      setShareMessage('공유할 이메일을 입력해주세요.');
-      return;
-    }
-
-    if (!planId || planId === 'new') {
-      setShareMessage('저장된 계획만 공유할 수 있습니다. 먼저 계획을 저장해주세요.');
-      return;
-    }
-
-    setIsSharing(true);
-    setShareMessage('');
-
-    try {
-      // 새로운 공유 전용 함수 사용 (기존 계획의 shared_email만 업데이트)
-      const result = await plannerHandleSharePlan(sharedEmail.trim());
-      
-      if (result.success) {
-        setShareMessage(result.message);
-        setTimeout(() => {
-          handleCloseShareDialog();
-        }, 2000);
-      } else {
-        setShareMessage(result.message);
-      }
-    } catch (error) {
-      console.error('플랜 공유 실패:', error);
-      setShareMessage('플랜 공유 중 오류가 발생했습니다. 다시 시도해주세요.');
-    } finally {
-      setIsSharing(false);
-    }
-  }, [sharedEmail, planId, plannerHandleSharePlan]);
 
   if (!user && !process.env.REACT_APP_SKIP_AUTH) {
     return <Typography>로그인이 필요합니다.</Typography>;
@@ -770,843 +655,176 @@ const TravelPlanner = ({ loadMode }) => {
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)', position: 'relative' }}>
-        <Box
-          sx={{
-            width: isSidebarOpen ? '350px' : '0px',
-            flexShrink: 0,
-            whiteSpace: 'nowrap',
-            boxSizing: 'border-box',
-            overflowX: 'hidden',
-            transition: 'width 0.3s ease',
-            bgcolor: 'background.paper',
-            boxShadow: 2,
-            display: 'flex',
-            flexDirection: 'column',
-            visibility: isSidebarOpen ? 'visible' : 'hidden',
-          }}
-        >
-          <Box sx={{ width: '350px', display: 'flex', flexDirection: 'column', height: '100%'}}>
-            <Box sx={{
-              p: 2,
-              borderBottom: 1,
-              borderColor: 'divider',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between'
-            }}>
-              <Typography variant="h6" noWrap>여행 플래너</Typography>
-            </Box>
+        <TravelPlannerSidebar
+          isSidebarOpen={isSidebarOpen}
+          sidebarTab={sidebarTab}
+          setSidebarTab={setSidebarTab}
+          dayOrder={dayOrder}
+          travelPlans={travelPlans}
+          selectedDay={selectedDay}
+          setSelectedDay={setSelectedDay}
+          getDayTitle={getDayTitle}
+          plannerAddDay={plannerAddDay}
+          plannerRemoveDay={plannerRemoveDay}
+          handleOpenDateEditDialog={() => dialogHandlers.handleOpenDateEditDialog(startDate)}
+          handleDayDragEnd={handleDayDragEnd}
+          handleSaveOrUpdate={handleSaveOrUpdate}
+          isSaving={isSaving}
+          saveError={saveError}
+          planId={planId}
+          // 숙소 관련 props
+          sidebarAccommodationPlanRef={sidebarAccommodationPlanRef}
+          accommodationFormData={accommodationFormData}
+          setAccommodationFormData={setAccommodationFormData}
+          handleSidebarPlaceSelect={handleSidebarPlaceSelect}
+          handleSidebarSearch={handleSidebarSearch}
+          handleSidebarOpenSearchPopup={handleSidebarOpenSearchPopup}
+          handleHotelSearchResults={handleHotelSearchResults}
+          handleHotelSelect={handleHotelSelect}
+          onAddAccommodationToSchedule={onAddAccommodationToSchedule}
+          dayOrderLength={dayOrder.length}
+          forceRefreshSelectedDay={forceRefreshSelectedDay}
+          // 항공편 관련 props
+          flightSearchParams={flightSearchParams}
+          setFlightSearchParams={setFlightSearchParams}
+          originCities={originCities}
+          destinationCities={destinationCities}
+          originSearchQuery={originSearchQuery}
+          setOriginSearchQuery={setOriginSearchQuery}
+          destinationSearchQuery={destinationSearchQuery}
+          setDestinationSearchQuery={setDestinationSearchQuery}
+          handleCitySearch={handleCitySearch}
+          flightResults={flightResults}
+          flightDictionaries={flightDictionaries}
+          airportInfoCache={airportInfoCache}
+          loadingAirportInfo={loadingAirportInfo}
+          isLoadingCities={isLoadingCities}
+          isLoadingFlights={isLoadingFlights}
+          flightError={flightError}
+          handleFlightSearch={handleFlightSearch}
+          onAddFlightToSchedule={onAddFlightToSchedule}
+        />
 
-            <Tabs
-              value={sidebarTab}
-              onChange={(e, newValue) => setSidebarTab(newValue)}
-              variant="fullWidth"
-              sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}
-            >
-              <Tab label="여행 계획" value="schedule" />
-              <Tab label="숙소 계획" value="accommodation" />
-              <Tab label="비행 계획" value="flight" />
-            </Tabs>
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <TravelPlannerHeader
+            toggleSidebar={toggleSidebar}
+            sidebarTab={sidebarTab}
+            isEditingPlanTitle={isEditingPlanTitle}
+            setIsEditingPlanTitle={setIsEditingPlanTitle}
+            tempPlanTitle={tempPlanTitle}
+            setTempPlanTitle={setTempPlanTitle}
+            planTitle={planTitle}
+            setPlanTitle={setPlanTitle}
+            setPlanName={setPlanName}
+            planId={planId}
+            plannerHandleUpdatePlanTitle={plannerHandleUpdatePlanTitle}
+          />
 
-            <Box sx={{ flex: 1, overflowY: 'auto' }}>
-              {sidebarTab === 'schedule' && (
-                <>
-                  <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-                    <Button
-                      variant="contained"
-                      startIcon={<AddIcon />}
-                      onClick={plannerAddDay}
-                      fullWidth
-                    >
-                      날짜 추가
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      onClick={handleOpenDateEditDialog}
-                    >
-                      시작일 수정
-                    </Button>
-                  </Box>
-                  <DragDropContext onDragEnd={handleDayDragEnd}>
-                    <StrictModeDroppable droppableId="days-droppable-sidebar">
-          {(provided) => (
-                        <Box ref={provided.innerRef} {...provided.droppableProps} sx={{display: 'flex', flexDirection: 'column', gap: 1}}>
-              {dayOrder.map((dayKey, index) => {
-                            const dayPlan = travelPlans[dayKey];
-                            if (!dayPlan) return null;
-                return (
-                              <Draggable key={`day-${dayKey}`} draggableId={`day-${dayKey}`} index={index}>
-                                {(providedDraggable) => (
-                      <Paper
-                                    ref={providedDraggable.innerRef}
-                                    {...providedDraggable.draggableProps}
-                                    {...providedDraggable.dragHandleProps}
-                                    sx={{
-                                      p: 1.5, cursor: 'pointer',
-                                      bgcolor: selectedDay === parseInt(dayKey) ? 'primary.light' : 'background.paper',
-                                      border: selectedDay === parseInt(dayKey) ? 2 : 1,
-                                      borderColor: selectedDay === parseInt(dayKey) ? 'primary.main' : 'divider',
-                                      boxShadow: providedDraggable.isDragging ? 6 : 1,
-                                      display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-                                    }}
-                                    onClick={() => setSelectedDay(parseInt(dayKey))}
-                                  >
-                                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                      <DragIndicatorIcon sx={{ mr: 1, color: 'action.active' }} />
-                                      <Typography variant="subtitle1">{dayPlan.title || getDayTitle(parseInt(dayKey))}</Typography>
-                          </Box>
-                                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); plannerRemoveDay(parseInt(dayKey)); }}>
-                                      <DeleteIcon fontSize="small" />
-                                    </IconButton>
-                      </Paper>
-                    )}
-                  </Draggable>
-                );
-              })}
-              {provided.placeholder}
-                        </Box>
-                      )}
-                    </StrictModeDroppable>
-                  </DragDropContext>
-                  <Box sx={{ mt: 2 }}>
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      fullWidth
-                      onClick={handleSaveOrUpdate}
-                      disabled={isSaving}
-                    >
-                      {isSaving 
-                        ? (planId && !isNaN(Number(planId)) ? '수정 중...' : '저장 중...') 
-                        : (planId && !isNaN(Number(planId)) ? '수정' : '저장')
-                      }
-                    </Button>
-                    {saveError && (
-                      <Typography variant="body2" color="error" sx={{ mt: 1 }}>
-                        {saveError}
-                      </Typography>
-                    )}
-                  </Box>
-                </>
-              )}
-              {sidebarTab === 'accommodation' && (
-                <AccommodationPlan
-                  ref={sidebarAccommodationPlanRef}
-                  formData={accommodationFormData}
-                  setFormData={setAccommodationFormData}
-                  onPlaceSelect={handleSidebarPlaceSelect}
-                  onSearch={handleSidebarSearch}
-                  onOpenSearchPopup={handleSidebarOpenSearchPopup}
-                  onSearchResults={handleHotelSearchResults}
-                  onHotelSelect={handleHotelSelect}
-                  travelPlans={travelPlans}
-                  onAddToSchedule={onAddAccommodationToSchedule}
-                  displayInMain={false}
-                  dayOrderLength={dayOrder.length}
-                  onForceRefreshDay={forceRefreshSelectedDay}
-                  isSidebarOpen={isSidebarOpen}
-                />
-              )}
-              {sidebarTab === 'flight' && (
-                <FlightPlanComponent
-                  fullWidth={false}
-                  searchParams={flightSearchParams}
-                  setSearchParams={setFlightSearchParams}
-                  originCities={originCities}
-                  destinationCities={destinationCities}
-                  originSearchQuery={originSearchQuery}
-                  setOriginSearchQuery={setOriginSearchQuery}
-                  destinationSearchQuery={destinationSearchQuery}
-                  setDestinationSearchQuery={setDestinationSearchQuery}
-                  handleCitySearch={handleCitySearch}
-                  flights={flightResults}
-                  dictionaries={flightDictionaries}
-                  airportInfoCache={airportInfoCache}
-                  loadingAirportInfo={loadingAirportInfo}
-                  isLoadingCities={isLoadingCities}
-                  isLoadingFlights={isLoadingFlights}
-                  error={flightError}
-                  handleFlightSearch={handleFlightSearch}
-                  onAddFlightToSchedule={onAddFlightToSchedule}
-                />
-              )}
-            </Box>
-          </Box>
+          <TravelPlannerMainContent
+            sidebarTab={sidebarTab}
+            currentPlan={currentPlan}
+            editTitleMode={editTitleMode}
+            setEditTitleMode={setEditTitleMode}
+            tempTitle={tempTitle}
+            setTempTitle={setTempTitle}
+            setTravelPlans={setTravelPlans}
+            selectedDay={selectedDay}
+            showAllMarkers={showAllMarkers}
+            setShowAllMarkers={setShowAllMarkers}
+            showMap={showMap}
+            setShowMap={setShowMap}
+            handleOpenShareDialog={dialogHandlers.handleOpenShareDialog}
+            setIsSearchOpen={dialogHandlers.setIsSearchOpen}
+            accommodationToShow={accommodationToShow}
+            findSameDayAccommodations={findSameDayAccommodations}
+            handleOpenAccommodationDetail={dialogHandlers.handleOpenAccommodationDetail}
+            startDate={startDate}
+            handleScheduleDragEnd={handleScheduleDragEnd}
+            renderScheduleItem={renderScheduleItem}
+            travelPlans={travelPlans}
+            hideFlightMarkers={hideFlightMarkers}
+            selectedLocation={selectedLocation}
+            mapResizeTrigger={mapResizeTrigger}
+            // 숙소 관련 props
+            mainAccommodationPlanRef={mainAccommodationPlanRef}
+            accommodationFormData={accommodationFormData}
+            setAccommodationFormData={setAccommodationFormData}
+            handleHotelSearchResults={handleHotelSearchResults}
+            handleHotelSelect={handleHotelSelect}
+            onAddAccommodationToSchedule={onAddAccommodationToSchedule}
+            dayOrder={dayOrder}
+            forceRefreshSelectedDay={forceRefreshSelectedDay}
+            isSidebarOpen={isSidebarOpen}
+            // 항공편 관련 props
+            flightSearchParams={flightSearchParams}
+            setFlightSearchParams={setFlightSearchParams}
+            originCities={originCities}
+            destinationCities={destinationCities}
+            originSearchQuery={originSearchQuery}
+            setOriginSearchQuery={setOriginSearchQuery}
+            destinationSearchQuery={destinationSearchQuery}
+            setDestinationSearchQuery={setDestinationSearchQuery}
+            handleCitySearch={handleCitySearch}
+            flightResults={flightResults}
+            flightDictionaries={flightDictionaries}
+            airportInfoCache={airportInfoCache}
+            loadingAirportInfo={loadingAirportInfo}
+            isLoadingCities={isLoadingCities}
+            isLoadingFlights={isLoadingFlights}
+            flightError={flightError}
+            handleFlightSearch={handleFlightSearch}
+            onAddFlightToSchedule={onAddFlightToSchedule}
+            handleOpenPlannerFlightDetail={dialogHandlers.handleOpenPlannerFlightDetail}
+          />
         </Box>
 
-        <Box sx={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-        }}>
-          <Box sx={{
-            bgcolor: 'background.paper',
-            p: 2,
-            display: 'flex',
-            alignItems: 'center',
-            borderBottom: 1,
-            borderColor: 'divider'
-          }}>
-            <Button
-              variant="outlined"
-              onClick={toggleSidebar}
-              startIcon={<span className="text-xl">☰</span>}
-              sx={{ mr: 2 }}
-            >
-              메뉴
-            </Button>
-            {sidebarTab === 'schedule' ? (
-              <Box sx={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-                {isEditingPlanTitle ? (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <TextField
-                      value={tempPlanTitle}
-                      onChange={e => setTempPlanTitle(e.target.value)}
-                      size="small"
-                      autoFocus
-                      onBlur={async () => {
-                        if (planId && !isNaN(Number(planId))) {
-                          const success = await plannerHandleUpdatePlanTitle(tempPlanTitle);
-                          if (success) {
-                            setPlanTitle(tempPlanTitle);
-                            setPlanName(tempPlanTitle);
-                          }
-                        } else {
-                          setPlanTitle(tempPlanTitle);
-                        }
-                        setIsEditingPlanTitle(false);
-                      }}
-                      onKeyDown={async (e) => {
-                        if (e.key === 'Enter') {
-                          if (planId && !isNaN(Number(planId))) {
-                            const success = await plannerHandleUpdatePlanTitle(tempPlanTitle);
-                            if (success) {
-                              setPlanTitle(tempPlanTitle);
-                              setPlanName(tempPlanTitle);
-                            }
-                          } else {
-                            setPlanTitle(tempPlanTitle);
-                          }
-                          setIsEditingPlanTitle(false);
-                        } else if (e.key === 'Escape') {
-                          setTempPlanTitle(planTitle);
-                          setIsEditingPlanTitle(false);
-                        }
-                      }}
-                    />
-                    <Button
-                      size="small"
-                      onClick={async () => {
-                        if (planId && !isNaN(Number(planId))) {
-                          const success = await plannerHandleUpdatePlanTitle(tempPlanTitle);
-                          if (success) {
-                            setPlanTitle(tempPlanTitle);
-                            setPlanName(tempPlanTitle);
-                          }
-                        } else {
-                          setPlanTitle(tempPlanTitle);
-                        }
-                        setIsEditingPlanTitle(false);
-                      }}
-                    >
-                      저장
-                    </Button>
-                    <Button
-                      size="small"
-                      onClick={() => {
-                        setTempPlanTitle(planTitle);
-                        setIsEditingPlanTitle(false);
-                      }}
-                    >
-                      취소
-                    </Button>
-                  </Box>
-                ) : (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="h6">{planTitle}</Typography>
-                    <IconButton
-                      size="small"
-                      onClick={() => {
-                        setTempPlanTitle(planTitle);
-                        setIsEditingPlanTitle(true);
-                      }}
-                    >
-                      <EditIcon />
-                    </IconButton>
-                  </Box>
-                )}
-              </Box>
-            ) : (
-              <Typography variant="h6">
-                {sidebarTab === 'accommodation' ? '숙소 검색 결과' : '항공편 검색 결과'}
-              </Typography>
-            )}
-          </Box>
-
-          <Box sx={{ flex: 1, p: 2, overflow: 'hidden', bgcolor: '#f4f6f8' }}>
-            {sidebarTab === 'schedule' && currentPlan && (
-              <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    {editTitleMode ? (
-                      <TextField
-                        value={tempTitle}
-                        onChange={e => setTempTitle(e.target.value)}
-                        onBlur={() => {
-                          setTravelPlans(prev => ({ ...prev, [selectedDay]: { ...prev[selectedDay], title: tempTitle }}));
-                          setEditTitleMode(false);
-                        }}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') {
-                            setTravelPlans(prev => ({ ...prev, [selectedDay]: { ...prev[selectedDay], title: tempTitle }}));
-                            setEditTitleMode(false);
-                          }
-                        }}
-                        size="small" autoFocus
-                      />
-                    ) : (
-                      <>
-                        <Typography variant="h5" sx={{ mr: 1 }}>{currentPlan.title}</Typography>
-                        <IconButton size="small" onClick={() => setEditTitleMode(true)}><EditIcon fontSize="small" /></IconButton>
-                      </>
-                    )}
-                  </Box>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      onClick={() => setShowAllMarkers(v => !v)}
-                    >
-                      {showAllMarkers ? '선택 일정만 보기' : '모든 일정 보기'}
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      onClick={() => setShowMap(v => !v)}
-                    >
-                      {showMap ? '지도 숨기기' : '지도 보이기'}
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      onClick={() => handleOpenShareDialog()}
-                      color="primary"
-                    >
-                      플랜 공유
-                    </Button>
-                    <Button variant="contained" startIcon={<SearchIcon />} onClick={() => setIsSearchOpen(true)}>
-                      장소 검색
-                    </Button>
-                  </Box>
-                </Box>
-                <Box sx={{ flex: 1, display: 'grid', gridTemplateColumns: showMap ? { xs: '1fr', md: '1fr 1fr' } : '1fr', gap: 2, overflow: 'hidden' }}>
-                  <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: 1, p: 2, overflow: 'auto' }}>
-                    <Typography variant="h6" sx={{ mb: 2 }}>일정 목록</Typography>
-                    
-
-
-                    {/* 고정된 숙박 정보 박스 */}
-                    {accommodationToShow && accommodationToShow.hotelDetails && (
-                      <Paper 
-                        elevation={1}
-                        sx={{ 
-                          p: 1.5, 
-                          mb: 1, 
-                          bgcolor: '#fff0e6', 
-                          border: 1, borderColor: 'divider', borderRadius: 1,      
-                          cursor: 'pointer',
-                          '&:hover': { boxShadow: 3, borderColor: 'primary.main' }
-                        }}
-                        onClick={() => {
-                          // 현재 날짜 계산
-                          const currentDate = new Date(startDate);
-                          currentDate.setDate(currentDate.getDate() + selectedDay - 1);
-                          
-                          // 같은 날의 다른 숙박편들 찾기
-                          const sameDayAccommodations = findSameDayAccommodations(currentDate);
-                          
-                          // 다중 숙박편 정보가 있으면 함께 전달
-                          const accommodationData = {
-                            ...accommodationToShow.hotelDetails,
-                            sameDayAccommodations: sameDayAccommodations.length > 1 ? sameDayAccommodations : null
-                          };
-                          
-                          handleOpenAccommodationDetail(accommodationData);
-                        }}
-                      >
-                        <Grid container spacing={1} alignItems="center">
-                          {(accommodationToShow.hotelDetails.hotel?.main_photo_url || accommodationToShow.hotelDetails.main_photo_url) && (
-                            <Grid item xs={12} sm={3}>
-                              <Box
-                                component="img"
-                                src={accommodationToShow.hotelDetails.hotel?.main_photo_url || accommodationToShow.hotelDetails.main_photo_url}
-                                alt={accommodationToShow.hotelDetails.hotel?.hotel_name_trans || accommodationToShow.hotelDetails.hotel?.hotel_name || accommodationToShow.hotelDetails.hotel_name_trans || accommodationToShow.hotelDetails.hotel_name || '숙소 이미지'}
-                                sx={{ width: '100%', height: 80, objectFit: 'cover', borderRadius: 1 }}
-                              />
-                            </Grid>
-                          )}
-                          <Grid item xs sm={(accommodationToShow.hotelDetails.hotel?.main_photo_url || accommodationToShow.hotelDetails.main_photo_url) ? 9 : 12}>
-                            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: '#5D4037', fontSize: '0.9rem' }}>
-                              {accommodationToShow.hotelDetails.hotel?.hotel_name_trans || accommodationToShow.hotelDetails.hotel?.hotel_name || accommodationToShow.hotelDetails.hotel_name_trans || accommodationToShow.hotelDetails.hotel_name || '숙소 정보'}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary" gutterBottom sx={{fontSize: '0.8rem'}}>
-                              {accommodationToShow.hotelDetails.hotel?.address || accommodationToShow.hotelDetails.hotel?.address_trans || accommodationToShow.hotelDetails.address || accommodationToShow.hotelDetails.address_trans || '주소 정보 없음'}
-                            </Typography>
-                            {(accommodationToShow.hotelDetails.hotel?.checkIn || accommodationToShow.hotelDetails.checkIn || accommodationToShow.hotelDetails.hotel?.checkOut || accommodationToShow.hotelDetails.checkOut) && (
-                                <Typography component="div" variant="body2" color="text.secondary" sx={{mt: 0.5, fontSize: '0.8rem'}}>
-                                  체크인: {accommodationToShow.hotelDetails.hotel?.checkIn || accommodationToShow.hotelDetails.checkIn ? formatDateFns(new Date(accommodationToShow.hotelDetails.hotel?.checkIn || accommodationToShow.hotelDetails.checkIn), 'MM/dd') : '-'}
-                                  {' ~ '}
-                                  체크아웃: {accommodationToShow.hotelDetails.hotel?.checkOut || accommodationToShow.hotelDetails.checkOut ? formatDateFns(new Date(accommodationToShow.hotelDetails.hotel?.checkOut || accommodationToShow.hotelDetails.checkOut), 'MM/dd') : '-'}
-                                </Typography>
-                            )}
-                            {(accommodationToShow.hotelDetails.hotel?.room?.name || accommodationToShow.hotelDetails.room?.name) && (
-                                <Typography component="div" variant="body2" color="text.secondary" sx={{mt: 0.5, fontSize: '0.8rem'}}>
-                                객실: {accommodationToShow.hotelDetails.hotel?.room?.name || accommodationToShow.hotelDetails.room?.name}
-                                </Typography>
-                            )}
-                            {(accommodationToShow.hotelDetails.hotel?.price || accommodationToShow.hotelDetails.price) && (
-                                <Typography variant="subtitle2" color="primary" sx={{ mt: 0.5, fontWeight: 'bold', fontSize: '0.9rem' }}>
-                                {accommodationToShow.hotelDetails.hotel?.price || accommodationToShow.hotelDetails.price}
-                                </Typography>
-                            )}
-                          </Grid>
-                        </Grid>
-                      </Paper>
-                    )}
-
-                    {/* 고정된 항공편 정보 박스 */}
-                    {currentPlan.schedules
-                      .filter(schedule => schedule.type === 'Flight_Departure' || schedule.type === 'Flight_Return' || schedule.type === 'Flight_OneWay')
-                      .map((flightSchedule, index) => (
-                        <Paper
-                          key={`fixed-flight-${flightSchedule.id || index}`}
-                          elevation={1}
-                          sx={{
-                            p: 1.5,
-                            mb: 1,
-                            bgcolor: '#e3f2fd', // 항공편 배경색
-                            border: 1, borderColor: 'divider', borderRadius: 1,
-                            cursor: 'pointer',
-                            '&:hover': { boxShadow: 3, borderColor: 'primary.main' }
-                          }}
-                          onClick={() => flightSchedule.flightOfferDetails && handleOpenPlannerFlightDetail(flightSchedule)} // flightSchedule 객체를 그대로 전달
-                        >
-                          <Grid container spacing={1} alignItems="center">
-                            <Grid item xs={12}>
-                                                          <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: '#0277bd' }}>
-                              {flightSchedule.time} {flightSchedule.name}
-                              {flightSchedule.type === 'Flight_OneWay' && (
-                                <span style={{ fontSize: '0.8rem', marginLeft: '8px', color: '#ff9800' }}>(편도)</span>
-                              )}
-                            </Typography>
-                              <Typography variant="body2" color="info.main" sx={{fontSize: '0.8rem'}}>
-                                {flightSchedule.address} {/* 출발지 -> 도착지 공항 코드 등 */}
-                              </Typography>
-                              <Typography variant="body2" color="text.secondary" sx={{fontSize: '0.8rem'}}>
-                                {flightSchedule.category} {/* 항공사 및 편명 */}
-                                {flightSchedule.flightOfferDetails?.flightOfferData?.price && 
-                                  ` • ${formatPrice(flightSchedule.flightOfferDetails.flightOfferData.price.grandTotal || 
-                                  flightSchedule.flightOfferDetails.flightOfferData.price.total, 
-                                  flightSchedule.flightOfferDetails.flightOfferData.price.currency)}`}
-                              </Typography>
-                              {flightSchedule.notes && (
-                                <Typography component="span" variant="body2" color="text.secondary" sx={{ display: 'block', mt: 0.5, whiteSpace: 'pre-line', fontSize: '0.75rem' }}>
-                                  {flightSchedule.notes}
-                                </Typography>
-                              )}
-                            </Grid>
-                          </Grid>
-                        </Paper>
-                      ))
-                    }
-
-                    <DragDropContext onDragEnd={handleScheduleDragEnd}>
-                      <StrictModeDroppable droppableId="schedules-main">
-                        {(providedList) => (
-                          <List 
-                            ref={providedList.innerRef} 
-                            {...providedList.droppableProps} 
-                            sx={{ 
-                              minHeight: '100px', // 드롭 영역 확보
-                              bgcolor: providedList.isDraggingOver ? 'action.hover' : 'transparent', 
-                              transition: 'background-color 0.2s ease', 
-                              // '& > *:not(:last-child)': { mb: 1 } // 각 Draggable 항목에서 mb로 처리
-                            }}
-                          >
-                            {currentPlan.schedules
-                              .filter(schedule => 
-                                schedule.type !== 'Flight_Departure' && 
-                                schedule.type !== 'Flight_Return' && 
-                                schedule.type !== 'Flight_OneWay' && // 편도 항공편 제외
-                                schedule.type !== 'accommodation'  // 숙소 일정 제외
-                              )
-                              .map((schedule, index) => renderScheduleItem(schedule, index))}
-                            {providedList.placeholder}
-                          </List>
-                        )}
-                      </StrictModeDroppable>
-                    </DragDropContext>
-                  </Box>
-                  {showMap && (
-                    <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: 1, overflow: 'hidden', height: '100%' }}>
-                      <MapboxComponent 
-                        travelPlans={travelPlans} 
-                        selectedDay={selectedDay} 
-                        showAllMarkers={showAllMarkers}
-                        hideFlightMarkers={hideFlightMarkers}
-                        selectedLocation={selectedLocation}
-                        resizeTrigger={mapResizeTrigger}
-                      />
-                    </Box>
-                  )}
-                </Box>
-              </Box>
-            )}
-            {sidebarTab === 'accommodation' && (
-              <AccommodationPlan
-                displayInMain={true}
-                ref={mainAccommodationPlanRef}
-                formData={accommodationFormData}
-                setFormData={setAccommodationFormData}
-                onSearchResults={handleHotelSearchResults}
-                onHotelSelect={handleHotelSelect}
-                onAddToSchedule={onAddAccommodationToSchedule}
-                travelPlans={travelPlans}
-                dayOrderLength={dayOrder.length}
-                onForceRefreshDay={forceRefreshSelectedDay}
-                isSidebarOpen={isSidebarOpen}
-              />
-            )}
-            {sidebarTab === 'flight' && (
-              <FlightPlanComponent
-                fullWidth={true}
-                searchParams={flightSearchParams}
-                setSearchParams={setFlightSearchParams}
-                originCities={originCities}
-                destinationCities={destinationCities}
-                originSearchQuery={originSearchQuery}
-                setOriginSearchQuery={setOriginSearchQuery}
-                destinationSearchQuery={destinationSearchQuery}
-                setDestinationSearchQuery={setDestinationSearchQuery}
-                handleCitySearch={handleCitySearch}
-                flights={flightResults}
-                dictionaries={flightDictionaries}
-                airportInfoCache={airportInfoCache}
-                loadingAirportInfo={loadingAirportInfo}
-                isLoadingCities={isLoadingCities}
-                isLoadingFlights={isLoadingFlights}
-                error={flightError}
-                handleFlightSearch={handleFlightSearch}
-                onAddFlightToSchedule={onAddFlightToSchedule}
-              />
-            )}
-          </Box>
-        </Box>
-
-        <Dialog open={isSearchOpen} onClose={() => setIsSearchOpen(false)} maxWidth="md" fullWidth>
-          <DialogTitle>장소 검색</DialogTitle>
-          <DialogContent><SearchPopup onSelect={onAddPlace} onClose={() => setIsSearchOpen(false)} /></DialogContent>
-        </Dialog>
-
-        <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>일정 수정</DialogTitle>
-          <DialogContent>
-            {editSchedule && ( <Box sx={{ pt: 2 }}>
-              <TextField fullWidth label="이름" value={editSchedule.name} onChange={e => setEditSchedule({ ...editSchedule, name: e.target.value })} sx={{ mb: 2 }} />
-              <TextField fullWidth label="주소" value={editSchedule.address} onChange={e => setEditSchedule({ ...editSchedule, address: e.target.value })} sx={{ mb: 2 }} />
-              <TextField fullWidth label="카테고리" value={editSchedule.category} onChange={e => setEditSchedule({ ...editSchedule, category: e.target.value })} sx={{ mb: 2 }} />
-              <TextField fullWidth label="시간" value={editSchedule.time} onChange={e => setEditSchedule({ ...editSchedule, time: e.target.value })} sx={{ mb: 2 }} />
-              <TextField fullWidth label="소요 시간" value={editSchedule.duration} onChange={e => setEditSchedule({ ...editSchedule, duration: e.target.value })} sx={{ mb: 2 }} />
-              <TextField fullWidth multiline rows={4} label="메모" value={editSchedule.notes} onChange={e => setEditSchedule({ ...editSchedule, notes: e.target.value })} />
-            </Box> )}
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setEditDialogOpen(false)}>취소</Button>
-            <Button onClick={handleUpdateSchedule} variant="contained">저장</Button>
-          </DialogActions>
-        </Dialog>
-
-        <Dialog open={isDateEditDialogOpen} onClose={() => setIsDateEditDialogOpen(false)}>
-          <DialogTitle>여행 시작일 수정</DialogTitle>
-          <DialogContent>
-            <Box sx={{ pt: 2 }}>
-              <DatePicker
-                label="시작일"
-                value={tempStartDate}
-                onChange={handleTempDateChange}
-                slotProps={{ textField: { fullWidth: true } }}
-              />
-            </Box>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setIsDateEditDialogOpen(false)}>취소</Button>
-            <Button onClick={handleConfirmDateChange} variant="contained">확인</Button>
-          </DialogActions>
-        </Dialog>
-
-        <Dialog open={isSaveDialogOpen} onClose={closeSaveDialog}>
-        <DialogTitle>여행 계획 저장</DialogTitle>
-        <DialogContent>
-            <Box sx={{ pt: 2 }}>
-          <TextField
-                autoFocus
-            fullWidth
-                label="여행 계획 제목"
-                value={planTitleForSave}
-                onChange={e => setPlanTitleForSave(e.target.value)}
-                placeholder="예: 3박 4일 도쿄 여행"
-                sx={{ mb: 2 }}
-                disabled={isSaving}
-              />
-            </Box>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={closeSaveDialog} disabled={isSaving}>취소</Button>
-            <Button
-              onClick={async () => {
-                const success = await plannerHandleSaveConfirm(planTitleForSave);
-              }}
-              variant="contained"
-              disabled={isSaving || !planTitleForSave?.trim()}
-            >
-              {isSaving ? '저장 중...' : '저장'}
-            </Button>
-          </DialogActions>
-        </Dialog>
-
-        {selectedFlightForPlannerDialog && (
-           <Dialog 
-               open={isPlannerFlightDetailOpen} 
-               onClose={handleClosePlannerFlightDetail} 
-               fullWidth 
-               maxWidth="md"
-               scroll="paper"
-           >
-               <DialogTitle sx={{ m: 0, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                   항공편 상세 정보 (여행 계획)
-                   <IconButton aria-label="close" onClick={handleClosePlannerFlightDetail} sx={{ position: 'absolute', right: 8, top: 8 }}>
-                       <CloseIcon />
-                   </IconButton>
-               </DialogTitle>
-               <DialogContent dividers>
-                   {selectedFlightForPlannerDialog.flightOfferData.itineraries.map((itinerary, index) => (
-                       <React.Fragment key={`planner-detail-itinerary-${index}`}>
-                           {index > 0 && <Divider sx={{ my:2 }} />}
-                           {renderItineraryDetails(
-                               itinerary, 
-                               selectedFlightForPlannerDialog.flightOfferData.id, 
-                               flightDictionaries, 
-                               selectedFlightForPlannerDialog.flightOfferData.itineraries.length > 1 ? (index === 0 ? "가는 여정" : "오는 여정") : "여정 상세 정보", 
-                               airportInfoCache, 
-                               loadingAirportInfo
-                           )}
-                       </React.Fragment>
-                   ))}
-                   <Divider sx={{ my: 2 }} />
-                   <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', mt:2 }}>가격 및 요금 정보</Typography>
-                   <Typography variant="caption" display="block">총액 (1인): {formatPrice(selectedFlightForPlannerDialog.flightOfferData.price.grandTotal || selectedFlightForPlannerDialog.flightOfferData.price.total, selectedFlightForPlannerDialog.flightOfferData.price.currency)}</Typography>
-                   <Typography variant="caption" display="block">기본 운임: {formatPrice(selectedFlightForPlannerDialog.flightOfferData.price.base, selectedFlightForPlannerDialog.flightOfferData.price.currency)}</Typography>
-                   {selectedFlightForPlannerDialog.flightOfferData.price.fees && selectedFlightForPlannerDialog.flightOfferData.price.fees.length > 0 && (
-                       <Typography variant="caption" display="block">수수료: 
-                           {selectedFlightForPlannerDialog.flightOfferData.price.fees.map(fee => `${fee.type}: ${formatPrice(fee.amount, selectedFlightForPlannerDialog.flightOfferData.price.currency)}`).join(', ')}
-                       </Typography>
-                   )}
-                   {selectedFlightForPlannerDialog.flightOfferData.price.taxes && selectedFlightForPlannerDialog.flightOfferData.price.taxes.length > 0 && (
-                           <Typography variant="caption" display="block">세금: 
-                           {selectedFlightForPlannerDialog.flightOfferData.price.taxes.map(tax => `${tax.code}: ${formatPrice(tax.amount, selectedFlightForPlannerDialog.flightOfferData.price.currency)}`).join(', ')}
-                       </Typography>
-                   )}
-                    <Typography variant="caption" display="block">
-                       마지막 발권일: {selectedFlightForPlannerDialog.flightOfferData.lastTicketingDate ? new Date(selectedFlightForPlannerDialog.flightOfferData.lastTicketingDate).toLocaleDateString('ko-KR') : '-'}
-                       , 예약 가능 좌석: {selectedFlightForPlannerDialog.flightOfferData.numberOfBookableSeats || '-'}석
-                   </Typography>
-                   {renderFareDetails(selectedFlightForPlannerDialog.flightOfferData.travelerPricings, flightDictionaries)}
-        </DialogContent>
-        <DialogActions>
-                   <Button onClick={handleClosePlannerFlightDetail}>닫기</Button>
-        </DialogActions>
-      </Dialog>
-        )}
-
-        {/* 숙박 상세 정보 팝업 추가 */}
-        {selectedAccommodationForDialog && (
-          <Dialog 
-            open={isAccommodationDetailOpen} 
-            onClose={handleCloseAccommodationDetail} 
-            fullWidth 
-            maxWidth="md"
-            scroll="paper"
-          >
-            <DialogTitle sx={{ m: 0, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              숙소 상세 정보
-              <IconButton aria-label="close" onClick={handleCloseAccommodationDetail} sx={{ position: 'absolute', right: 8, top: 8 }}>
-                <CloseIcon />
-              </IconButton>
-            </DialogTitle>
-            <DialogContent dividers>
-              {/* 같은 날 다중 숙박편이 있는 경우 표시 */}
-              {selectedAccommodationForDialog.sameDayAccommodations && (
-                <Box sx={{ mb: 3, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
-                  <Typography variant="h6" gutterBottom sx={{ color: '#1976d2' }}>
-                    같은 날 숙박편 ({selectedAccommodationForDialog.sameDayAccommodations.length}개)
-                  </Typography>
-                  {selectedAccommodationForDialog.sameDayAccommodations.map((accommodation, index) => {
-                    const hotel = accommodation.hotel || {};
-                    const room = accommodation.room || {};
-                    
-                    return (
-                      <Box key={index} sx={{ mb: 2, p: 1.5, bgcolor: 'white', borderRadius: 1, border: 1, borderColor: 'divider' }}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
-                          {accommodation.isCheckOut && accommodation.isCheckIn ? '체크아웃 → 체크인' : 
-                           accommodation.isCheckOut ? '체크아웃' : '체크인'}: {hotel.hotel_name_trans || hotel.hotel_name || '호텔'}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>
-                          객실: {room.name || '정보 없음'}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>
-                          주소: {hotel.address || hotel.address_trans || '주소 정보 없음'}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          체크인: {accommodation.checkIn ? new Date(accommodation.checkIn).toLocaleDateString('ko-KR') : '-'} | 
-                          체크아웃: {accommodation.checkOut ? new Date(accommodation.checkOut).toLocaleDateString('ko-KR') : '-'}
-                        </Typography>
-                        {room.price && (
-                          <Typography variant="body2" color="primary" sx={{ fontWeight: 'bold', mt: 1 }}>
-                            가격: {room.price.toLocaleString()} {room.currency || 'KRW'}
-                          </Typography>
-                        )}
-                      </Box>
-                    );
-                  })}
-                  <Divider sx={{ my: 2 }} />
-                </Box>
-              )}
-
-              {/* 메인 호텔 정보 */} 
-              <Typography variant="h6" gutterBottom>
-                {selectedAccommodationForDialog.hotel?.hotel_name_trans || selectedAccommodationForDialog.hotel?.hotel_name || '호텔 이름 정보 없음'}
-              </Typography>
-              <Typography variant="body1" gutterBottom>
-                주소: {selectedAccommodationForDialog.hotel?.address || selectedAccommodationForDialog.hotel?.address_trans || '주소 정보 없음'}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                도시: {selectedAccommodationForDialog.hotel?.city_trans || selectedAccommodationForDialog.hotel?.city || '도시 정보 없음'}
-                 ({selectedAccommodationForDialog.hotel?.countrycode || '국가 코드 없음'})
-              </Typography>
-              {selectedAccommodationForDialog.hotel?.checkin_from && (
-                <Typography variant="body2" color="text.secondary">
-                  체크인 시간: {selectedAccommodationForDialog.hotel.checkin_from}
-                  {selectedAccommodationForDialog.hotel.checkin_until && selectedAccommodationForDialog.hotel.checkin_until !== "00:00" ? ` ~ ${selectedAccommodationForDialog.hotel.checkin_until}` : ''}
-                </Typography>
-              )}
-              {selectedAccommodationForDialog.hotel?.checkout_until && (
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  체크아웃 시간: {selectedAccommodationForDialog.hotel.checkout_from && selectedAccommodationForDialog.hotel.checkout_from !== "00:00" ? `${selectedAccommodationForDialog.hotel.checkout_from} ~ ` : ''}
-                  {selectedAccommodationForDialog.hotel.checkout_until}
-                </Typography>
-              )}
-              {selectedAccommodationForDialog.hotel?.hotel_description && (
-                <Box sx={{my: 2}}>
-                  <Typography variant="subtitle2" sx={{fontWeight: 'bold'}}>호텔 설명</Typography>
-                  <Typography variant="body2" paragraph sx={{whiteSpace: 'pre-line'}}>
-                    {selectedAccommodationForDialog.hotel.hotel_description}
-                  </Typography>
-                </Box>
-              )}
-
-              <Divider sx={{ my: 2 }} />
-
-              {/* 객실 정보 */} 
-              <Typography variant="h6" gutterBottom>선택된 객실 정보</Typography>
-              {selectedAccommodationForDialog.room ? (
-                <Box>
-                  <Typography variant="subtitle1">{selectedAccommodationForDialog.room.name || '객실 이름 정보 없음'}</Typography>
-                  {selectedAccommodationForDialog.room.price && selectedAccommodationForDialog.room.currency && (
-                     <Typography variant="body1" sx={{fontWeight: 'bold', color: 'primary.main'}}>
-                       가격: {formatPrice(selectedAccommodationForDialog.room.price, selectedAccommodationForDialog.room.currency)}
-                     </Typography>
-                  )}
-                  {selectedAccommodationForDialog.room.bed_configurations && selectedAccommodationForDialog.room.bed_configurations.length > 0 && (
-                    <Typography variant="body2" color="text.secondary">
-                      침대: {selectedAccommodationForDialog.room.bed_configurations.map(bc => `${bc.count} ${bc.name}(s)`).join(', ')}
-                    </Typography>
-                  )}
-                  {selectedAccommodationForDialog.room.room_surface_in_m2 && (
-                     <Typography variant="body2" color="text.secondary">크기: {selectedAccommodationForDialog.room.room_surface_in_m2} m²</Typography>
-                  )}
-                  {selectedAccommodationForDialog.room.description && (
-                    <Typography variant="body2" paragraph sx={{whiteSpace: 'pre-line', mt:1}}>
-                      {selectedAccommodationForDialog.room.description}
-                    </Typography>
-                  )}
-                  {/* 추가적인 객실 편의시설 등 표시 가능 */}
-                </Box>
-              ) : (
-                <Typography>선택된 객실 정보가 없습니다.</Typography>
-              )}
-
-              {accommodationToShow.hotelDetails.roomList && accommodationToShow.hotelDetails.roomList.length > 0 && (
-                <Box sx={{ mt: 1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 'bold', fontSize: '0.85rem' }}>객실 목록</Typography>
-                  <ul style={{ margin: 0, paddingLeft: 16 }}>
-                    {accommodationToShow.hotelDetails.roomList.map((room, idx) => (
-                      <li key={room.id || idx} style={{ fontSize: '0.85rem' }}>
-                        {room.name} {room.price ? `- ${room.price}${room.currency ? ` ${room.currency}` : ''}` : ''}
-                      </li>
-                    ))}
-                  </ul>
-                </Box>
-              )}
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={handleCloseAccommodationDetail}>닫기</Button>
-            </DialogActions>
-          </Dialog>
-        )}
+        <TravelPlannerDialogs
+          // 검색 다이얼로그
+          isSearchOpen={dialogHandlers.isSearchOpen}
+          setIsSearchOpen={dialogHandlers.setIsSearchOpen}
+          onAddPlace={onAddPlace}
+          // 일정 수정 다이얼로그
+          editDialogOpen={editDialogOpen}
+          setEditDialogOpen={setEditDialogOpen}
+          editSchedule={editSchedule}
+          setEditSchedule={setEditSchedule}
+          handleUpdateSchedule={handleUpdateSchedule}
+          // 날짜 수정 다이얼로그
+          isDateEditDialogOpen={dialogHandlers.isDateEditDialogOpen}
+          setIsDateEditDialogOpen={dialogHandlers.setIsDateEditDialogOpen}
+          tempStartDate={dialogHandlers.tempStartDate}
+          handleTempDateChange={dialogHandlers.handleTempDateChange}
+          handleConfirmDateChange={() => dialogHandlers.handleConfirmDateChange(plannerHandleDateChange)}
+          // 저장 다이얼로그
+          isSaveDialogOpen={isSaveDialogOpen}
+          closeSaveDialog={closeSaveDialog}
+          planTitleForSave={planTitleForSave}
+          setPlanTitleForSave={setPlanTitleForSave}
+          isSaving={isSaving}
+          plannerHandleSaveConfirm={plannerHandleSaveConfirm}
+          // 항공편 상세 다이얼로그
+          isPlannerFlightDetailOpen={dialogHandlers.isPlannerFlightDetailOpen}
+          handleClosePlannerFlightDetail={dialogHandlers.handleClosePlannerFlightDetail}
+          selectedFlightForPlannerDialog={dialogHandlers.selectedFlightForPlannerDialog}
+          flightDictionaries={flightDictionaries}
+          airportInfoCache={airportInfoCache}
+          loadingAirportInfo={loadingAirportInfo}
+          // 숙박 상세 다이얼로그
+          isAccommodationDetailOpen={dialogHandlers.isAccommodationDetailOpen}
+          handleCloseAccommodationDetail={dialogHandlers.handleCloseAccommodationDetail}
+          selectedAccommodationForDialog={dialogHandlers.selectedAccommodationForDialog}
+          // 공유 다이얼로그
+          isShareDialogOpen={dialogHandlers.isShareDialogOpen}
+          handleCloseShareDialog={dialogHandlers.handleCloseShareDialog}
+          sharedEmail={dialogHandlers.sharedEmail}
+          setSharedEmail={dialogHandlers.setSharedEmail}
+          shareMessage={dialogHandlers.shareMessage}
+          isSharing={dialogHandlers.isSharing}
+          handleSharePlan={() => dialogHandlers.handleSharePlan(plannerHandleSharePlan, planId)}
+        />
 
         <AIChatWidget onSendMessage={handleAISendMessage} />
-
-        <Dialog open={isShareDialogOpen} onClose={handleCloseShareDialog}>
-          <DialogTitle>플랜 공유</DialogTitle>
-          <DialogContent>
-            <Box sx={{ pt: 2 }}>
-              <TextField
-                autoFocus
-                fullWidth
-                label="공유할 이메일 주소"
-                type="email"
-                value={sharedEmail}
-                onChange={e => setSharedEmail(e.target.value)}
-                placeholder="example@email.com"
-                sx={{ mb: 2 }}
-                disabled={isSharing}
-              />
-              {shareMessage && (
-                <Typography 
-                  variant="body2" 
-                  color={shareMessage.includes('성공') ? 'success.main' : 'error.main'}
-                  sx={{ mt: 1 }}
-                >
-                  {shareMessage}
-                </Typography>
-              )}
-            </Box>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={handleCloseShareDialog} disabled={isSharing}>
-              취소
-            </Button>
-            <Button 
-              onClick={handleSharePlan} 
-              variant="contained" 
-              disabled={isSharing || !sharedEmail.trim()}
-            >
-              {isSharing ? '공유 중...' : '공유하기'}
-            </Button>
-          </DialogActions>
-        </Dialog>
-
-    </Box>
+      </Box>
     </LocalizationProvider>
   );
 };
