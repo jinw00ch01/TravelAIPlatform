@@ -145,7 +145,7 @@ const TravelPlannerMainContent = ({
                   travelPlans={travelPlans} 
                   selectedDay={selectedDay} 
                   showAllMarkers={showAllMarkers}
-                  hideFlightMarkers={hideFlightMarkers}
+                  hideFlightMarkers={true}
                   selectedLocation={selectedLocation}
                   resizeTrigger={mapResizeTrigger}
                 />
@@ -193,6 +193,10 @@ const TravelPlannerMainContent = ({
           error={flightError}
           handleFlightSearch={handleFlightSearch}
           onAddFlightToSchedule={onAddFlightToSchedule}
+          // 검증을 위한 추가 props
+          travelPlans={travelPlans}
+          dayOrder={dayOrder}
+          startDate={startDate}
         />
       )}
     </Box>

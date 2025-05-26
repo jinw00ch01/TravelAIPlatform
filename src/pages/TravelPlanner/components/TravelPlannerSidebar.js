@@ -237,6 +237,10 @@ const TravelPlannerSidebar = ({
               error={flightError}
               handleFlightSearch={handleFlightSearch}
               onAddFlightToSchedule={onAddFlightToSchedule}
+              // 검증을 위한 추가 props
+              travelPlans={travelPlans}
+              dayOrder={dayOrder}
+              startDate={startDate}
             />
           )}
         </Box>

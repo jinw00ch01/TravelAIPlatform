@@ -775,7 +775,7 @@ export const HomePage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex justify-center">
-      <div className="w-full max-w-[1920px] min-h-screen">
+      <div className="w-full max-w-[2160px] min-h-screen">
         <div className="relative h-[900px]">
           {/* Hero background section */}
           <div 
@@ -784,13 +784,13 @@ export const HomePage = () => {
               position: 'relative'
             }}
           >
-            {/* 왼쪽 AI 생성 이미지 */}
-            <div className="absolute right-[0%] top-[5px] w-[750px] h-[815px] rounded-lg overflow-hidden">
+            {/* 오른쪽 AI 생성 이미지 */}
+            <div className="absolute right-[0%] top-[5px] w-[694px] h-[815px] rounded-lg overflow-hidden">
               <img src="/images/travel_right.gif" alt="여행 명소" className="w-full h-full object-cover" />
             </div>
             
-            {/* 오른쪽 AI 생성 이미지 */}
-            <div className="absolute left-[0%] top-[5px] w-[575px] h-[810px] rounded-lg overflow-hidden">
+            {/* 왼쪽 AI 생성 이미지 */}
+            <div className="absolute left-[0%] top-[5px] w-[694px] h-[810px] rounded-lg overflow-hidden">
               <img src="/images/travel_left.gif" alt="여행 명소" className="w-full h-full object-cover" />
             </div>
           </div>
@@ -804,11 +804,11 @@ export const HomePage = () => {
           <div className="absolute w-full max-w-[750px] top-[200px] left-1/2 -translate-x-1/2 bg-gray-800/80 backdrop-blur-sm rounded-xl p-6 shadow-lg border border-gray-700">
             {/* 상단 바 추가 */}
             <div className="flex justify-end mb-4">
-              <div 
-                className="text-white text-base font-medium cursor-pointer hover:underline flex items-center"
-                onClick={() => navigate("/planner/none")}
+                              <button 
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-full border border-blue-500 hover:border-blue-600 transition-all duration-200 flex items-center gap-2 shadow-lg"
+                  onClick={() => navigate("/planner/none")}
               >
-                <span>AI의 도움없이 일정 만들기</span>
+                <span>직접 일정 만들기</span>
                 <svg 
                   xmlns="http://www.w3.org/2000/svg" 
                   width="16" 
@@ -819,12 +819,12 @@ export const HomePage = () => {
                   strokeWidth="2" 
                   strokeLinecap="round" 
                   strokeLinejoin="round"
-                  className="ml-1"
+                  className="transition-transform group-hover:translate-x-1"
                 >
                   <path d="M5 12h14"></path>
                   <path d="m12 5 7 7-7 7"></path>
                 </svg>
-              </div>
+              </button>
             </div>
 
             {/* Search section */}
@@ -1050,10 +1050,6 @@ export const HomePage = () => {
                         {selectedFlights.map((flight, index) => (
                           <Card key={flight.id} className="relative p-3 shadow bg-white">
                             {(() => {
-                              const formatDuration = (durationStr) => {
-                                if (!durationStr) return "-";
-                                return durationStr.replace("PT", "").replace("H", "시간 ").replace("M", "분").trim();
-                              };
 
                               const getCityLabel = (code) => {
                                 const info = airportInfoCache[code] || {};
@@ -1075,7 +1071,6 @@ export const HomePage = () => {
                                 outFirst.carrierCode;
                               const outStops = outbound.segments.length - 1;
                               const outStopsText = outStops === 0 ? "직항" : `${outStops}회 경유`;
-                              const outDuration = formatDuration(outbound.duration);
                               const price = parseInt(flight.price.grandTotal || flight.price.total).toLocaleString();
 
                               return (

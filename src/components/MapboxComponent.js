@@ -564,10 +564,12 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightM
         const currentSchedules = travelPlans[selectedDay]?.schedules;
         if (!currentSchedules || currentSchedules.length <= 1) return;
 
-        // 항공편을 제외한 일정만 필터링
+        // 항공편과 숙박편을 제외한 일반 일정만 필터링
         const filteredSchedules = currentSchedules.filter(schedule => 
           schedule.type !== 'Flight_Departure' && 
           schedule.type !== 'Flight_Return' && 
+          schedule.type !== 'Flight_OneWay' && 
+          schedule.type !== 'accommodation' && 
           schedule.lng && 
           schedule.lat
         );
@@ -861,7 +863,12 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightM
         if (hideFlightMarkers && 
             (schedule.type === 'Flight_Departure' || 
              schedule.type === 'Flight_Return' || 
+             schedule.type === 'Flight_OneWay' || 
              schedule.category === '항공편')) {
+          return false;
+        }
+        // 숙박편도 마커에서 제외
+        if (schedule.type === 'accommodation') {
           return false;
         }
         return schedule.lat && schedule.lng;

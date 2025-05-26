@@ -628,9 +628,14 @@ const TravelPlanner = ({ loadMode }) => {
     );
   };
   
-  const onAddFlightToSchedule = useCallback((flightOffer, newDictionaries, newAirportCache) => {
-    handleAddFlightToSchedule(flightOffer, newDictionaries, newAirportCache, travelPlans, dayOrder, getDayTitle, setTravelPlans);
-  }, [handleAddFlightToSchedule, travelPlans, dayOrder, getDayTitle, setTravelPlans]);
+  const onAddFlightToSchedule = useCallback((flightOffer, newDictionaries, newAirportCache, travelPlansParam, dayOrderParam, startDateParam) => {
+    // FlightPlan에서 전달받은 매개변수들을 사용하거나, 없으면 현재 상태 사용
+    const finalTravelPlans = travelPlansParam || travelPlans;
+    const finalDayOrder = dayOrderParam || dayOrder;
+    const finalStartDate = startDateParam || startDate;
+    
+    handleAddFlightToSchedule(flightOffer, newDictionaries, newAirportCache, finalTravelPlans, finalDayOrder, getDayTitle, setTravelPlans, finalStartDate);
+  }, [handleAddFlightToSchedule, travelPlans, dayOrder, getDayTitle, setTravelPlans, startDate]);
 
   const onAddPlace = useCallback((place) => {
     handleAddPlace(place);

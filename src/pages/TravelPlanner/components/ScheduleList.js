@@ -224,6 +224,12 @@ const ScheduleList = ({
                   {flightSchedule.type === 'Flight_OneWay' && (
                     <span style={{ fontSize: '0.8rem', marginLeft: '8px', color: '#ff9800' }}>(편도)</span>
                   )}
+                  {flightSchedule.type === 'Flight_Departure' && (
+                    <span style={{ fontSize: '0.8rem', marginLeft: '8px', color: '#4caf50' }}>(왕복-출국)</span>
+                  )}
+                  {flightSchedule.type === 'Flight_Return' && (
+                    <span style={{ fontSize: '0.8rem', marginLeft: '8px', color: '#2196f3' }}>(왕복-귀국)</span>
+                  )}
                 </Typography>
                 <Typography variant="body2" color="info.main" sx={{fontSize: '0.8rem'}}>
                   {flightSchedule.address} {/* 출발지 -> 도착지 공항 코드 등 */}
