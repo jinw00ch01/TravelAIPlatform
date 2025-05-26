@@ -1,5 +1,5 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, QueryCommand, BatchGetCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, QueryCommand, BatchGetCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import jwt from "jsonwebtoken";
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || "ap-northeast-2" });
@@ -22,7 +22,7 @@ const SAVED_PLANS_TABLE = process.env.SAVED_PLANS_TABLE || "saved_plans";
 const DEV_MODE = process.env.NODE_ENV !== "production";
 
 export const handler = async (event) => {
-  console.log("GetSinglePlan Lambda 시작");
+  console.log("GetSinglePlan Lambda 시작 (공유 계획 지원)");
   console.log("event:", JSON.stringify(event));
 
   if (event.httpMethod === "OPTIONS") {
@@ -50,6 +50,7 @@ export const handler = async (event) => {
     }
 
     userEmail = userEmail || "jhh333210@gmail.com";
+    console.log("사용자 이메일:", userEmail);
 
     const body = JSON.parse(event.body || "{}");
     const planId = body.plan_id;
@@ -58,36 +59,7 @@ export const handler = async (event) => {
     // 다중 plan_id 요청인지 확인
     if (Array.isArray(planIds) && planIds.length > 0) {
       console.log("다중 계획 조회 요청:", planIds);
-      
-      // 다중 조회를 위한 키 생성
-      const keys = planIds.map(id => ({
-        user_id: userEmail,
-        plan_id: Number(id)
-      }));
-      
-      const batchGetCmd = {
-        RequestItems: {
-          [SAVED_PLANS_TABLE]: {
-            Keys: keys
-          }
-        }
-      };
-      
-      console.log("BatchGet 실행:", JSON.stringify(batchGetCmd));
-      const result = await docClient.send(new BatchGetCommand(batchGetCmd));
-      
-      const plans = result.Responses?.[SAVED_PLANS_TABLE] || [];
-      console.log("다중 계획 조회 결과:", plans.length);
-      
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          success: true,
-          plans: plans,
-          single_request: false
-        })
-      };
+      return await handleBatchGetPlans(userEmail, planIds);
     }
   
     // 기존 단일 plan_id 처리 로직
@@ -99,34 +71,9 @@ export const handler = async (event) => {
       };
     }
 
-    const queryCmd = new QueryCommand({
-      TableName: SAVED_PLANS_TABLE,
-      KeyConditionExpression: "user_id = :uid and plan_id = :pid",
-      ExpressionAttributeValues: {
-        ":uid": userEmail,
-        ":pid": Number(planId)
-      }
-    });
+    console.log("단일 계획 조회 요청 - plan_id:", planId);
+    return await handleSinglePlanGet(userEmail, Number(planId));
 
-    const result = await docClient.send(queryCmd);
-    
-    // 디버깅 로그 추가
-    console.log("DynamoDB 쿼리 결과:", JSON.stringify(result, null, 2));
-    if (result.Items && result.Items[0]) {
-      console.log("첫 번째 아이템 키들:", Object.keys(result.Items[0]));
-      console.log("name 필드 값:", result.Items[0].name);
-      console.log("plan_id 필드 값:", result.Items[0].plan_id);
-    }
-
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({
-        success: true,
-        plan: result.Items?.[0] || null,
-        single_request: true
-      })
-    };
   } catch (err) {
     console.error("조회 실패:", err);
     return {
@@ -136,3 +83,260 @@ export const handler = async (event) => {
     };
   }
 };
+
+// 다중 계획 조회 함수
+async function handleBatchGetPlans(userEmail, planIds) {
+  // 다중 조회를 위한 키 생성
+  const keys = planIds.map(id => ({
+    user_id: userEmail,
+    plan_id: Number(id)
+  }));
+  
+  const batchGetCmd = {
+    RequestItems: {
+      [SAVED_PLANS_TABLE]: {
+        Keys: keys
+      }
+    }
+  };
+  
+  console.log("BatchGet 실행:", JSON.stringify(batchGetCmd));
+  const result = await docClient.send(new BatchGetCommand(batchGetCmd));
+  
+  const ownPlans = result.Responses?.[SAVED_PLANS_TABLE] || [];
+  console.log("사용자 소유 계획 조회 결과:", ownPlans.length, "개");
+
+  // 조회되지 않은 계획들에 대해 공유 계획인지 확인
+  const foundPlanIds = ownPlans.map(plan => plan.plan_id);
+  const missingPlanIds = planIds.filter(id => !foundPlanIds.includes(Number(id)));
+  
+  let sharedPlans = [];
+  if (missingPlanIds.length > 0) {
+    console.log("공유 계획 확인 필요한 plan_id들:", missingPlanIds);
+    
+    // 공유된 계획 조회
+    const sharedPlanQuery = new ScanCommand({
+      TableName: SAVED_PLANS_TABLE,
+      FilterExpression: "attribute_exists(shared_email) AND shared_email <> :empty",
+      ExpressionAttributeValues: {
+        ":empty": ""
+      }
+    });
+
+    const sharedResult = await docClient.send(sharedPlanQuery);
+    
+    // shared_email 필드를 쉼표로 분리하여 정확히 일치하는지 확인하고 missingPlanIds에 포함된 것만 필터링
+    const filteredSharedPlans = (sharedResult.Items || []).filter(plan => {
+      if (!plan.shared_email || !missingPlanIds.includes(plan.plan_id)) return false;
+      
+      // 자신이 소유한 계획은 제외
+      if (plan.user_id === userEmail) return false;
+      
+      const sharedEmails = plan.shared_email.split(',').map(email => email.trim());
+      const isShared = sharedEmails.includes(userEmail);
+      
+      if (isShared) {
+        console.log(`✅ 공유 계획 확인: ${plan.plan_id} (${plan.name}) - 소유자: ${plan.user_id}`);
+        console.log(`   공유된 이메일들: ${plan.shared_email}`);
+      }
+      
+      return isShared;
+    });
+    
+    sharedPlans = filteredSharedPlans;
+    
+    console.log("공유된 계획 조회 결과:", sharedPlans.length, "개");
+  }
+
+  const allPlans = [...ownPlans, ...sharedPlans];
+  console.log("전체 다중 계획 조회 결과:", allPlans.length, "개");
+  
+  return {
+    statusCode: 200,
+    headers,
+    body: JSON.stringify({
+      success: true,
+      plans: allPlans,
+      single_request: false
+    })
+  };
+}
+
+// 단일 계획 조회 함수
+async function handleSinglePlanGet(userEmail, planId) {
+  // 1. 먼저 사용자 소유 계획인지 확인
+  const queryCmd = new QueryCommand({
+    TableName: SAVED_PLANS_TABLE,
+    KeyConditionExpression: "user_id = :uid and plan_id = :pid",
+    ExpressionAttributeValues: {
+      ":uid": userEmail,
+      ":pid": planId
+    }
+  });
+
+  const ownPlanResult = await docClient.send(queryCmd);
+  
+  if (ownPlanResult.Items && ownPlanResult.Items.length > 0) {
+    console.log("사용자 소유 계획 발견");
+    const plan = ownPlanResult.Items[0];
+    
+    // 디버깅 로그 추가
+    console.log("DynamoDB 쿼리 결과:", JSON.stringify(ownPlanResult, null, 2));
+    console.log("첫 번째 아이템 키들:", Object.keys(plan));
+    console.log("name 필드 값:", plan.name);
+    console.log("plan_id 필드 값:", plan.plan_id);
+    console.log("shared_email 필드 값:", plan.shared_email);
+    
+    // saved-plans 테이블에서 다중 항공편/숙박편 정보 추출
+    const flightInfos = [];
+    const accommodationInfos = [];
+    
+    // flight_info_1, flight_info_2, ... 추출
+    Object.keys(plan).forEach(key => {
+      if (key.startsWith('flight_info_') && key.match(/flight_info_\d+$/)) {
+        try {
+          const flightData = typeof plan[key] === 'string' ? JSON.parse(plan[key]) : plan[key];
+          flightInfos.push(flightData);
+        } catch (error) {
+          console.error(`항공편 정보 파싱 오류 (${key}):`, error);
+        }
+      }
+    });
+    
+    // accmo_info_1, accmo_info_2, ... 추출
+    Object.keys(plan).forEach(key => {
+      if (key.startsWith('accmo_info_') && key.match(/accmo_info_\d+$/)) {
+        try {
+          const accommodationData = typeof plan[key] === 'string' ? JSON.parse(plan[key]) : plan[key];
+          accommodationInfos.push(accommodationData);
+        } catch (error) {
+          console.error(`숙박편 정보 파싱 오류 (${key}):`, error);
+        }
+      }
+    });
+    
+    console.log(`saved-plans에서 추출: 항공편 ${flightInfos.length}개, 숙박편 ${accommodationInfos.length}개`);
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        success: true,
+        plan: plan,
+        single_request: true,
+        is_shared_with_me: false,
+        // 다중 항공편/숙박편 정보 추가
+        flightInfos: flightInfos,
+        accommodationInfos: accommodationInfos,
+        // 하위 호환성을 위한 단일 정보
+        flightInfo: flightInfos.length > 0 ? flightInfos[0] : null,
+        accommodationInfo: accommodationInfos.length > 0 ? accommodationInfos[0] : null,
+        isRoundTrip: flightInfos.length > 0 && flightInfos[0].itineraries && flightInfos[0].itineraries.length > 1
+      })
+    };
+  }
+
+  // 2. 소유 계획이 아니면 공유된 계획인지 확인
+  console.log("소유 계획이 아님. 공유 계획 확인 중...");
+  
+  const sharedPlanQuery = new ScanCommand({
+    TableName: SAVED_PLANS_TABLE,
+    FilterExpression: "plan_id = :pid AND attribute_exists(shared_email) AND shared_email <> :empty",
+    ExpressionAttributeValues: {
+      ":pid": planId,
+      ":empty": ""
+    }
+  });
+
+  const sharedResult = await docClient.send(sharedPlanQuery);
+  
+  if (sharedResult.Items && sharedResult.Items.length > 0) {
+    // shared_email 필드를 쉼표로 분리하여 정확히 일치하는지 확인
+    const matchingPlan = sharedResult.Items.find(plan => {
+      if (!plan.shared_email) return false;
+      
+      // 자신이 소유한 계획은 제외
+      if (plan.user_id === userEmail) return false;
+      
+      const sharedEmails = plan.shared_email.split(',').map(email => email.trim());
+      const isShared = sharedEmails.includes(userEmail);
+      
+      if (isShared) {
+        console.log(`✅ 공유 계획 확인: ${plan.plan_id} (${plan.name}) - 소유자: ${plan.user_id}`);
+        console.log(`   공유된 이메일들: ${plan.shared_email}`);
+      }
+      
+      return isShared;
+    });
+    
+    if (matchingPlan) {
+      console.log("공유된 계획 발견");
+      
+      console.log("공유 계획 세부 정보:");
+      console.log("원래 소유자:", matchingPlan.user_id);
+      console.log("shared_email:", matchingPlan.shared_email);
+      
+      // 공유된 계획에서도 다중 항공편/숙박편 정보 추출
+      const sharedFlightInfos = [];
+      const sharedAccommodationInfos = [];
+      
+      // flight_info_1, flight_info_2, ... 추출
+      Object.keys(matchingPlan).forEach(key => {
+        if (key.startsWith('flight_info_') && key.match(/flight_info_\d+$/)) {
+          try {
+            const flightData = typeof matchingPlan[key] === 'string' ? JSON.parse(matchingPlan[key]) : matchingPlan[key];
+            sharedFlightInfos.push(flightData);
+          } catch (error) {
+            console.error(`공유 계획 항공편 정보 파싱 오류 (${key}):`, error);
+          }
+        }
+      });
+      
+      // accmo_info_1, accmo_info_2, ... 추출
+      Object.keys(matchingPlan).forEach(key => {
+        if (key.startsWith('accmo_info_') && key.match(/accmo_info_\d+$/)) {
+          try {
+            const accommodationData = typeof matchingPlan[key] === 'string' ? JSON.parse(matchingPlan[key]) : matchingPlan[key];
+            sharedAccommodationInfos.push(accommodationData);
+          } catch (error) {
+            console.error(`공유 계획 숙박편 정보 파싱 오류 (${key}):`, error);
+          }
+        }
+      });
+      
+      console.log(`공유 계획에서 추출: 항공편 ${sharedFlightInfos.length}개, 숙박편 ${sharedAccommodationInfos.length}개`);
+      
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          success: true,
+          plan: matchingPlan,
+          single_request: true,
+          is_shared_with_me: true,
+          original_owner: matchingPlan.user_id,
+          // 다중 항공편/숙박편 정보 추가
+          flightInfos: sharedFlightInfos,
+          accommodationInfos: sharedAccommodationInfos,
+          // 하위 호환성을 위한 단일 정보
+          flightInfo: sharedFlightInfos.length > 0 ? sharedFlightInfos[0] : null,
+          accommodationInfo: sharedAccommodationInfos.length > 0 ? sharedAccommodationInfos[0] : null,
+          isRoundTrip: sharedFlightInfos.length > 0 && sharedFlightInfos[0].itineraries && sharedFlightInfos[0].itineraries.length > 1
+        })
+      };
+    }
+  }
+
+  // 3. 계획을 찾을 수 없음
+  console.log("계획을 찾을 수 없음 - plan_id:", planId);
+  return {
+    statusCode: 404,
+    headers,
+    body: JSON.stringify({
+      success: false,
+      message: "해당 여행 계획을 찾을 수 없거나 접근 권한이 없습니다.",
+      plan: null,
+      single_request: true
+    })
+  };
+}

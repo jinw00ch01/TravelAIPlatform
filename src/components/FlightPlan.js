@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   TextField, Button, CircularProgress, Autocomplete, Box, Typography, Paper,
   MenuItem, Checkbox, FormControlLabel, Divider,
@@ -12,7 +12,6 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { ko } from 'date-fns/locale';
 import {
   formatPrice,
-  formatDuration,
   airlineKoreanNames,
   renderFareDetails,
   renderItineraryDetails
@@ -37,10 +36,15 @@ const FlightPlan = ({
   isLoadingFlights,
   error,
   handleFlightSearch,
-  onAddFlightToSchedule
+  onAddFlightToSchedule,
+  // 검증을 위한 추가 props
+  travelPlans,
+  dayOrder,
+  startDate
 }) => {
   const [selectedFlightDetails, setSelectedFlightDetails] = useState(null);
   const [isFlightDetailOpen, setIsFlightDetailOpen] = useState(false);
+  const [isOneWay, setIsOneWay] = useState(false);
 
   const handleFlightItemClick = (flight) => {
     setSelectedFlightDetails(flight);
@@ -53,7 +57,7 @@ const FlightPlan = ({
 
   const handleAddSelectedFlightToSchedule = () => {
     if (selectedFlightDetails && onAddFlightToSchedule) {
-      onAddFlightToSchedule(selectedFlightDetails, dictionaries, airportInfoCache);
+      onAddFlightToSchedule(selectedFlightDetails, dictionaries, airportInfoCache, travelPlans, dayOrder, startDate);
       handleCloseFlightDetail();
     }
   };
@@ -61,6 +65,20 @@ const FlightPlan = ({
   const handleParamChange = (paramName, value) => {
     setSearchParams(prev => ({ ...prev, [paramName]: value }));
   };
+
+  const handleTripTypeChange = (oneWay) => {
+    setIsOneWay(oneWay);
+    if (oneWay) {
+      handleParamChange('returnDate', null);
+    }
+  };
+
+  // 검색 매개변수 동기화
+  useEffect(() => {
+    if (isOneWay && searchParams.returnDate) {
+      handleParamChange('returnDate', null);
+    }
+  }, [isOneWay, searchParams.returnDate]);
 
   const formatDate = (date) => {
     return date ? date.toISOString().split('T')[0] : null;
@@ -135,6 +153,44 @@ const FlightPlan = ({
           )}
         />
 
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>여행 유형</Typography>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              type="button"
+              variant={!isOneWay ? "contained" : "outlined"}
+              size="small"
+              onClick={() => handleTripTypeChange(false)}
+              sx={{ 
+                flex: 1,
+                bgcolor: !isOneWay ? 'primary.main' : 'transparent',
+                color: !isOneWay ? 'white' : 'primary.main',
+                '&:hover': {
+                  bgcolor: !isOneWay ? 'primary.dark' : 'primary.light'
+                }
+              }}
+            >
+              왕복
+            </Button>
+            <Button
+              type="button"
+              variant={isOneWay ? "contained" : "outlined"}
+              size="small"
+              onClick={() => handleTripTypeChange(true)}
+              sx={{ 
+                flex: 1,
+                bgcolor: isOneWay ? 'primary.main' : 'transparent',
+                color: isOneWay ? 'white' : 'primary.main',
+                '&:hover': {
+                  bgcolor: isOneWay ? 'primary.dark' : 'primary.light'
+                }
+              }}
+            >
+              편도
+            </Button>
+          </Box>
+        </Box>
+
         <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ko}>
           <DatePicker
             label="가는 날 *"
@@ -147,12 +203,19 @@ const FlightPlan = ({
 
         <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ko}>
           <DatePicker
-            label="오는 날 (왕복 시)"
+            label={isOneWay ? "오는 날 (편도 선택됨)" : "오는 날 (왕복 시)"}
             value={searchParams.returnDate || null}
             onChange={(newValue) => handleParamChange('returnDate', newValue)}
             minDate={searchParams.departureDate || new Date()}
-            disabled={!searchParams.departureDate}
-            slotProps={{ textField: { size: 'small', fullWidth: true } }}
+            disabled={isOneWay || !searchParams.departureDate}
+            slotProps={{ 
+              textField: { 
+                size: 'small', 
+                fullWidth: true,
+                disabled: isOneWay,
+                helperText: isOneWay ? "편도 항공편을 선택했습니다." : ""
+              } 
+            }}
           />
         </LocalizationProvider>
 
@@ -311,7 +374,7 @@ const FlightPlan = ({
                             {getAirportSummaryDisplay(arrivalItinSummary.arrival.iataCode)}
                             <Typography variant="caption" sx={{ ml: 1 }}>
                                 ({firstItinerary.segments.length -1 === 0 ? '직항' : `${firstItinerary.segments.length - 1}회 경유`})
-                                {isRoundTrip && " (왕복)"}
+                                {isRoundTrip ? " (왕복)" : " (편도)"}
                             </Typography>
                         </Typography>
                         <Typography variant="body2" color="text.secondary">

@@ -75,32 +75,58 @@ const Sidebar = ({ onSelectItinerary, selectedItinerary, itineraries, onDeleteIt
       <div className="flex-1 overflow-y-auto">
         <h3 className="text-lg font-semibold mb-4">여행 계획 목록</h3>
         <div className="space-y-2">
-          {itineraries.map((itinerary) => (
-            <button
-              key={itinerary.plan_id}
-              onClick={() => onSelectItinerary(itinerary)}
-              className={`w-full text-left p-3 rounded-lg transition-colors ${
-                selectedItinerary?.plan_id === itinerary.plan_id
-                  ? 'bg-blue-500 text-white'
-                  : 'hover:bg-gray-100'
-              }`}
-            >
-              <div className="font-medium">{itinerary.name || itinerary.title}</div>
-              {itinerary.accommodationInfo?.checkIn && (
-                <div className="text-sm opacity-80">
-                  {new Date(itinerary.accommodationInfo.checkIn).toLocaleDateString('ko-KR', {
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                  {' - '}
-                  {new Date(itinerary.accommodationInfo.checkOut).toLocaleDateString('ko-KR', {
-                    month: 'long',
-                    day: 'numeric'
-                  })}
+          {itineraries.map((itinerary) => {
+            // 공유받은 플랜인지 확인
+            const isSharedPlan = itinerary.is_shared_with_me === true;
+            const ownerEmail = itinerary.original_owner || itinerary.user_id || '알 수 없음';
+            
+            return (
+              <button
+                key={itinerary.plan_id}
+                onClick={() => onSelectItinerary(itinerary)}
+                className={`w-full text-left p-3 rounded-lg transition-colors ${
+                  selectedItinerary?.plan_id === itinerary.plan_id
+                    ? (isSharedPlan ? 'bg-sky-500 text-white' : 'bg-blue-500 text-white')
+                    : (isSharedPlan ? 'bg-sky-50 hover:bg-sky-100 border border-sky-200' : 'hover:bg-gray-100')
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="font-medium">{itinerary.name || itinerary.title}</div>
+                  {isSharedPlan && (
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium ${
+                      selectedItinerary?.plan_id === itinerary.plan_id
+                        ? 'bg-sky-300 text-sky-800'
+                        : 'bg-sky-100 text-sky-800'
+                    }`}>
+                      공유된 플랜
+                    </span>
+                  )}
                 </div>
-              )}
-            </button>
-          ))}
+                {isSharedPlan && (
+                  <div className={`text-xs mb-1 ${
+                    selectedItinerary?.plan_id === itinerary.plan_id
+                      ? 'text-sky-100'
+                      : 'text-sky-700'
+                  }`}>
+                    공유자: {ownerEmail}
+                  </div>
+                )}
+                {itinerary.accommodationInfo?.checkIn && (
+                  <div className="text-sm opacity-80">
+                    {new Date(itinerary.accommodationInfo.checkIn).toLocaleDateString('ko-KR', {
+                      month: 'long',
+                      day: 'numeric'
+                    })}
+                    {' - '}
+                    {new Date(itinerary.accommodationInfo.checkOut).toLocaleDateString('ko-KR', {
+                      month: 'long',
+                      day: 'numeric'
+                    })}
+                  </div>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 

@@ -164,7 +164,7 @@ export const travelApi = {
       
       // API 호출
       const response = await apiClient.post(endpoint, requestParams, {
-        timeout: 8000,
+        timeout: 20000,
         retry: 2,
         retryDelay: 1000
       });
@@ -184,19 +184,40 @@ export const travelApi = {
       // 서버에 맞는 형식으로 데이터 변환
       let serverData = {
         title: planData.title,
-        data: planData.days.reduce((obj, day) => {
-          obj[day.day] = {
-            title: day.title,
-            schedules: day.schedules
-          };
-          return obj;
-        }, {})
+        // planData.data가 이미 올바른 형식이므로 그대로 사용
+        data: planData.data
       };
 
-      // 숙소 정보가 있으면 추가
+      // 다중 숙박편 정보가 있으면 추가
+      if (planData.accommodationInfos && planData.accommodationInfos.length > 0) {
+        serverData.accommodationInfos = planData.accommodationInfos;
+        console.log('[API] 다중 숙박편 정보 포함:', serverData.accommodationInfos);
+      }
+
+      // 다중 항공편 정보가 있으면 추가
+      if (planData.flightInfos && planData.flightInfos.length > 0) {
+        serverData.flightInfos = planData.flightInfos;
+        console.log('[API] 다중 항공편 정보 포함:', serverData.flightInfos);
+      }
+
+      // 총 개수 정보가 있으면 추가
+      if (planData.totalAccommodations !== undefined) {
+        serverData.totalAccommodations = planData.totalAccommodations;
+      }
+
+      if (planData.totalFlights !== undefined) {
+        serverData.totalFlights = planData.totalFlights;
+      }
+
+      // 공유 이메일 정보가 있으면 추가
+      if (planData.shared_email !== undefined) {
+        serverData.shared_email = planData.shared_email;
+      }
+
+      // 하위 호환성: 단일 숙소 정보가 있으면 추가 (기존 코드 지원)
       if (planData.accommodationInfo) {
         serverData.accommodationInfo = planData.accommodationInfo;
-        console.log('[API] 숙소 정보 포함:', serverData.accommodationInfo);
+        console.log('[API] 단일 숙소 정보 포함:', serverData.accommodationInfo);
       }
       
       console.log('[API] 변환된 서버 데이터:', serverData);
@@ -256,12 +277,31 @@ export const travelApi = {
         }
       }
 
-      if (updateData.flightInfo) {
+      // 다중 항공편 정보 처리
+      if (updateData.flightInfos && updateData.flightInfos.length > 0) {
+        serverData.flightInfos = updateData.flightInfos;
+        console.log('[API] 다중 항공편 정보 포함:', serverData.flightInfos);
+      } else if (updateData.flightInfo) {
+        // 하위 호환성: 단일 항공편 정보
         serverData.flightInfo = updateData.flightInfo;
       }
 
-      if (updateData.accommodationInfo) {
+      // 다중 숙박편 정보 처리
+      if (updateData.accommodationInfos && updateData.accommodationInfos.length > 0) {
+        serverData.accommodationInfos = updateData.accommodationInfos;
+        console.log('[API] 다중 숙박편 정보 포함:', serverData.accommodationInfos);
+      } else if (updateData.accommodationInfo) {
+        // 하위 호환성: 단일 숙박편 정보
         serverData.accommodationInfo = updateData.accommodationInfo;
+      }
+
+      // 총 개수 정보 처리
+      if (updateData.totalFlights !== undefined) {
+        serverData.totalFlights = updateData.totalFlights;
+      }
+
+      if (updateData.totalAccommodations !== undefined) {
+        serverData.totalAccommodations = updateData.totalAccommodations;
       }
 
       if (updateData.shared_email !== undefined) {

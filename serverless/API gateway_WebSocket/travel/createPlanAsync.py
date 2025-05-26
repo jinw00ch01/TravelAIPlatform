@@ -124,12 +124,38 @@ def lambda_handler(event, context):
             end_date = request_data.get('endDate')
             adults = request_data.get('adults', 1)
             children = request_data.get('children', 0)
-            flight_info = request_data.get('flightInfo', None)
-            accommodation_info = request_data.get('accommodationInfo', None)
+            
+            # 다중 항공편/숙박편 지원 (하위 호환성 유지)
+            flight_info = request_data.get('flightInfo', None)  # 단일 항공편 (하위 호환성)
+            flight_infos = request_data.get('flightInfos', None)  # 다중 항공편 (새로운 방식)
+            accommodation_info = request_data.get('accommodationInfo', None)  # 단일 숙박편 (하위 호환성)
+            accommodation_infos = request_data.get('accommodationInfos', None)  # 다중 숙박편 (새로운 방식)
+            
+            # 다중 데이터가 있으면 우선 사용, 없으면 단일 데이터 사용
+            if flight_infos and len(flight_infos) > 0:
+                flights_to_process = flight_infos
+                print(f"다중 항공편 모드: {len(flight_infos)}개 항공편 처리 ({connection_id})")
+            elif flight_info:
+                flights_to_process = [flight_info]
+                print(f"단일 항공편 모드: 1개 항공편 처리 ({connection_id})")
+            else:
+                flights_to_process = []
+                print(f"항공편 없음 ({connection_id})")
+            
+            if accommodation_infos and len(accommodation_infos) > 0:
+                accommodations_to_process = accommodation_infos
+                print(f"다중 숙박편 모드: {len(accommodation_infos)}개 숙박편 처리 ({connection_id})")
+            elif accommodation_info:
+                accommodations_to_process = [accommodation_info]
+                print(f"단일 숙박편 모드: 1개 숙박편 처리 ({connection_id})")
+            else:
+                accommodations_to_process = []
+                print(f"숙박편 없음 ({connection_id})")
             
             is_round_trip = False # 기본값
 
             print(f"요청 파라미터 ({connection_id}): query={query_text}, start_date={start_date}, end_date={end_date}, adults={adults}, children={children}")
+            print(f"처리할 항공편 수: {len(flights_to_process)}, 처리할 숙박편 수: {len(accommodations_to_process)} ({connection_id})")
 
             # Geo 정보 기본값 초기화
             out_arrival_geo_lat = None
@@ -140,11 +166,17 @@ def lambda_handler(event, context):
             # 프롬프트 구성 시작
             prompt_text = ""
 
-            # 항공편 정보 처리
-            if flight_info:
-                print(f"항공편 정보 처리 중 ({connection_id})")
-                if 'itineraries' in flight_info:
-                    is_round_trip = len(flight_info.get('itineraries', [])) > 1
+            # 다중 항공편 정보 처리
+            if flights_to_process:
+                print(f"항공편 정보 처리 중 ({connection_id}): {len(flights_to_process)}개")
+                
+                # 왕복편 여부 확인 (첫 번째 항공편 기준)
+                if flights_to_process[0] and 'itineraries' in flights_to_process[0]:
+                    is_round_trip = len(flights_to_process[0].get('itineraries', [])) > 1
+                
+                if is_round_trip and len(flights_to_process) == 1:
+                    # 단일 왕복편 처리 (기존 로직 유지)
+                    flight_info = flights_to_process[0]
                     first_itinerary = flight_info['itineraries'][0]
                     first_segment = first_itinerary['segments'][0]
                     last_segment = first_itinerary['segments'][-1]
@@ -164,7 +196,7 @@ def lambda_handler(event, context):
                     prompt_text += f"<항공편 정보>\n출발지: {origin_code}\n도착지: {destination_code}\n출발 시간: {departure_time}\n도착 시간: {arrival_time}\n도착 공항 이름: {arrival_airport_name} (공항 코드는 {destination_code})\n도착 공항 위도/경도: {out_arrival_geo_lat or 'Unknown'}/{out_arrival_geo_lng or 'Unknown'}\n\n*** 중요: 첫날 첫 번째 일정은 반드시 <항공편 정보>의 '도착지' 공항에 '도착 시간'에 도착하는 것으로 생성하고, 해당 공항의 이름, 위도, 경도를 `schedules`에 포함하세요. ***\n\n"
                     
                     # 복귀 항공편 정보
-                    if is_round_trip and len(flight_info['itineraries']) > 1:
+                    if len(flight_info['itineraries']) > 1:
                         return_itinerary = flight_info['itineraries'][1]
                         return_first_segment = return_itinerary['segments'][0]
                         return_last_segment = return_itinerary['segments'][-1]
@@ -180,16 +212,128 @@ def lambda_handler(event, context):
                         departure_airport_name = departure_airport_info.get('koreanName', destination_code)
                         
                         prompt_text += f"<복귀 항공편 정보>\n출발지: {destination_code}\n도착지: {origin_code}\n출발 시간: {return_departure_time}\n출발 공항 이름: {departure_airport_name} (공항 코드는 {destination_code})\n출발 공항 위도/경도: {in_depart_geo_lat or 'Unknown'}/{in_depart_geo_lng or 'Unknown'}\n도착 시간: {return_arrival_time}\n\n*** 중요: 마지막 날 마지막 일정은 복귀 항공편 출발 시간({return_departure_time}) 최소 2시간 전에 해당 공항({departure_airport_name})에서 출발 준비를 마치는 것으로 생성하세요. 모든 시간은 해당 공항의 현지 시간대입니다.***\n\n"
-
-            # 숙박 정보 처리
-            if accommodation_info:
-                print(f"숙박 정보 처리 중 ({connection_id})")
-                hotel = accommodation_info.get('hotel', {})
-                room = accommodation_info.get('room', {})
-                hotel_name = hotel.get('hotel_name_trans') or hotel.get('hotel_name') or hotel.get('name') or 'Unknown Hotel'
-                room_name = room.get('name', 'Standard Room')
                 
-                prompt_text += f"<숙박 정보>\n호텔명: {hotel_name}\n객실 타입: {room_name}\n체크인: {accommodation_info.get('checkIn', start_date)}\n체크아웃: {accommodation_info.get('checkOut', end_date)}\n주소: {hotel.get('address', '정보 없음')}\n\n***  중요: 첫날 일정에 호텔 체크인을 포함하고, 매일 일정은 호텔에서 시작하여 호텔로 돌아오는 구조로 작성하세요. 마지막 날 일정은 호텔 체크아웃 이후, 복귀 항공편 출발 공항으로 이동하는 루트를 포함해야 합니다. 모든 시간은 호텔 위치의 현지 시간대입니다. ***\n\n"
+                else:
+                    # 다중 편도 항공편 처리 (새로운 로직)
+                    prompt_text += f"<다중 항공편 정보>\n총 {len(flights_to_process)}개의 편도 항공편이 있습니다.\n\n"
+                    
+                    for i, flight in enumerate(flights_to_process):
+                        if 'itineraries' in flight and len(flight['itineraries']) > 0:
+                            itinerary = flight['itineraries'][0]  # 편도이므로 첫 번째 itinerary만
+                            first_segment = itinerary['segments'][0]
+                            last_segment = itinerary['segments'][-1]
+                            origin_code = first_segment['departure']['iataCode']
+                            destination_code = last_segment['arrival']['iataCode']
+                            departure_date = first_segment['departure']['at']
+                            departure_time = departure_date.split('T')[1][:5] if 'T' in departure_date else departure_date
+                            arrival_date = last_segment['arrival']['at']
+                            arrival_time = arrival_date.split('T')[1][:5] if 'T' in arrival_date else arrival_date
+                            
+                            # 공항 정보 추출
+                            departure_airport_info = first_segment.get('departure', {}).get('airportInfo', {})
+                            departure_airport_name = departure_airport_info.get('koreanName', origin_code)
+                            arrival_airport_info = last_segment.get('arrival', {}).get('airportInfo', {})
+                            arrival_airport_name = arrival_airport_info.get('koreanName', destination_code)
+                            
+                            # 위경도 정보
+                            departure_geo_lat = first_segment.get('departure', {}).get('geoCode', {}).get('latitude')
+                            departure_geo_lng = first_segment.get('departure', {}).get('geoCode', {}).get('longitude')
+                            arrival_geo_lat = last_segment.get('arrival', {}).get('geoCode', {}).get('latitude')
+                            arrival_geo_lng = last_segment.get('arrival', {}).get('geoCode', {}).get('longitude')
+                            
+                            # 첫 번째 항공편인 경우
+                            if i == 0:
+                                prompt_text += f"항공편 {i+1} (출국편): {origin_code}({departure_airport_name}) -> {destination_code}({arrival_airport_name})\n"
+                                prompt_text += f"출발: {departure_time}, 도착: {arrival_time}\n"
+                                prompt_text += f"도착 공항 위도/경도: {arrival_geo_lat or 'Unknown'}/{arrival_geo_lng or 'Unknown'}\n"
+                                prompt_text += f"*** 중요: 첫날 첫 번째 일정은 반드시 {arrival_airport_name}({destination_code}) 공항에 {arrival_time}에 도착하는 것으로 생성하세요. ***\n\n"
+                                
+                                # 첫 번째 항공편의 도착지 정보를 전역 변수에 저장
+                                out_arrival_geo_lat = arrival_geo_lat
+                                out_arrival_geo_lng = arrival_geo_lng
+                            
+                            # 마지막 항공편인 경우 (귀국편)
+                            elif i == len(flights_to_process) - 1:
+                                prompt_text += f"항공편 {i+1} (귀국편): {origin_code}({departure_airport_name}) -> {destination_code}({arrival_airport_name})\n"
+                                prompt_text += f"출발: {departure_time}, 도착: {arrival_time}\n"
+                                prompt_text += f"출발 공항 위도/경도: {departure_geo_lat or 'Unknown'}/{departure_geo_lng or 'Unknown'}\n"
+                                prompt_text += f"*** 중요: 마지막 날 마지막 일정은 {departure_airport_name}({origin_code}) 공항에서 {departure_time} 최소 2시간 전에 출발 준비를 마치는 것으로 생성하세요. ***\n\n"
+                                
+                                # 마지막 항공편의 출발지 정보를 전역 변수에 저장
+                                in_depart_geo_lat = departure_geo_lat
+                                in_depart_geo_lng = departure_geo_lng
+                            
+                            # 중간 항공편인 경우
+                            else:
+                                prompt_text += f"항공편 {i+1} (중간편): {origin_code}({departure_airport_name}) -> {destination_code}({arrival_airport_name})\n"
+                                prompt_text += f"출발: {departure_time}, 도착: {arrival_time}\n"
+                                prompt_text += f"출발 공항 위도/경도: {departure_geo_lat or 'Unknown'}/{departure_geo_lng or 'Unknown'}\n"
+                                prompt_text += f"도착 공항 위도/경도: {arrival_geo_lat or 'Unknown'}/{arrival_geo_lng or 'Unknown'}\n"
+                                prompt_text += f"*** 중요: 해당 날짜에 {departure_airport_name}({origin_code}) 공항에서 출발하여 {arrival_airport_name}({destination_code}) 공항에 도착하는 일정을 포함하세요. ***\n\n"
+                    
+                    prompt_text += "*** 전체 항공편 연결 규칙: 각 항공편의 출발지 공항에 도착하는 일정과 도착지 공항에서 출발하는 일정을 반드시 포함하세요. ***\n\n"
+
+            # 다중 숙박 정보 처리
+            if accommodations_to_process:
+                print(f"숙박 정보 처리 중 ({connection_id}): {len(accommodations_to_process)}개")
+                
+                if len(accommodations_to_process) == 1:
+                    # 단일 숙박편 처리 (기존 로직 유지)
+                    accommodation_info = accommodations_to_process[0]
+                    hotel = accommodation_info.get('hotel', {})
+                    room = accommodation_info.get('room', {})
+                    hotel_name = hotel.get('hotel_name_trans') or hotel.get('hotel_name') or hotel.get('name') or 'Unknown Hotel'
+                    room_name = room.get('name', 'Standard Room')
+                    
+                    prompt_text += f"<숙박 정보>\n호텔명: {hotel_name}\n객실 타입: {room_name}\n체크인: {accommodation_info.get('checkIn', start_date)}\n체크아웃: {accommodation_info.get('checkOut', end_date)}\n주소: {hotel.get('address', '정보 없음')}\n\n***  중요: 첫날 일정에 호텔 체크인을 포함하고, 매일 일정은 호텔에서 시작하여 호텔로 돌아오는 구조로 작성하세요. 마지막 날 일정은 호텔 체크아웃 이후, 복귀 항공편 출발 공항으로 이동하는 루트를 포함해야 합니다. 모든 시간은 호텔 위치의 현지 시간대입니다. ***\n\n"
+                
+                else:
+                    # 다중 숙박편 처리 (새로운 로직)
+                    prompt_text += f"<다중 숙박 정보>\n총 {len(accommodations_to_process)}개의 숙박편이 있습니다.\n\n"
+                    
+                    for i, accommodation in enumerate(accommodations_to_process):
+                        hotel = accommodation.get('hotel', {})
+                        room = accommodation.get('room', {})
+                        hotel_name = hotel.get('hotel_name_trans') or hotel.get('hotel_name') or hotel.get('name') or f'Unknown Hotel {i+1}'
+                        room_name = room.get('name', 'Standard Room')
+                        check_in = accommodation.get('checkIn', start_date)
+                        check_out = accommodation.get('checkOut', end_date)
+                        hotel_address = hotel.get('address', '정보 없음')
+                        
+                        # 체크인/체크아웃 날짜 포맷팅
+                        if isinstance(check_in, str):
+                            check_in_date = check_in
+                        else:
+                            check_in_date = check_in.strftime('%Y-%m-%d') if check_in else start_date
+                        
+                        if isinstance(check_out, str):
+                            check_out_date = check_out
+                        else:
+                            check_out_date = check_out.strftime('%Y-%m-%d') if check_out else end_date
+                        
+                        prompt_text += f"숙박편 {i+1}: {hotel_name}\n"
+                        prompt_text += f"객실 타입: {room_name}\n"
+                        prompt_text += f"체크인: {check_in_date}\n"
+                        prompt_text += f"체크아웃: {check_out_date}\n"
+                        prompt_text += f"주소: {hotel_address}\n"
+                        
+                        # 첫 번째 숙박편인 경우
+                        if i == 0:
+                            prompt_text += f"*** 중요: 첫날 일정에 {hotel_name} 체크인을 포함하세요. ***\n"
+                        
+                        # 마지막 숙박편인 경우
+                        if i == len(accommodations_to_process) - 1:
+                            prompt_text += f"*** 중요: 마지막 날 일정은 {hotel_name} 체크아웃 이후, 복귀 항공편 출발 공항으로 이동하는 루트를 포함하세요. ***\n"
+                        
+                        # 중간 숙박편인 경우
+                        if i > 0 and i < len(accommodations_to_process) - 1:
+                            prev_accommodation = accommodations_to_process[i-1]
+                            prev_hotel_name = prev_accommodation.get('hotel', {}).get('hotel_name_trans') or prev_accommodation.get('hotel', {}).get('hotel_name') or f'이전 호텔'
+                            prompt_text += f"*** 중요: {prev_hotel_name} 체크아웃 후 {hotel_name}으로 이동하여 체크인하는 일정을 포함하세요. ***\n"
+                        
+                        prompt_text += "\n"
+                    
+                    prompt_text += "*** 전체 숙박편 연결 규칙: 각 숙박편에서 체크인/체크아웃 일정을 포함하고, 매일 일정은 해당 숙박편에서 시작하여 돌아오는 구조로 작성하세요. 숙박편 간 이동 시에는 체크아웃 후 다음 숙박편으로 이동하는 일정을 포함하세요. ***\n\n"
 
             # 메인 요구사항 추가
             prompt_text += f"""
@@ -235,7 +379,13 @@ JSON 예시
                 raise Exception("환경변수 'GEMINI_API_KEY'가 설정되지 않았습니다.")
             
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-            payload = {"contents": [{"parts": [{"text": prompt_text}]}], "generationConfig": {"temperature": 0.3}}
+            payload = {
+                "contents": [{"parts": [{"text": prompt_text}]}], 
+                "generationConfig": {
+                    "temperature": 0.3,
+                    "maxOutputTokens": 8192  # 출력 토큰 제한을 8192로 증가 (기본값보다 높게 설정)
+                }
+            }
             headers = {"Content-Type": "application/json"}
 
             gemini_request_start_time = time.time()
@@ -299,14 +449,27 @@ JSON 예시
                 'plan_data': gemini_result,
             }
             
-            # 항공편 정보가 있으면 추가 (원본과 동일)
-            if flight_info:
-                save_item['flight_info'] = json.dumps(flight_info, cls=DecimalEncoder)
+            # 다중 항공편 정보 저장 (새로운 방식만 사용)
+            if flights_to_process:
                 save_item['is_round_trip'] = is_round_trip
+                
+                # 다중 항공편: flight_info_1, flight_info_2, ... 형태로 저장
+                for i, flight in enumerate(flights_to_process):
+                    save_item[f'flight_info_{i+1}'] = json.dumps(flight, cls=DecimalEncoder)
+                
+                # 총 항공편 개수 저장
+                save_item['total_flights'] = len(flights_to_process)
+                print(f"다중 항공편 저장 ({connection_id}): {len(flights_to_process)}개 항공편")
             
-            # 숙박 정보가 있으면 추가 (원본과 동일)
-            if accommodation_info:
-                save_item['accmo_info'] = json.dumps(accommodation_info, cls=DecimalEncoder)
+            # 다중 숙박 정보 저장 (새로운 방식만 사용)
+            if accommodations_to_process:
+                # 다중 숙박편: accmo_info_1, accmo_info_2, ... 형태로 저장
+                for i, accommodation in enumerate(accommodations_to_process):
+                    save_item[f'accmo_info_{i+1}'] = json.dumps(accommodation, cls=DecimalEncoder)
+                
+                # 총 숙박편 개수 저장
+                save_item['total_accommodations'] = len(accommodations_to_process)
+                print(f"다중 숙박편 저장 ({connection_id}): {len(accommodations_to_process)}개 숙박편")
 
             print("저장할 항목:", json.dumps(save_item, cls=DecimalEncoder))
             

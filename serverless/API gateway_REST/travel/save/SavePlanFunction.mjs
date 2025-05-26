@@ -10,7 +10,7 @@
  */
 
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, PutCommand, UpdateCommand, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, PutCommand, UpdateCommand, QueryCommand, GetCommand, DeleteCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import jwt from "jsonwebtoken";
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || "ap-northeast-2" });
@@ -208,196 +208,254 @@ export const handler = async (event) => {
 async function handleCreatePlan(userEmail, body) {
   console.log("새로운 계획 저장 처리 시작");
   
-  // paid_plan 숫자 처리
-  let paidPlan = 0;
-  if (typeof body.paid_plan === 'number') {
-    paidPlan = body.paid_plan;
-    console.log("받은 paid_plan:", paidPlan);
-  } else {
-    console.log("paid_plan이 숫자가 아니거나 없음. 기본값 0 사용");
-  }
-  
-  // 데이터 구조 확인 - title과 data가 있는지 체크
-  let title = "기본 여행 계획", data = {};
-  
-  if (body.title && body.data) {
-    title = body.title;
-    data = body.data;
-    console.log("정상 구조 - title, data 필드 발견");
-  } else if (body.plans && body.name) {
-    // 이전 코드 호환성 유지
-    title = body.name;
-    data = body.plans;
-    console.log("이전 구조 - plans, name 필드 발견. 변환 완료");
-  } else {
-    console.error("경고: 필수 필드(title/data 또는 name/plans)가 없습니다");
-    console.log("사용 가능한 필드:", Object.keys(body));
-    
-    // 테스트 데이터 생성 (개발 모드에서만)
-    if (DEV_MODE) {
-      title = "테스트 여행 계획";
-      data = { 1: { title: "1일차", schedules: [] } };
-      console.log("개발 모드: 테스트 데이터 사용");
+    // paid_plan 숫자 처리
+    let paidPlan = 0;
+    if (typeof body.paid_plan === 'number') {
+      paidPlan = body.paid_plan;
+      console.log("받은 paid_plan:", paidPlan);
     } else {
+      console.log("paid_plan이 숫자가 아니거나 없음. 기본값 0 사용");
+    }
+
+  // 데이터 구조 확인 - title과 data가 있는지 체크
+    let title = "기본 여행 계획", data = {};
+    
+    if (body.title && body.data) {
+      title = body.title;
+      data = body.data;
+      console.log("정상 구조 - title, data 필드 발견");
+    } else if (body.plans && body.name) {
+      // 이전 코드 호환성 유지
+      title = body.name;
+      data = body.plans;
+      console.log("이전 구조 - plans, name 필드 발견. 변환 완료");
+    } else {
+      console.error("경고: 필수 필드(title/data 또는 name/plans)가 없습니다");
+      console.log("사용 가능한 필드:", Object.keys(body));
+      
+      // 테스트 데이터 생성 (개발 모드에서만)
+      if (DEV_MODE) {
+        title = "테스트 여행 계획";
+        data = { 1: { title: "1일차", schedules: [] } };
+        console.log("개발 모드: 테스트 데이터 사용");
+      } else {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ 
+            success: false, 
+            message: "필수 필드가 누락되었습니다. title과 data(또는 name과 plans)가 필요합니다." 
+          })
+        };
+      }
+    }
+    
+    console.log("처리할 데이터:", { title, dataLength: data ? Object.keys(data).length : 0 });
+
+    const now = new Date().toISOString();
+
+  // 현재 사용자의 plan 개수를 조회
+    const queryCmd = new QueryCommand({
+      TableName: SAVED_PLANS_TABLE,
+      KeyConditionExpression: "user_id = :uid",
+      ExpressionAttributeValues: {
+        ":uid": userEmail
+      }
+    });
+
+    console.log("쿼리 명령 생성됨:", JSON.stringify(queryCmd));
+    
+    try {
+      const queryResult = await docClient.send(queryCmd);
+      console.log("쿼리 결과:", JSON.stringify(queryResult));      
+      
+      function generateTimeBased8DigitId() {
+        const now = Date.now(); // 예: 1715947533457
+        const timePart = now % 10000000; // 마지막 7자리 (시간 순서)
+        const randomDigit = Math.floor(Math.random() * 10); // 0~9 하나 추가
+        return Number(`${timePart}${randomDigit}`); // 8자리 숫자
+      }
+      
+      const planId = generateTimeBased8DigitId();
+      console.log("생성할 planId:", planId);
+
+    // 데이터 준비 - 항공편과 일정 분리하기
+      // NaN, Infinity 등 직렬화 불가능한 값 처리
+      const cleanData = (obj) => {
+        if (obj === null || obj === undefined) return obj;
+        try {
+          return JSON.parse(JSON.stringify(obj, (key, value) => {
+            if (typeof value === 'number' && !Number.isFinite(value)) {
+              return null;
+            }
+            return value;
+          }));
+        } catch (e) {
+          console.warn("데이터 정리 중 오류:", e.message);
+          return obj;
+        }
+      };
+
+      // body.data에서 숙박편과 항공편 정보 추출
+      const extractedFlights = [];
+      const extractedAccommodations = [];
+      const cleanedScheduleData = {};
+      
+      console.log("데이터에서 숙박편과 항공편 정보 추출 시작");
+      
+      // 일정 데이터에서 숙박편과 항공편 정보 추출
+      if (typeof data === 'object' && !Array.isArray(data)) {
+        Object.keys(data).forEach(day => {
+          if (data[day].schedules && Array.isArray(data[day].schedules)) {
+            const cleanedSchedules = [];
+            
+            data[day].schedules.forEach(schedule => {
+              // 항공편 정보 추출
+              if (schedule.type === 'Flight_Departure' || schedule.type === 'Flight_Return' || schedule.type === 'Flight_OneWay') {
+                if (schedule.flightOfferDetails?.flightOfferData) {
+                  // 중복 방지를 위한 체크
+                  const isDuplicate = extractedFlights.some(flight => 
+                    flight.id === schedule.flightOfferDetails.flightOfferData.id
+                  );
+                  
+                  if (!isDuplicate) {
+                    extractedFlights.push(schedule.flightOfferDetails.flightOfferData);
+                    console.log(`${day}일차에서 항공편 추출:`, schedule.flightOfferDetails.flightOfferData.id);
+                  }
+                }
+              }
+              // 숙박편 정보 추출
+              else if (schedule.type === 'accommodation' && schedule.time === '체크인' && schedule.hotelDetails) {
+                // 중복 방지를 위한 체크
+                const isDuplicate = extractedAccommodations.some(acc => 
+                  acc.hotel?.hotel_id === schedule.hotelDetails.hotel?.hotel_id &&
+                  acc.checkIn === schedule.hotelDetails.checkIn
+                );
+                
+                if (!isDuplicate) {
+                  extractedAccommodations.push(schedule.hotelDetails);
+                  console.log(`${day}일차에서 숙박편 추출:`, schedule.hotelDetails.hotel?.hotel_name);
+                }
+              }
+              // 일반 일정은 그대로 유지 (숙박편과 항공편 제외)
+              else if (schedule.type !== 'accommodation' && 
+                       schedule.type !== 'Flight_Departure' && 
+                       schedule.type !== 'Flight_Return' && 
+                       schedule.type !== 'Flight_OneWay') {
+                // hotelDetails, flightOfferDetails 제거하고 저장
+                const { hotelDetails, flightOfferDetails, ...cleanSchedule } = schedule;
+                cleanedSchedules.push(cleanSchedule);
+              }
+            });
+            
+            // 일반 일정만 포함된 데이터 구성
+            cleanedScheduleData[day] = {
+              ...data[day],
+              schedules: cleanedSchedules
+            };
+          } else {
+            // schedules가 없는 경우 그대로 복사
+            cleanedScheduleData[day] = data[day];
+          }
+        });
+      }
+      
+      // 항공편 정보를 날짜 순으로 정렬
+      extractedFlights.sort((a, b) => {
+        const dateA = new Date(a.itineraries?.[0]?.segments?.[0]?.departure?.at || '1970-01-01');
+        const dateB = new Date(b.itineraries?.[0]?.segments?.[0]?.departure?.at || '1970-01-01');
+        return dateA.getTime() - dateB.getTime();
+      });
+      
+      // 숙박편 정보를 체크인 날짜 순으로 정렬
+      extractedAccommodations.sort((a, b) => {
+        const dateA = new Date(a.checkIn || '1970-01-01');
+        const dateB = new Date(b.checkIn || '1970-01-01');
+        return dateA.getTime() - dateB.getTime();
+      });
+      
+      console.log("추출된 항공편 개수:", extractedFlights.length);
+      console.log("추출된 숙박편 개수:", extractedAccommodations.length);
+      
+      // 프론트엔드에서 직접 전달된 정보와 추출된 정보 병합
+      const finalFlights = body.flightInfos && body.flightInfos.length > 0 ? body.flightInfos : extractedFlights;
+      const finalAccommodations = body.accommodationInfos && body.accommodationInfos.length > 0 ? body.accommodationInfos : extractedAccommodations;
+      
+      console.log("최종 사용할 항공편 정보:", finalFlights.length, "개");
+      console.log("최종 사용할 숙박편 정보:", finalAccommodations.length, "개");
+
+      // 다중 항공편 정보를 개별 컬럼으로 저장
+      const flightColumns = {};
+      finalFlights.forEach((flightInfo, index) => {
+        flightColumns[`flight_info_${index + 1}`] = JSON.stringify(cleanData(flightInfo));
+      });
+
+      // 다중 숙박편 정보를 개별 컬럼으로 저장
+      const accommodationColumns = {};
+      finalAccommodations.forEach((accommodationInfo, index) => {
+        accommodationColumns[`accmo_info_${index + 1}`] = JSON.stringify(cleanData(accommodationInfo));
+      });
+
+      const itemToSave = {
+        user_id: userEmail,
+        plan_id: planId,
+        name: title,
+        paid_plan: paidPlan,
+        // 일반 일정 데이터 (항공편, 숙박편 제외)
+        itinerary_schedules: JSON.stringify(cleanData(cleanedScheduleData)),
+        // 다중 항공편 정보 (flight_info_1, flight_info_2, ...)
+        ...flightColumns,
+        // 다중 숙박편 정보 (accmo_info_1, accmo_info_2, ...)
+        ...accommodationColumns,
+        // 총 개수 정보
+        total_flights: finalFlights.length,
+        total_accommodations: finalAccommodations.length,
+        // shared_email 필드 추가
+        shared_email: body.shared_email || null,
+        last_updated: now
+      };
+
+      console.log("DynamoDB에 저장할 최종 아이템 구조:", Object.keys(itemToSave));
+    console.log("저장될 shared_email 값:", itemToSave.shared_email);
+      
+      const putCmd = new PutCommand({
+        TableName: SAVED_PLANS_TABLE,
+        Item: itemToSave
+      });
+      
+      await docClient.send(putCmd);
+      console.log("DynamoDB 저장 완료.");
+
       return {
-        statusCode: 400,
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          success: true,
+          message: "여행 계획이 성공적으로 저장되었습니다.",
+          plan_id: planId
+        })
+      };
+    } catch (putError) {
+      console.error("데이터 저장 중 오류:", putError);
+      console.error("오류 세부 정보:", JSON.stringify({
+        code: putError.code,
+        name: putError.name,
+        message: putError.message,
+        requestId: putError.$metadata?.requestId,
+        cfId: putError.$metadata?.cfId
+      }));
+      
+      return {
+        statusCode: 500,
         headers,
         body: JSON.stringify({ 
-          success: false, 
-          message: "필수 필드가 누락되었습니다. title과 data(또는 name과 plans)가 필요합니다." 
+          success: false,
+          message: "데이터 저장 중 오류가 발생했습니다.",
+          error: putError.message,
+          errorCode: putError.code || putError.name
         })
       };
     }
-  }
-  
-  console.log("처리할 데이터:", { title, dataLength: data ? Object.keys(data).length : 0 });
-
-  const now = new Date().toISOString();
-
-  // 현재 사용자의 plan 개수를 조회
-  const queryCmd = new QueryCommand({
-    TableName: SAVED_PLANS_TABLE,
-    KeyConditionExpression: "user_id = :uid",
-    ExpressionAttributeValues: {
-      ":uid": userEmail
-    }
-  });
-
-  console.log("쿼리 명령 생성됨:", JSON.stringify(queryCmd));
-  
-  try {
-    const queryResult = await docClient.send(queryCmd);
-    console.log("쿼리 결과:", JSON.stringify(queryResult));      
-    
-    function generateTimeBased8DigitId() {
-      const now = Date.now(); // 예: 1715947533457
-      const timePart = now % 10000000; // 마지막 7자리 (시간 순서)
-      const randomDigit = Math.floor(Math.random() * 10); // 0~9 하나 추가
-      return Number(`${timePart}${randomDigit}`); // 8자리 숫자
-    }
-    
-    const planId = generateTimeBased8DigitId();
-    console.log("생성할 planId:", planId);
-
-    // 데이터 준비 - 항공편과 일정 분리하기
-    // NaN, Infinity 등 직렬화 불가능한 값 처리
-    const cleanData = (obj) => {
-      if (obj === null || obj === undefined) return obj;
-      try {
-        return JSON.parse(JSON.stringify(obj, (key, value) => {
-          if (typeof value === 'number' && !Number.isFinite(value)) {
-            return null;
-          }
-          return value;
-        }));
-      } catch (e) {
-        console.warn("데이터 정리 중 오류:", e.message);
-        return obj;
-      }
-    };
-
-    // 항공편 데이터 분리 및 처리
-    let flightDetails = [];
-    
-    // DynamoDB 형식인지 확인 - 배열 형태의 항공편 데이터인 경우
-    if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object') {
-      const keys = Object.keys(data[0]);
-      if (keys.length === 1 && keys[0] === 'M') {
-        console.log("DynamoDB 형식의 항공편 데이터 감지됨, 변환 시도...");
-        flightDetails = convertDynamoDBToJS(data);
-      } else {
-        // 일반 항공편 데이터
-        flightDetails = data;
-      }
-    } 
-    // 일정 데이터 내에서 항공편 정보가 있는 경우 (기존 구조)
-    else if (typeof data === 'object' && !Array.isArray(data)) {
-      // 일정 데이터의 경우 - 일자별 데이터에서 항공편 정보 추출
-      const schedules = [];
-      
-      Object.keys(data).forEach(day => {
-        if (data[day].schedules && Array.isArray(data[day].schedules)) {
-          data[day].schedules.forEach(schedule => {
-            if (schedule.type === 'Flight_Departure' || schedule.type === 'Flight_Return') {
-              // 항공편 정보 추출
-              flightDetails.push({
-                ...schedule,
-                day: parseInt(day, 10)
-              });
-            } else {
-              // 일반 일정 정보 추가
-              schedules.push({
-                ...schedule,
-                day: parseInt(day, 10)
-              });
-            }
-          });
-        }
-      });
-      
-      // 일정 데이터가 없는 경우 기존 데이터 그대로 사용
-      if (schedules.length === 0) {
-        console.log("일정 내 항공편 정보 추출 실패, 전체 데이터 저장");
-      }
-    }
-    
-    const itemToSave = {
-      user_id: userEmail,
-      plan_id: planId,
-      name: title,
-      paid_plan: paidPlan,
-      // 기존 추출된 flightDetails가 아니라, body.flightInfo를 우선 저장
-      flight_details: body.flightInfo && (Array.isArray(body.flightInfo) ? body.flightInfo.length > 0 : !!body.flightInfo)
-        ? JSON.stringify(body.flightInfo)
-        : JSON.stringify(cleanData(flightDetails)),
-      itinerary_schedules: JSON.stringify(cleanData(data)),
-      // 숙소 정보 저장 추가
-      accmo_info: body.accommodationInfo ? JSON.stringify(cleanData(body.accommodationInfo)) : null,
-      // shared_email 필드 추가
-      shared_email: body.shared_email || null,
-      last_updated: now
-    };
-
-    console.log("DynamoDB에 저장할 최종 아이템 구조:", Object.keys(itemToSave));
-    
-    const putCmd = new PutCommand({
-      TableName: SAVED_PLANS_TABLE,
-      Item: itemToSave
-    });
-    
-    await docClient.send(putCmd);
-    console.log("DynamoDB 저장 완료.");
-
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({
-        success: true,
-        message: "여행 계획이 성공적으로 저장되었습니다.",
-        plan_id: planId
-      })
-    };
-  } catch (putError) {
-    console.error("데이터 저장 중 오류:", putError);
-    console.error("오류 세부 정보:", JSON.stringify({
-      code: putError.code,
-      name: putError.name,
-      message: putError.message,
-      requestId: putError.$metadata?.requestId,
-      cfId: putError.$metadata?.cfId
-    }));
-    
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ 
-        success: false,
-        message: "데이터 저장 중 오류가 발생했습니다.",
-        error: putError.message,
-        errorCode: putError.code || putError.name
-      })
-    };
-  }
 }
 
 // 기존 계획 수정 함수
@@ -410,6 +468,7 @@ async function handleUpdatePlan(userEmail, body) {
 
   try {
     // 1. 기존 계획 존재 여부 및 권한 확인
+    console.log("소유권 확인 시도:", { userEmail, planId });
     const getCmd = new GetCommand({
       TableName: SAVED_PLANS_TABLE,
       Key: {
@@ -419,21 +478,75 @@ async function handleUpdatePlan(userEmail, body) {
     });
 
     const existingItem = await docClient.send(getCmd);
+    console.log("소유권 확인 결과:", existingItem.Item ? "소유자임" : "소유자 아님");
     
     if (!existingItem.Item) {
-      // 현재 사용자 소유가 아닌 경우, shared_email로 접근 권한 확인
-      const querySharedCmd = new QueryCommand({
+      // 현재 사용자 소유가 아닌 경우, scan을 사용하여 공유받은 계획인지 확인
+      console.log("소유자가 아님. scan으로 공유받은 계획 확인 중...");
+      
+      const sharedPlanQuery = new ScanCommand({
         TableName: SAVED_PLANS_TABLE,
-        FilterExpression: "plan_id = :pid AND (contains(shared_email, :email) OR shared_email = :email)",
+        FilterExpression: "plan_id = :pid AND attribute_exists(shared_email) AND shared_email <> :empty",
         ExpressionAttributeValues: {
           ":pid": planId,
-          ":email": userEmail
-        }
+          ":empty": ""
+        },
+        ProjectionExpression: "user_id, plan_id, shared_email"
       });
-
-      const sharedResult = await docClient.send(querySharedCmd);
       
-      if (!sharedResult.Items || sharedResult.Items.length === 0) {
+      console.log("scan 조회 시도:", {
+        planId: planId,
+        tableName: SAVED_PLANS_TABLE
+      });
+      
+      const sharedPlanResult = await docClient.send(sharedPlanQuery);
+      console.log("scan 조회 결과:", sharedPlanResult.Items?.length || 0, "개");
+      
+      let sharedResult = null;
+      if (sharedPlanResult.Items && sharedPlanResult.Items.length > 0) {
+        console.log("발견된 계획들:", JSON.stringify(sharedPlanResult.Items, null, 2));
+        
+        // shared_email 필드를 쉼표로 분리하여 정확히 일치하는지 확인
+        const matchingPlan = sharedPlanResult.Items.find(plan => {
+          if (!plan.shared_email) return false;
+          
+          // 자신이 소유한 계획은 제외
+          if (plan.user_id === userEmail) return false;
+          
+          const sharedEmails = plan.shared_email.split(',').map(email => email.trim());
+          const isShared = sharedEmails.includes(userEmail);
+          
+          if (isShared) {
+            console.log(`✅ 공유 계획 확인: ${plan.plan_id} - 소유자: ${plan.user_id}`);
+            console.log(`   공유된 이메일들: ${plan.shared_email}`);
+          }
+          
+          return isShared;
+        });
+        
+        if (matchingPlan) {
+          console.log("일치하는 공유 계획 발견:", JSON.stringify(matchingPlan, null, 2));
+          
+          // 원본 계획 조회
+          const originalPlanQuery = new GetCommand({
+            TableName: SAVED_PLANS_TABLE,
+            Key: {
+              user_id: matchingPlan.user_id,
+              plan_id: matchingPlan.plan_id
+            }
+          });
+          
+          const originalPlanResult = await docClient.send(originalPlanQuery);
+          if (originalPlanResult.Item) {
+            sharedResult = { Items: [originalPlanResult.Item] };
+            console.log("원본 계획 조회 성공");
+          }
+        } else {
+          console.log("현재 사용자와 일치하는 공유 계획 없음");
+        }
+      }
+      
+      if (!sharedResult || !sharedResult.Items || sharedResult.Items.length === 0) {
         return {
           statusCode: 404,
           headers,
@@ -444,12 +557,25 @@ async function handleUpdatePlan(userEmail, body) {
         };
       }
       
-      // shared_email로 접근하는 경우, 원래 소유자의 user_id 사용
+      // 공유받은 사용자가 shared_email을 수정하려고 하는 경우 차단
+      if (updateType === 'shared_email' || (body.shared_email !== undefined && updateType !== 'plan_data')) {
+        return {
+          statusCode: 403,
+          headers,
+          body: JSON.stringify({
+            success: false,
+            message: "공유 설정은 원래 소유자만 수정할 수 있습니다. 공유자에게 문의하세요.",
+            owner_email: sharedResult.Items[0].user_id
+          })
+        };
+      }
+      
+      // shared_email로 접근하는 경우, 원래 소유자의 user_id 사용 (계획 데이터만 수정 가능)
       const originalOwner = sharedResult.Items[0].user_id;
-      return await performUpdate(originalOwner, planId, body, updateType, now);
+      return await performUpdate(originalOwner, planId, body, updateType, now, true); // isSharedUser 플래그 추가
     } else {
       // 소유자가 직접 수정하는 경우
-      return await performUpdate(userEmail, planId, body, updateType, now);
+      return await performUpdate(userEmail, planId, body, updateType, now, false);
     }
     
   } catch (error) {
@@ -467,7 +593,10 @@ async function handleUpdatePlan(userEmail, body) {
 }
 
 // 실제 업데이트 수행 함수
-async function performUpdate(userId, planId, body, updateType, now) {
+async function performUpdate(userId, planId, body, updateType, now, isSharedUser = false) {
+  console.log("performUpdate 함수 시작:", { userId, planId, updateType, isSharedUser });
+  console.log("body.shared_email:", body.shared_email);
+  
   let updateExpression = "SET last_updated = :now";
   let expressionAttributeValues = { ":now": now };
   let expressionAttributeNames = {};
@@ -503,19 +632,52 @@ async function performUpdate(userId, planId, body, updateType, now) {
       expressionAttributeValues[":schedules"] = JSON.stringify(cleanData(body.data));
     }
     
-    if (body.flightInfo) {
+    // 다중 항공편 정보 처리
+    if (body.flightInfos && Array.isArray(body.flightInfos)) {
+      body.flightInfos.forEach((flightInfo, index) => {
+        const fieldName = `flight_info_${index + 1}`;
+        updateExpression += `, ${fieldName} = :${fieldName}`;
+        expressionAttributeValues[`:${fieldName}`] = JSON.stringify(cleanData(flightInfo));
+      });
+      
+      // 총 항공편 개수 업데이트
+      if (body.totalFlights !== undefined) {
+        updateExpression += ", total_flights = :totalFlights";
+        expressionAttributeValues[":totalFlights"] = body.totalFlights;
+      }
+    } else if (body.flightInfo) {
+      // 하위 호환성: 단일 항공편 정보
       updateExpression += ", flight_details = :flight";
       expressionAttributeValues[":flight"] = JSON.stringify(cleanData(body.flightInfo));
     }
     
-    if (body.accommodationInfo) {
+    // 다중 숙박편 정보 처리
+    if (body.accommodationInfos && Array.isArray(body.accommodationInfos)) {
+      body.accommodationInfos.forEach((accommodationInfo, index) => {
+        const fieldName = `accmo_info_${index + 1}`;
+        updateExpression += `, ${fieldName} = :${fieldName}`;
+        expressionAttributeValues[`:${fieldName}`] = JSON.stringify(cleanData(accommodationInfo));
+      });
+      
+      // 총 숙박편 개수 업데이트
+      if (body.totalAccommodations !== undefined) {
+        updateExpression += ", total_accommodations = :totalAccommodations";
+        expressionAttributeValues[":totalAccommodations"] = body.totalAccommodations;
+      }
+    } else if (body.accommodationInfo) {
+      // 하위 호환성: 단일 숙박편 정보
       updateExpression += ", accmo_info = :accmo";
       expressionAttributeValues[":accmo"] = JSON.stringify(cleanData(body.accommodationInfo));
     }
     
   } else if (updateType === 'shared_email') {
-    // 공유 이메일만 수정
+    // 공유 이메일만 수정 (공유받은 사용자는 수정 불가)
+    if (isSharedUser) {
+      throw new Error("공유받은 사용자는 공유 설정을 수정할 수 없습니다.");
+    }
+    
     console.log("shared_email 수정 모드");
+    console.log("업데이트할 shared_email 값:", body.shared_email);
     updateExpression += ", shared_email = :shared";
     expressionAttributeValues[":shared"] = body.shared_email || null;
     
@@ -540,19 +702,52 @@ async function performUpdate(userId, planId, body, updateType, now) {
       expressionAttributeValues[":schedules"] = JSON.stringify(cleanData(body.data));
     }
     
-    if (body.flightInfo) {
+    // 다중 항공편 정보 처리 (전체 수정 모드)
+    if (body.flightInfos && Array.isArray(body.flightInfos)) {
+      body.flightInfos.forEach((flightInfo, index) => {
+        const fieldName = `flight_info_${index + 1}`;
+        updateExpression += `, ${fieldName} = :${fieldName}`;
+        expressionAttributeValues[`:${fieldName}`] = JSON.stringify(cleanData(flightInfo));
+      });
+      
+      // 총 항공편 개수 업데이트
+      if (body.totalFlights !== undefined) {
+        updateExpression += ", total_flights = :totalFlights";
+        expressionAttributeValues[":totalFlights"] = body.totalFlights;
+      }
+    } else if (body.flightInfo) {
+      // 하위 호환성: 단일 항공편 정보
       updateExpression += ", flight_details = :flight";
       expressionAttributeValues[":flight"] = JSON.stringify(cleanData(body.flightInfo));
     }
     
-    if (body.accommodationInfo) {
+    // 다중 숙박편 정보 처리 (전체 수정 모드)
+    if (body.accommodationInfos && Array.isArray(body.accommodationInfos)) {
+      body.accommodationInfos.forEach((accommodationInfo, index) => {
+        const fieldName = `accmo_info_${index + 1}`;
+        updateExpression += `, ${fieldName} = :${fieldName}`;
+        expressionAttributeValues[`:${fieldName}`] = JSON.stringify(cleanData(accommodationInfo));
+      });
+      
+      // 총 숙박편 개수 업데이트
+      if (body.totalAccommodations !== undefined) {
+        updateExpression += ", total_accommodations = :totalAccommodations";
+        expressionAttributeValues[":totalAccommodations"] = body.totalAccommodations;
+      }
+    } else if (body.accommodationInfo) {
+      // 하위 호환성: 단일 숙박편 정보
       updateExpression += ", accmo_info = :accmo";
       expressionAttributeValues[":accmo"] = JSON.stringify(cleanData(body.accommodationInfo));
     }
     
     if (body.shared_email !== undefined) {
-      updateExpression += ", shared_email = :shared";
-      expressionAttributeValues[":shared"] = body.shared_email || null;
+      // 공유받은 사용자는 공유 설정 수정 불가
+      if (isSharedUser) {
+        console.log("공유받은 사용자가 shared_email 수정 시도 - 무시됨");
+      } else {
+        updateExpression += ", shared_email = :shared";
+        expressionAttributeValues[":shared"] = body.shared_email || null;
+      }
     }
     
     if (body.paid_plan !== undefined) {
