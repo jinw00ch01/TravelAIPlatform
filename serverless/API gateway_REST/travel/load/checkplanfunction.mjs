@@ -187,6 +187,36 @@ async function handleSinglePlanGet(userEmail, planId) {
     console.log("plan_id 필드 값:", plan.plan_id);
     console.log("shared_email 필드 값:", plan.shared_email);
     
+    // saved-plans 테이블에서 다중 항공편/숙박편 정보 추출
+    const flightInfos = [];
+    const accommodationInfos = [];
+    
+    // flight_info_1, flight_info_2, ... 추출
+    Object.keys(plan).forEach(key => {
+      if (key.startsWith('flight_info_') && key.match(/flight_info_\d+$/)) {
+        try {
+          const flightData = typeof plan[key] === 'string' ? JSON.parse(plan[key]) : plan[key];
+          flightInfos.push(flightData);
+        } catch (error) {
+          console.error(`항공편 정보 파싱 오류 (${key}):`, error);
+        }
+      }
+    });
+    
+    // accmo_info_1, accmo_info_2, ... 추출
+    Object.keys(plan).forEach(key => {
+      if (key.startsWith('accmo_info_') && key.match(/accmo_info_\d+$/)) {
+        try {
+          const accommodationData = typeof plan[key] === 'string' ? JSON.parse(plan[key]) : plan[key];
+          accommodationInfos.push(accommodationData);
+        } catch (error) {
+          console.error(`숙박편 정보 파싱 오류 (${key}):`, error);
+        }
+      }
+    });
+    
+    console.log(`saved-plans에서 추출: 항공편 ${flightInfos.length}개, 숙박편 ${accommodationInfos.length}개`);
+
     return {
       statusCode: 200,
       headers,
@@ -194,7 +224,14 @@ async function handleSinglePlanGet(userEmail, planId) {
         success: true,
         plan: plan,
         single_request: true,
-        is_shared_with_me: false
+        is_shared_with_me: false,
+        // 다중 항공편/숙박편 정보 추가
+        flightInfos: flightInfos,
+        accommodationInfos: accommodationInfos,
+        // 하위 호환성을 위한 단일 정보
+        flightInfo: flightInfos.length > 0 ? flightInfos[0] : null,
+        accommodationInfo: accommodationInfos.length > 0 ? accommodationInfos[0] : null,
+        isRoundTrip: flightInfos.length > 0 && flightInfos[0].itineraries && flightInfos[0].itineraries.length > 1
       })
     };
   }
@@ -239,6 +276,36 @@ async function handleSinglePlanGet(userEmail, planId) {
       console.log("원래 소유자:", matchingPlan.user_id);
       console.log("shared_email:", matchingPlan.shared_email);
       
+      // 공유된 계획에서도 다중 항공편/숙박편 정보 추출
+      const sharedFlightInfos = [];
+      const sharedAccommodationInfos = [];
+      
+      // flight_info_1, flight_info_2, ... 추출
+      Object.keys(matchingPlan).forEach(key => {
+        if (key.startsWith('flight_info_') && key.match(/flight_info_\d+$/)) {
+          try {
+            const flightData = typeof matchingPlan[key] === 'string' ? JSON.parse(matchingPlan[key]) : matchingPlan[key];
+            sharedFlightInfos.push(flightData);
+          } catch (error) {
+            console.error(`공유 계획 항공편 정보 파싱 오류 (${key}):`, error);
+          }
+        }
+      });
+      
+      // accmo_info_1, accmo_info_2, ... 추출
+      Object.keys(matchingPlan).forEach(key => {
+        if (key.startsWith('accmo_info_') && key.match(/accmo_info_\d+$/)) {
+          try {
+            const accommodationData = typeof matchingPlan[key] === 'string' ? JSON.parse(matchingPlan[key]) : matchingPlan[key];
+            sharedAccommodationInfos.push(accommodationData);
+          } catch (error) {
+            console.error(`공유 계획 숙박편 정보 파싱 오류 (${key}):`, error);
+          }
+        }
+      });
+      
+      console.log(`공유 계획에서 추출: 항공편 ${sharedFlightInfos.length}개, 숙박편 ${sharedAccommodationInfos.length}개`);
+      
       return {
         statusCode: 200,
         headers,
@@ -247,7 +314,14 @@ async function handleSinglePlanGet(userEmail, planId) {
           plan: matchingPlan,
           single_request: true,
           is_shared_with_me: true,
-          original_owner: matchingPlan.user_id
+          original_owner: matchingPlan.user_id,
+          // 다중 항공편/숙박편 정보 추가
+          flightInfos: sharedFlightInfos,
+          accommodationInfos: sharedAccommodationInfos,
+          // 하위 호환성을 위한 단일 정보
+          flightInfo: sharedFlightInfos.length > 0 ? sharedFlightInfos[0] : null,
+          accommodationInfo: sharedAccommodationInfos.length > 0 ? sharedAccommodationInfos[0] : null,
+          isRoundTrip: sharedFlightInfos.length > 0 && sharedFlightInfos[0].itineraries && sharedFlightInfos[0].itineraries.length > 1
         })
       };
     }

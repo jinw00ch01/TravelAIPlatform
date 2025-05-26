@@ -296,65 +296,122 @@ async function handleCreatePlan(userEmail, body) {
         }
       };
 
-      // 항공편 데이터 분리 및 처리
-      let flightDetails = [];
+      // body.data에서 숙박편과 항공편 정보 추출
+      const extractedFlights = [];
+      const extractedAccommodations = [];
+      const cleanedScheduleData = {};
       
-      // DynamoDB 형식인지 확인 - 배열 형태의 항공편 데이터인 경우
-      if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object') {
-        const keys = Object.keys(data[0]);
-        if (keys.length === 1 && keys[0] === 'M') {
-          console.log("DynamoDB 형식의 항공편 데이터 감지됨, 변환 시도...");
-          flightDetails = convertDynamoDBToJS(data);
-        } else {
-          // 일반 항공편 데이터
-          flightDetails = data;
-        }
-      } 
-      // 일정 데이터 내에서 항공편 정보가 있는 경우 (기존 구조)
-      else if (typeof data === 'object' && !Array.isArray(data)) {
-        // 일정 데이터의 경우 - 일자별 데이터에서 항공편 정보 추출
-        const schedules = [];
-        
+      console.log("데이터에서 숙박편과 항공편 정보 추출 시작");
+      
+      // 일정 데이터에서 숙박편과 항공편 정보 추출
+      if (typeof data === 'object' && !Array.isArray(data)) {
         Object.keys(data).forEach(day => {
           if (data[day].schedules && Array.isArray(data[day].schedules)) {
+            const cleanedSchedules = [];
+            
             data[day].schedules.forEach(schedule => {
-              if (schedule.type === 'Flight_Departure' || schedule.type === 'Flight_Return') {
-                // 항공편 정보 추출
-                flightDetails.push({
-                  ...schedule,
-                  day: parseInt(day, 10)
-                });
-              } else {
-                // 일반 일정 정보 추가
-                schedules.push({
-                  ...schedule,
-                  day: parseInt(day, 10)
-                });
+              // 항공편 정보 추출
+              if (schedule.type === 'Flight_Departure' || schedule.type === 'Flight_Return' || schedule.type === 'Flight_OneWay') {
+                if (schedule.flightOfferDetails?.flightOfferData) {
+                  // 중복 방지를 위한 체크
+                  const isDuplicate = extractedFlights.some(flight => 
+                    flight.id === schedule.flightOfferDetails.flightOfferData.id
+                  );
+                  
+                  if (!isDuplicate) {
+                    extractedFlights.push(schedule.flightOfferDetails.flightOfferData);
+                    console.log(`${day}일차에서 항공편 추출:`, schedule.flightOfferDetails.flightOfferData.id);
+                  }
+                }
+              }
+              // 숙박편 정보 추출
+              else if (schedule.type === 'accommodation' && schedule.time === '체크인' && schedule.hotelDetails) {
+                // 중복 방지를 위한 체크
+                const isDuplicate = extractedAccommodations.some(acc => 
+                  acc.hotel?.hotel_id === schedule.hotelDetails.hotel?.hotel_id &&
+                  acc.checkIn === schedule.hotelDetails.checkIn
+                );
+                
+                if (!isDuplicate) {
+                  extractedAccommodations.push(schedule.hotelDetails);
+                  console.log(`${day}일차에서 숙박편 추출:`, schedule.hotelDetails.hotel?.hotel_name);
+                }
+              }
+              // 일반 일정은 그대로 유지 (숙박편과 항공편 제외)
+              else if (schedule.type !== 'accommodation' && 
+                       schedule.type !== 'Flight_Departure' && 
+                       schedule.type !== 'Flight_Return' && 
+                       schedule.type !== 'Flight_OneWay') {
+                // hotelDetails, flightOfferDetails 제거하고 저장
+                const { hotelDetails, flightOfferDetails, ...cleanSchedule } = schedule;
+                cleanedSchedules.push(cleanSchedule);
               }
             });
+            
+            // 일반 일정만 포함된 데이터 구성
+            cleanedScheduleData[day] = {
+              ...data[day],
+              schedules: cleanedSchedules
+            };
+          } else {
+            // schedules가 없는 경우 그대로 복사
+            cleanedScheduleData[day] = data[day];
           }
         });
-        
-        // 일정 데이터가 없는 경우 기존 데이터 그대로 사용
-        if (schedules.length === 0) {
-          console.log("일정 내 항공편 정보 추출 실패, 전체 데이터 저장");
-        }
       }
       
+      // 항공편 정보를 날짜 순으로 정렬
+      extractedFlights.sort((a, b) => {
+        const dateA = new Date(a.itineraries?.[0]?.segments?.[0]?.departure?.at || '1970-01-01');
+        const dateB = new Date(b.itineraries?.[0]?.segments?.[0]?.departure?.at || '1970-01-01');
+        return dateA.getTime() - dateB.getTime();
+      });
+      
+      // 숙박편 정보를 체크인 날짜 순으로 정렬
+      extractedAccommodations.sort((a, b) => {
+        const dateA = new Date(a.checkIn || '1970-01-01');
+        const dateB = new Date(b.checkIn || '1970-01-01');
+        return dateA.getTime() - dateB.getTime();
+      });
+      
+      console.log("추출된 항공편 개수:", extractedFlights.length);
+      console.log("추출된 숙박편 개수:", extractedAccommodations.length);
+      
+      // 프론트엔드에서 직접 전달된 정보와 추출된 정보 병합
+      const finalFlights = body.flightInfos && body.flightInfos.length > 0 ? body.flightInfos : extractedFlights;
+      const finalAccommodations = body.accommodationInfos && body.accommodationInfos.length > 0 ? body.accommodationInfos : extractedAccommodations;
+      
+      console.log("최종 사용할 항공편 정보:", finalFlights.length, "개");
+      console.log("최종 사용할 숙박편 정보:", finalAccommodations.length, "개");
+
+      // 다중 항공편 정보를 개별 컬럼으로 저장
+      const flightColumns = {};
+      finalFlights.forEach((flightInfo, index) => {
+        flightColumns[`flight_info_${index + 1}`] = JSON.stringify(cleanData(flightInfo));
+      });
+
+      // 다중 숙박편 정보를 개별 컬럼으로 저장
+      const accommodationColumns = {};
+      finalAccommodations.forEach((accommodationInfo, index) => {
+        accommodationColumns[`accmo_info_${index + 1}`] = JSON.stringify(cleanData(accommodationInfo));
+      });
+
       const itemToSave = {
         user_id: userEmail,
         plan_id: planId,
         name: title,
         paid_plan: paidPlan,
-        // 기존 추출된 flightDetails가 아니라, body.flightInfo를 우선 저장
-        flight_details: body.flightInfo && (Array.isArray(body.flightInfo) ? body.flightInfo.length > 0 : !!body.flightInfo)
-          ? JSON.stringify(body.flightInfo)
-          : JSON.stringify(cleanData(flightDetails)),
-        itinerary_schedules: JSON.stringify(cleanData(data)),
-        // 숙소 정보 저장 추가
-        accmo_info: body.accommodationInfo ? JSON.stringify(cleanData(body.accommodationInfo)) : null,
-      // shared_email 필드 추가
-      shared_email: body.shared_email || null,
+        // 일반 일정 데이터 (항공편, 숙박편 제외)
+        itinerary_schedules: JSON.stringify(cleanData(cleanedScheduleData)),
+        // 다중 항공편 정보 (flight_info_1, flight_info_2, ...)
+        ...flightColumns,
+        // 다중 숙박편 정보 (accmo_info_1, accmo_info_2, ...)
+        ...accommodationColumns,
+        // 총 개수 정보
+        total_flights: finalFlights.length,
+        total_accommodations: finalAccommodations.length,
+        // shared_email 필드 추가
+        shared_email: body.shared_email || null,
         last_updated: now
       };
 
@@ -575,12 +632,40 @@ async function performUpdate(userId, planId, body, updateType, now, isSharedUser
       expressionAttributeValues[":schedules"] = JSON.stringify(cleanData(body.data));
     }
     
-    if (body.flightInfo) {
+    // 다중 항공편 정보 처리
+    if (body.flightInfos && Array.isArray(body.flightInfos)) {
+      body.flightInfos.forEach((flightInfo, index) => {
+        const fieldName = `flight_info_${index + 1}`;
+        updateExpression += `, ${fieldName} = :${fieldName}`;
+        expressionAttributeValues[`:${fieldName}`] = JSON.stringify(cleanData(flightInfo));
+      });
+      
+      // 총 항공편 개수 업데이트
+      if (body.totalFlights !== undefined) {
+        updateExpression += ", total_flights = :totalFlights";
+        expressionAttributeValues[":totalFlights"] = body.totalFlights;
+      }
+    } else if (body.flightInfo) {
+      // 하위 호환성: 단일 항공편 정보
       updateExpression += ", flight_details = :flight";
       expressionAttributeValues[":flight"] = JSON.stringify(cleanData(body.flightInfo));
     }
     
-    if (body.accommodationInfo) {
+    // 다중 숙박편 정보 처리
+    if (body.accommodationInfos && Array.isArray(body.accommodationInfos)) {
+      body.accommodationInfos.forEach((accommodationInfo, index) => {
+        const fieldName = `accmo_info_${index + 1}`;
+        updateExpression += `, ${fieldName} = :${fieldName}`;
+        expressionAttributeValues[`:${fieldName}`] = JSON.stringify(cleanData(accommodationInfo));
+      });
+      
+      // 총 숙박편 개수 업데이트
+      if (body.totalAccommodations !== undefined) {
+        updateExpression += ", total_accommodations = :totalAccommodations";
+        expressionAttributeValues[":totalAccommodations"] = body.totalAccommodations;
+      }
+    } else if (body.accommodationInfo) {
+      // 하위 호환성: 단일 숙박편 정보
       updateExpression += ", accmo_info = :accmo";
       expressionAttributeValues[":accmo"] = JSON.stringify(cleanData(body.accommodationInfo));
     }
@@ -617,12 +702,40 @@ async function performUpdate(userId, planId, body, updateType, now, isSharedUser
       expressionAttributeValues[":schedules"] = JSON.stringify(cleanData(body.data));
     }
     
-    if (body.flightInfo) {
+    // 다중 항공편 정보 처리 (전체 수정 모드)
+    if (body.flightInfos && Array.isArray(body.flightInfos)) {
+      body.flightInfos.forEach((flightInfo, index) => {
+        const fieldName = `flight_info_${index + 1}`;
+        updateExpression += `, ${fieldName} = :${fieldName}`;
+        expressionAttributeValues[`:${fieldName}`] = JSON.stringify(cleanData(flightInfo));
+      });
+      
+      // 총 항공편 개수 업데이트
+      if (body.totalFlights !== undefined) {
+        updateExpression += ", total_flights = :totalFlights";
+        expressionAttributeValues[":totalFlights"] = body.totalFlights;
+      }
+    } else if (body.flightInfo) {
+      // 하위 호환성: 단일 항공편 정보
       updateExpression += ", flight_details = :flight";
       expressionAttributeValues[":flight"] = JSON.stringify(cleanData(body.flightInfo));
     }
     
-    if (body.accommodationInfo) {
+    // 다중 숙박편 정보 처리 (전체 수정 모드)
+    if (body.accommodationInfos && Array.isArray(body.accommodationInfos)) {
+      body.accommodationInfos.forEach((accommodationInfo, index) => {
+        const fieldName = `accmo_info_${index + 1}`;
+        updateExpression += `, ${fieldName} = :${fieldName}`;
+        expressionAttributeValues[`:${fieldName}`] = JSON.stringify(cleanData(accommodationInfo));
+      });
+      
+      // 총 숙박편 개수 업데이트
+      if (body.totalAccommodations !== undefined) {
+        updateExpression += ", total_accommodations = :totalAccommodations";
+        expressionAttributeValues[":totalAccommodations"] = body.totalAccommodations;
+      }
+    } else if (body.accommodationInfo) {
+      // 하위 호환성: 단일 숙박편 정보
       updateExpression += ", accmo_info = :accmo";
       expressionAttributeValues[":accmo"] = JSON.stringify(cleanData(body.accommodationInfo));
     }

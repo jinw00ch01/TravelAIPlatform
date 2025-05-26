@@ -972,6 +972,7 @@ const TravelPlanner = ({ loadMode }) => {
                 handleFlightSearch={handleFlightSearch}
                 onAddFlightToSchedule={onAddFlightToSchedule}
             handleOpenPlannerFlightDetail={dialogHandlers.handleOpenPlannerFlightDetail}
+            
               />
         </Box>
 

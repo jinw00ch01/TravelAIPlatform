@@ -158,14 +158,15 @@ const TravelPlannerDialogs = ({
             </IconButton>
           </DialogTitle>
           <DialogContent dividers>
-            {selectedFlightForPlannerDialog.flightOfferData.itineraries.map((itinerary, index) => (
+            {/* 저장된 항공편과 일정 항공편의 데이터 구조가 다를 수 있으므로 안전하게 처리 */}
+            {(selectedFlightForPlannerDialog.flightOfferData?.itineraries || selectedFlightForPlannerDialog.itineraries || []).map((itinerary, index) => (
               <React.Fragment key={`planner-detail-itinerary-${index}`}>
                 {index > 0 && <Divider sx={{ my:2 }} />}
                 {renderItineraryDetails(
                   itinerary, 
-                  selectedFlightForPlannerDialog.flightOfferData.id, 
+                  selectedFlightForPlannerDialog.flightOfferData?.id || selectedFlightForPlannerDialog.id || 'flight-detail', 
                   flightDictionaries, 
-                  selectedFlightForPlannerDialog.flightOfferData.itineraries.length > 1 ? (index === 0 ? "가는 여정" : "오는 여정") : "여정 상세 정보", 
+                  (selectedFlightForPlannerDialog.flightOfferData?.itineraries || selectedFlightForPlannerDialog.itineraries || []).length > 1 ? (index === 0 ? "가는 여정" : "오는 여정") : "여정 상세 정보", 
                   airportInfoCache, 
                   loadingAirportInfo
                 )}
@@ -173,23 +174,41 @@ const TravelPlannerDialogs = ({
             ))}
             <Divider sx={{ my: 2 }} />
             <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold', mt:2 }}>가격 및 요금 정보</Typography>
-            <Typography variant="caption" display="block">총액 (1인): {formatPrice(selectedFlightForPlannerDialog.flightOfferData.price.grandTotal || selectedFlightForPlannerDialog.flightOfferData.price.total, selectedFlightForPlannerDialog.flightOfferData.price.currency)}</Typography>
-            <Typography variant="caption" display="block">기본 운임: {formatPrice(selectedFlightForPlannerDialog.flightOfferData.price.base, selectedFlightForPlannerDialog.flightOfferData.price.currency)}</Typography>
-            {selectedFlightForPlannerDialog.flightOfferData.price.fees && selectedFlightForPlannerDialog.flightOfferData.price.fees.length > 0 && (
-              <Typography variant="caption" display="block">수수료: 
-                {selectedFlightForPlannerDialog.flightOfferData.price.fees.map(fee => `${fee.type}: ${formatPrice(fee.amount, selectedFlightForPlannerDialog.flightOfferData.price.currency)}`).join(', ')}
-              </Typography>
-            )}
-            {selectedFlightForPlannerDialog.flightOfferData.price.taxes && selectedFlightForPlannerDialog.flightOfferData.price.taxes.length > 0 && (
-              <Typography variant="caption" display="block">세금: 
-                {selectedFlightForPlannerDialog.flightOfferData.price.taxes.map(tax => `${tax.code}: ${formatPrice(tax.amount, selectedFlightForPlannerDialog.flightOfferData.price.currency)}`).join(', ')}
-              </Typography>
-            )}
-            <Typography variant="caption" display="block">
-              마지막 발권일: {selectedFlightForPlannerDialog.flightOfferData.lastTicketingDate ? new Date(selectedFlightForPlannerDialog.flightOfferData.lastTicketingDate).toLocaleDateString('ko-KR') : '-'}
-              , 예약 가능 좌석: {selectedFlightForPlannerDialog.flightOfferData.numberOfBookableSeats || '-'}석
-            </Typography>
-            {renderFareDetails(selectedFlightForPlannerDialog.flightOfferData.travelerPricings, flightDictionaries)}
+            {(() => {
+              // 가격 정보 안전하게 추출
+              const priceData = selectedFlightForPlannerDialog.flightOfferData?.price || selectedFlightForPlannerDialog.price;
+              const lastTicketingDate = selectedFlightForPlannerDialog.flightOfferData?.lastTicketingDate || selectedFlightForPlannerDialog.lastTicketingDate;
+              const numberOfBookableSeats = selectedFlightForPlannerDialog.flightOfferData?.numberOfBookableSeats || selectedFlightForPlannerDialog.numberOfBookableSeats;
+              const travelerPricings = selectedFlightForPlannerDialog.flightOfferData?.travelerPricings || selectedFlightForPlannerDialog.travelerPricings;
+              
+              if (!priceData) {
+                return <Typography variant="caption" display="block">가격 정보가 없습니다.</Typography>;
+              }
+              
+              return (
+                <>
+                  <Typography variant="caption" display="block">총액 (1인): {formatPrice(priceData.grandTotal || priceData.total, priceData.currency)}</Typography>
+                  {priceData.base && (
+                    <Typography variant="caption" display="block">기본 운임: {formatPrice(priceData.base, priceData.currency)}</Typography>
+                  )}
+                  {priceData.fees && priceData.fees.length > 0 && (
+                    <Typography variant="caption" display="block">수수료: 
+                      {priceData.fees.map(fee => `${fee.type}: ${formatPrice(fee.amount, priceData.currency)}`).join(', ')}
+                    </Typography>
+                  )}
+                  {priceData.taxes && priceData.taxes.length > 0 && (
+                    <Typography variant="caption" display="block">세금: 
+                      {priceData.taxes.map(tax => `${tax.code}: ${formatPrice(tax.amount, priceData.currency)}`).join(', ')}
+                    </Typography>
+                  )}
+                  <Typography variant="caption" display="block">
+                    마지막 발권일: {lastTicketingDate ? new Date(lastTicketingDate).toLocaleDateString('ko-KR') : '-'}
+                    , 예약 가능 좌석: {numberOfBookableSeats || '-'}석
+                  </Typography>
+                  {travelerPricings && renderFareDetails(travelerPricings, flightDictionaries)}
+                </>
+              );
+            })()}
           </DialogContent>
           <DialogActions>
             <Button onClick={handleClosePlannerFlightDetail}>닫기</Button>

@@ -66,7 +66,10 @@ const TravelPlannerMainContent = ({
   flightError,
   handleFlightSearch,
   onAddFlightToSchedule,
-  handleOpenPlannerFlightDetail
+  handleOpenPlannerFlightDetail,
+  // 저장된 계획에서 로드된 다중 정보
+  loadedFlightInfos,
+  loadedAccommodationInfos
 }) => {
   return (
     <Box sx={{ flex: 1, p: 2, overflow: 'hidden', bgcolor: '#f4f6f8' }}>

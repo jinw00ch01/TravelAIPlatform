@@ -37,7 +37,6 @@ const ScheduleList = ({
   handleDeleteFlight
 }) => {
 
-
   return (
     <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: 1, p: 2, overflow: 'auto' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -48,12 +47,55 @@ const ScheduleList = ({
       </Box>
       
       {/* 고정된 숙박 정보 박스들 */}
-      {accommodationsToShow && accommodationsToShow.length > 0 && (
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="subtitle2" sx={{ mb: 1, color: '#5D4037', fontWeight: 'bold' }}>
-            📍 숙박편 ({accommodationsToShow.length}개)
-          </Typography>
-          {accommodationsToShow.map((accommodation, index) => (
+      {(() => {
+        // 현재 날짜의 모든 숙박편 일정 추출 (travel-plans + saved-plans 모두 포함)
+        const accommodationSchedules = currentPlan.schedules.filter(schedule => 
+          schedule.type === 'accommodation'
+        );
+        
+        // accommodationsToShow와 함께 표시 (중복 제거)
+        const allAccommodations = [...(accommodationsToShow || [])];
+        
+        // currentPlan.schedules에서 accommodationsToShow에 없는 숙박편 추가
+        accommodationSchedules.forEach(schedule => {
+          if (schedule.hotelDetails) {
+            const hotelId = schedule.hotelDetails.hotel?.hotel_id || 
+                           schedule.hotelDetails.hotel_id || 
+                           schedule.hotelDetails.id ||
+                           schedule.hotelDetails.hotel?.hotel_name ||
+                           schedule.hotelDetails.hotel_name ||
+                           schedule.name;
+            const checkIn = schedule.hotelDetails.checkIn || schedule.hotelDetails.hotel?.checkIn;
+            const checkOut = schedule.hotelDetails.checkOut || schedule.hotelDetails.hotel?.checkOut;
+            const scheduleKey = `${hotelId}-${checkIn}-${checkOut}`;
+            
+            // 이미 accommodationsToShow에 있는지 확인
+            const alreadyExists = allAccommodations.some(acc => {
+              const accHotelId = acc.hotel?.hotel_id || acc.hotel_id || acc.id || acc.hotel?.hotel_name || acc.hotel_name;
+              const accCheckIn = acc.checkIn || acc.hotel?.checkIn;
+              const accCheckOut = acc.checkOut || acc.hotel?.checkOut;
+              const accKey = `${accHotelId}-${accCheckIn}-${accCheckOut}`;
+              return accKey === scheduleKey;
+            });
+            
+            if (!alreadyExists) {
+              allAccommodations.push({
+                ...schedule.hotelDetails,
+                id: `accommodation-schedule-direct-${schedule.id}`,
+                source: 'currentPlan' // 출처 표시
+              });
+            }
+          }
+                 });
+         
+         if (allAccommodations.length === 0) return null;
+         
+         return (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1, color: '#5D4037', fontWeight: 'bold' }}>
+              📍 숙박편 ({allAccommodations.length}개)
+            </Typography>
+            {allAccommodations.map((accommodation, index) => (
         <Paper 
           key={accommodation.id || `accommodation-${index}`}
           elevation={1}
@@ -134,17 +176,6 @@ const ScheduleList = ({
                        const checkInDate = parseDate(checkInStr);
                        const checkOutDate = parseDate(checkOutStr);
                        
-                       console.log('[ScheduleList] 숙박편 날짜 표시:', {
-                         accommodation_id: accommodation.id,
-                         hotel_name: accommodation.hotel?.hotel_name || accommodation.hotel_name,
-                         checkInStr,
-                         checkOutStr,
-                         checkInDate,
-                         checkOutDate,
-                         checkInFormatted: checkInDate ? formatDateFns(checkInDate, 'MM/dd') : '-',
-                         checkOutFormatted: checkOutDate ? formatDateFns(checkOutDate, 'MM/dd') : '-'
-                       });
-                       
                        return (
                          <>
                            체크인: {checkInDate ? formatDateFns(checkInDate, 'MM/dd') : '-'}
@@ -168,21 +199,26 @@ const ScheduleList = ({
             </Grid>
           </Grid>
         </Paper>
-      ))}
-        </Box>
-      )}
+            ))}
+          </Box>
+        );
+      })()}
 
       {/* 고정된 항공편 정보 박스 */}
-      {currentPlan.schedules
-        .filter(schedule => schedule.type === 'Flight_Departure' || schedule.type === 'Flight_Return' || schedule.type === 'Flight_OneWay')
-        .length > 0 && (
-        <Box sx={{ mb: 2 }}>
-          <Typography variant="subtitle2" sx={{ mb: 1, color: '#0277bd', fontWeight: 'bold' }}>
-            ✈️ 항공편 ({currentPlan.schedules.filter(schedule => schedule.type === 'Flight_Departure' || schedule.type === 'Flight_Return' || schedule.type === 'Flight_OneWay').length}개)
-          </Typography>
-          {currentPlan.schedules
-            .filter(schedule => schedule.type === 'Flight_Departure' || schedule.type === 'Flight_Return' || schedule.type === 'Flight_OneWay')
-            .map((flightSchedule, index) => (
+      {(() => {
+        // 현재 날짜의 모든 항공편 일정 추출 (travel-plans + saved-plans 모두 포함)
+        const flightSchedules = currentPlan.schedules.filter(schedule => 
+          schedule.type === 'Flight_Departure' || schedule.type === 'Flight_Return' || schedule.type === 'Flight_OneWay'
+        );
+        
+        if (flightSchedules.length === 0) return null;
+        
+        return (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1, color: '#0277bd', fontWeight: 'bold' }}>
+              ✈️ 항공편 ({flightSchedules.length}개)
+            </Typography>
+            {flightSchedules.map((flightSchedule, index) => (
           <Paper
             key={`fixed-flight-${flightSchedule.id || index}`}
             elevation={1}
@@ -249,9 +285,10 @@ const ScheduleList = ({
               </Grid>
             </Grid>
           </Paper>
-        ))}
-        </Box>
-      )}
+            ))}
+          </Box>
+        );
+      })()}
 
       {/* 일반 일정 섹션 */}
       <Box sx={{ mb: 2 }}>

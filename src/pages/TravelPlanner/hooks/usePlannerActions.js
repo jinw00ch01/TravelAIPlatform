@@ -16,6 +16,202 @@ const usePlannerActions = ({
   const [editSchedule, setEditSchedule] = useState(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
+  // 저장 전 검증 함수
+  const validatePlanBeforeSave = useCallback(() => {
+    const dayKeys = Object.keys(travelPlans).sort((a, b) => parseInt(a) - parseInt(b));
+    
+    if (dayKeys.length === 0) {
+      return { isValid: false, message: '최소 1일 이상의 여행 계획이 필요합니다.' };
+    }
+
+    // 1. 숙박편 커버리지 확인 - 모든 날짜가 숙박편으로 커버되는지 확인
+    const accommodationCoverage = new Set(); // 숙박편이 커버하는 날짜들
+    
+    console.log('[validatePlanBeforeSave] 검증 시작 - 여행 시작일:', startDate);
+    console.log('[validatePlanBeforeSave] 시작일 상세:', {
+      원본: startDate,
+      ISO: startDate.toISOString(),
+      로컬날짜: startDate.toLocaleDateString(),
+      년월일: `${startDate.getFullYear()}-${(startDate.getMonth()+1).toString().padStart(2,'0')}-${startDate.getDate().toString().padStart(2,'0')}`
+    });
+    console.log('[validatePlanBeforeSave] 전체 일차:', dayKeys);
+    
+    // 모든 숙박편의 체크인/체크아웃 날짜를 기반으로 커버리지 계산
+    for (const dayKey of dayKeys) {
+      const schedules = travelPlans[dayKey]?.schedules || [];
+      const accommodationSchedules = schedules.filter(s => s.type === 'accommodation');
+      
+      console.log(`[validatePlanBeforeSave] ${dayKey}일차 숙박편 개수:`, accommodationSchedules.length);
+      
+      for (const accommodation of accommodationSchedules) {
+        console.log(`[validatePlanBeforeSave] ${dayKey}일차 숙박편:`, {
+          name: accommodation.name,
+          time: accommodation.time,
+          checkIn: accommodation.hotelDetails?.checkIn,
+          checkOut: accommodation.hotelDetails?.checkOut
+        });
+        
+        if (accommodation.hotelDetails?.checkIn && accommodation.hotelDetails?.checkOut) {
+          // UTC 날짜 문자열을 직접 파싱하여 시간대 문제 해결
+          const checkInStr = accommodation.hotelDetails.checkIn.split('T')[0]; // "2025-07-31"
+          const checkOutStr = accommodation.hotelDetails.checkOut.split('T')[0]; // "2025-08-02"
+          const checkInDate = new Date(checkInStr + 'T12:00:00.000Z'); // 정오로 설정하여 시간대 문제 방지
+          const checkOutDate = new Date(checkOutStr + 'T12:00:00.000Z');
+          
+          console.log(`[validatePlanBeforeSave] 날짜 범위:`, {
+            checkIn: checkInStr,
+            checkOut: checkOutStr,
+            checkInDate: checkInDate.toISOString().split('T')[0],
+            checkOutDate: checkOutDate.toISOString().split('T')[0]
+          });
+          
+          // 체크인부터 체크아웃 당일까지 모든 날짜를 커버리지에 추가
+          const currentDate = new Date(checkInDate);
+          while (currentDate <= checkOutDate) {
+            // 시간 정보를 제거하고 날짜만으로 계산
+            const currentDateOnly = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
+            // startDate를 UTC 기준으로 정규화하여 시간대 문제 해결
+            const startDateOnly = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+            
+            // 해당 날짜가 몇 일차인지 계산 (시작일을 1일차로 계산)
+            // 시간대 문제를 피하기 위해 UTC 기준으로 계산
+            const currentUTC = Date.UTC(currentDateOnly.getFullYear(), currentDateOnly.getMonth(), currentDateOnly.getDate());
+            const startUTC = Date.UTC(startDateOnly.getFullYear(), startDateOnly.getMonth(), startDateOnly.getDate());
+            const daysDiff = Math.floor((currentUTC - startUTC) / (1000 * 60 * 60 * 24)) + 1;
+            
+            console.log(`[validatePlanBeforeSave] 날짜 계산:`, {
+              currentDate: currentDateOnly.toISOString().split('T')[0],
+              startDate: startDateOnly.toISOString().split('T')[0],
+              daysDiff: daysDiff,
+              accommodation: accommodation.name
+            });
+            
+            if (daysDiff >= 1 && daysDiff <= dayKeys.length) {
+              accommodationCoverage.add(daysDiff.toString());
+              console.log(`[validatePlanBeforeSave] ${daysDiff}일차 커버리지 추가 (${accommodation.name})`);
+            } else {
+              console.log(`[validatePlanBeforeSave] 범위 밖 날짜 무시: ${daysDiff}일차 (범위: 1-${dayKeys.length})`);
+            }
+            currentDate.setDate(currentDate.getDate() + 1);
+          }
+        } else if (accommodation.time === '체크인' || accommodation.time === '체크아웃') {
+          // hotelDetails가 없는 경우, 체크인/체크아웃이 있는 날짜를 커버
+          accommodationCoverage.add(dayKey);
+          console.log(`[validatePlanBeforeSave] ${dayKey}일차 직접 커버리지 추가 (${accommodation.time})`);
+        }
+      }
+    }
+    
+    console.log('[validatePlanBeforeSave] 최종 커버리지:', Array.from(accommodationCoverage).sort());
+    
+    // 모든 날짜가 숙박편으로 커버되는지 확인
+    for (const dayKey of dayKeys) {
+      if (!accommodationCoverage.has(dayKey)) {
+        return { 
+          isValid: false, 
+          message: `${dayKey}일차에 숙박편이 없습니다. 모든 일차는 숙박편으로 커버되어야 합니다.` 
+        };
+      }
+    }
+
+    // 2. 여행 시작일(첫째 날)과 마지막일에 항공편이 있는지 확인
+    const firstDay = dayKeys[0];
+    const lastDay = dayKeys[dayKeys.length - 1];
+    
+    const firstDaySchedules = travelPlans[firstDay]?.schedules || [];
+    const lastDaySchedules = travelPlans[lastDay]?.schedules || [];
+    
+    const firstDayFlights = firstDaySchedules.filter(s => 
+      s.type === 'Flight_Departure' || s.type === 'Flight_OneWay'
+    );
+    const lastDayFlights = lastDaySchedules.filter(s => 
+      s.type === 'Flight_Return' || s.type === 'Flight_OneWay'
+    );
+
+    if (firstDayFlights.length === 0) {
+      return { 
+        isValid: false, 
+        message: `여행 시작일(${firstDay}일차)에 출발 항공편이 없습니다. 여행 시작일에는 반드시 항공편이 필요합니다.` 
+      };
+    }
+
+    if (lastDayFlights.length === 0 && dayKeys.length > 1) {
+      return { 
+        isValid: false, 
+        message: `여행 마지막일(${lastDay}일차)에 귀국 항공편이 없습니다. 여행 마지막일에는 반드시 항공편이 필요합니다.` 
+      };
+    }
+
+    return { isValid: true, message: '검증 통과' };
+  }, [travelPlans]);
+
+  // 숙소 정보 추출 함수 (체크인 날짜 순서로)
+  const extractAccommodationInfos = useCallback(() => {
+    const accommodations = [];
+    const dayKeys = Object.keys(travelPlans).sort((a, b) => parseInt(a) - parseInt(b));
+    
+    for (const dayKey of dayKeys) {
+      const schedules = travelPlans[dayKey]?.schedules || [];
+      const checkInSchedules = schedules.filter(s => 
+        s.type === 'accommodation' && s.time === '체크인' && s.hotelDetails
+      );
+      
+      for (const schedule of checkInSchedules) {
+        // 중복 방지를 위한 체크 (같은 호텔, 같은 체크인 날짜)
+        const isDuplicate = accommodations.some(acc => 
+          acc.hotel?.hotel_id === schedule.hotelDetails.hotel?.hotel_id &&
+          acc.checkIn === schedule.hotelDetails.checkIn
+        );
+        
+        if (!isDuplicate) {
+          accommodations.push(schedule.hotelDetails);
+        }
+      }
+    }
+    
+    // 체크인 날짜 순으로 정렬
+    accommodations.sort((a, b) => {
+      const dateA = new Date(a.checkIn || '1970-01-01');
+      const dateB = new Date(b.checkIn || '1970-01-01');
+      return dateA.getTime() - dateB.getTime();
+    });
+    
+    return accommodations;
+  }, [travelPlans]);
+
+  // 항공편 정보 추출 함수 (날짜 순서로)
+  const extractFlightInfos = useCallback(() => {
+    const flights = [];
+    const dayKeys = Object.keys(travelPlans).sort((a, b) => parseInt(a) - parseInt(b));
+    
+    for (const dayKey of dayKeys) {
+      const schedules = travelPlans[dayKey]?.schedules || [];
+      const flightSchedules = schedules.filter(s => 
+        (s.type === 'Flight_Departure' || s.type === 'Flight_Return' || s.type === 'Flight_OneWay') &&
+        s.flightOfferDetails?.flightOfferData
+      );
+      
+      for (const schedule of flightSchedules) {
+        // 중복 방지를 위한 체크 (같은 항공편 ID)
+        const flightData = schedule.flightOfferDetails.flightOfferData;
+        const isDuplicate = flights.some(flight => flight.id === flightData.id);
+        
+        if (!isDuplicate) {
+          flights.push(flightData);
+        }
+      }
+    }
+    
+    // 출발 날짜 순으로 정렬
+    flights.sort((a, b) => {
+      const dateA = new Date(a.itineraries?.[0]?.segments?.[0]?.departure?.at || '1970-01-01');
+      const dateB = new Date(b.itineraries?.[0]?.segments?.[0]?.departure?.at || '1970-01-01');
+      return dateA.getTime() - dateB.getTime();
+    });
+    
+    return flights;
+  }, [travelPlans]);
+
   const getDayTitle = useCallback((dayNumber) => {
     const base = startDate instanceof Date ? startDate : (startDate ? new Date(startDate) : null);
     if (!base || isNaN(base.getTime())) return `Day ${dayNumber}`;
@@ -110,20 +306,23 @@ const usePlannerActions = ({
       return false;
     }
 
+    // 저장 전 검증 로직
+    const validationResult = validatePlanBeforeSave();
+    if (!validationResult.isValid) {
+      setSaveError(validationResult.message);
+      return false;
+    }
+
     setIsSaving(true);
     setSaveError(null);
     try {
-      // 숙소 정보 추출
-      let accommodationInfo = null;
-      for (const dayKey of Object.keys(travelPlans)) {
-        const schedules = travelPlans[dayKey].schedules || [];
-        const checkInSchedule = schedules.find(s => s.type === 'accommodation' && s.time === '체크인');
-        if (checkInSchedule?.hotelDetails) {
-          accommodationInfo = checkInSchedule.hotelDetails;
-          console.log('[usePlannerActions] 숙소 정보 추출:', accommodationInfo);
-          break;
-        }
-      }
+      // 다중 숙소 정보 추출 (체크인 날짜 순서로)
+      const accommodationInfos = extractAccommodationInfos();
+      console.log('[usePlannerActions] 수정용 숙소 정보들 추출:', accommodationInfos);
+
+      // 다중 항공편 정보 추출 (날짜 순서로)
+      const flightInfos = extractFlightInfos();
+      console.log('[usePlannerActions] 수정용 항공편 정보들 추출:', flightInfos);
 
       // 수정 모드: updateTravelPlan 사용 (plan_data만 수정)
       const updateData = {
@@ -131,25 +330,27 @@ const usePlannerActions = ({
           obj[parseInt(dayKey)] = {
             title: travelPlans[dayKey].title,
             schedules: (travelPlans[dayKey].schedules || [])
-              .filter(schedule => schedule.type !== 'accommodation')
+              .filter(schedule => 
+                schedule.type !== 'accommodation' && 
+                schedule.type !== 'Flight_Departure' && 
+                schedule.type !== 'Flight_Return' && 
+                schedule.type !== 'Flight_OneWay'
+              )
               .map(schedule => {
-                const { hotelDetails, ...restOfSchedule } = schedule;
-                const baseSchedule = { ...restOfSchedule };
-                if (baseSchedule.flightOfferDetails?.flightOfferData) {
-                  baseSchedule.flightOfferDetails.flightOfferData = 
-                    JSON.parse(JSON.stringify(baseSchedule.flightOfferDetails.flightOfferData, (k,v) => typeof v === 'number' && !isFinite(v) ? null : v));
-                }
-                return baseSchedule;
+                const { hotelDetails, flightOfferDetails, ...restOfSchedule } = schedule;
+                return { ...restOfSchedule };
               })
           };
           return obj;
-        }, {})
+        }, {}),
+        // 다중 숙박편 정보 추가
+        accommodationInfos: accommodationInfos,
+        // 다중 항공편 정보 추가
+        flightInfos: flightInfos,
+        // 총 개수 정보 추가
+        totalAccommodations: accommodationInfos.length,
+        totalFlights: flightInfos.length
       };
-
-      // 숙소 정보가 있으면 추가
-      if (accommodationInfo) {
-        updateData.accommodationInfo = accommodationInfo;
-      }
 
       console.log('[usePlannerActions] 즉시 수정 데이터:', updateData);
 
@@ -257,47 +458,54 @@ const usePlannerActions = ({
       setSaveError('여행 계획 제목을 입력해주세요.');
       return false;
     }
+
+    // 저장 전 검증 로직
+    const validationResult = validatePlanBeforeSave();
+    if (!validationResult.isValid) {
+      setSaveError(validationResult.message);
+      return false;
+    }
+
     setIsSaving(true);
     setSaveError(null);
     try {
-      // 숙소 정보 추출
-      let accommodationInfo = null;
-      for (const dayKey of Object.keys(travelPlans)) {
-        const schedules = travelPlans[dayKey].schedules || [];
-        const checkInSchedule = schedules.find(s => s.type === 'accommodation' && s.time === '체크인');
-        if (checkInSchedule?.hotelDetails) {
-          accommodationInfo = checkInSchedule.hotelDetails;
-          console.log('[usePlannerActions] 숙소 정보 추출:', accommodationInfo);
-          break;
-        }
-      }
+      // 다중 숙소 정보 추출 (체크인 날짜 순서로)
+      const accommodationInfos = extractAccommodationInfos();
+      console.log('[usePlannerActions] 추출된 숙소 정보들:', accommodationInfos);
 
-      // 일반 일정에서 숙소 일정 제외
+      // 다중 항공편 정보 추출 (날짜 순서로)
+      const flightInfos = extractFlightInfos();
+      console.log('[usePlannerActions] 추출된 항공편 정보들:', flightInfos);
+
+      // 백엔드가 기대하는 data 형태로 변환 (일반 일정에서 숙소 및 항공편 일정 제외)
       const planData = {
         title: titleToSave,
-        days: Object.keys(travelPlans).map(day => ({
-          day: parseInt(day),
-          title: travelPlans[day].title,
-          schedules: (travelPlans[day].schedules || [])
-            .filter(schedule => schedule.type !== 'accommodation')
-            .map(schedule => {
-              const { hotelDetails, ...restOfSchedule } = schedule;
-              const baseSchedule = { ...restOfSchedule };
-              if (baseSchedule.flightOfferDetails?.flightOfferData) {
-                baseSchedule.flightOfferDetails.flightOfferData = 
-                  JSON.parse(JSON.stringify(baseSchedule.flightOfferDetails.flightOfferData, (k,v) => typeof v === 'number' && !isFinite(v) ? null : v));
-              }
-              return baseSchedule;
-            })
-        })),
-        startDate: formatDateFns(startDate, 'yyyy-MM-dd')
+        data: Object.keys(travelPlans).reduce((obj, dayKey) => {
+          obj[parseInt(dayKey)] = {
+            title: travelPlans[dayKey].title,
+            schedules: (travelPlans[dayKey].schedules || [])
+              .filter(schedule => 
+                schedule.type !== 'accommodation' && 
+                schedule.type !== 'Flight_Departure' && 
+                schedule.type !== 'Flight_Return' && 
+                schedule.type !== 'Flight_OneWay'
+              )
+              .map(schedule => {
+                const { hotelDetails, flightOfferDetails, ...restOfSchedule } = schedule;
+                return { ...restOfSchedule };
+              })
+          };
+          return obj;
+        }, {}),
+        startDate: formatDateFns(startDate, 'yyyy-MM-dd'),
+        // 다중 숙박편 정보 추가
+        accommodationInfos: accommodationInfos,
+        // 다중 항공편 정보 추가
+        flightInfos: flightInfos,
+        // 총 개수 정보 추가
+        totalAccommodations: accommodationInfos.length,
+        totalFlights: flightInfos.length
       };
-
-      // 숙소 정보가 있으면 추가
-      if (accommodationInfo) {
-        planData.accommodationInfo = accommodationInfo;
-        console.log('[usePlannerActions] 저장할 planData에 숙소 정보 추가:', planData.accommodationInfo);
-      }
 
       // shared_email 정보 추가
       if (sharedEmail && sharedEmail.trim()) {

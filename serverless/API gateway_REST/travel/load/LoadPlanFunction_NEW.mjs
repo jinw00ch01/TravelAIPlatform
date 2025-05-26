@@ -319,102 +319,53 @@ export const handler = async (event) => {
       const planItem = result.Item;
       const processedData = processItemData(planItem);
       
-      // 다중 항공편 정보 처리
+      // travel-plans 테이블에서 다중 항공편/숙박편 정보 추출 (saved-plans와 동일한 로직)
       let flightInfos = [];
       let flightInfo = null;
       let isRoundTrip = false;
       
-      // 새로운 다중 항공편 형식 처리 (flight_info_1, flight_info_2, ...)
-      const flightKeys = Object.keys(planItem).filter(key => key.startsWith('flight_info_') && key.match(/flight_info_\d+$/));
-      if (flightKeys.length > 0) {
-        console.log(`다중 항공편 발견 (ID 조회): ${flightKeys.length}개`);
-        flightKeys.sort((a, b) => {
-          const numA = parseInt(a.split('_')[2]);
-          const numB = parseInt(b.split('_')[2]);
-          return numA - numB;
-        });
-        
-        for (const key of flightKeys) {
+      // flight_info_1, flight_info_2, ... 추출
+      Object.keys(planItem).forEach(key => {
+        if (key.startsWith('flight_info_') && key.match(/flight_info_\d+$/)) {
           try {
-            const flightData = typeof planItem[key] === 'string' 
-              ? JSON.parse(planItem[key]) 
-              : planItem[key];
+            const flightData = typeof planItem[key] === 'string' ? JSON.parse(planItem[key]) : planItem[key];
             flightInfos.push(flightData);
-            
-            // 첫 번째 항공편으로 왕복 여부 판단
-            if (flightInfos.length === 1) {
-              isRoundTrip = flightData.itineraries && flightData.itineraries.length > 1;
-            }
           } catch (error) {
             console.error(`항공편 정보 파싱 오류 (${key}):`, error);
           }
         }
-        
-        // 하위 호환성을 위해 첫 번째 항공편을 flightInfo로 설정
-        if (flightInfos.length > 0) {
-          flightInfo = flightInfos[0];
-        }
+      });
+      
+      // 하위 호환성을 위한 단일 정보
+      if (flightInfos.length > 0) {
+        flightInfo = flightInfos[0];
+        isRoundTrip = flightInfos.length > 0 && flightInfos[0].itineraries && flightInfos[0].itineraries.length > 1;
       }
-      // 기존 단일 항공편 형식 처리 (하위 호환성)
-      else if (planItem.flight_info) {
-        try {
-          flightInfo = typeof planItem.flight_info === 'string' 
-            ? JSON.parse(planItem.flight_info) 
-            : planItem.flight_info;
-          flightInfos = [flightInfo];
-          isRoundTrip = planItem.is_round_trip === true ||
-                        flightInfo.oneWay === false ||
-                        flightInfo.isRoundTrip === true ||
-                        (flightInfo.itineraries && flightInfo.itineraries.length > 1);
-          console.log('기존 단일 항공편 정보 처리 완료 (ID 조회)');
-        } catch (error) {
-          console.error('기존 항공편 정보 파싱 오류 (ID 조회):', error);
-        }
-      }
+      
+      console.log(`travel-plans에서 추출: 항공편 ${flightInfos.length}개`);
 
       // 다중 숙박편 정보 처리
       let accommodationInfos = [];
       let accommodationInfo = null;
       
-      // 새로운 다중 숙박편 형식 처리 (accmo_info_1, accmo_info_2, ...)
-      const accommodationKeys = Object.keys(planItem).filter(key => key.startsWith('accmo_info_') && key.match(/accmo_info_\d+$/));
-      if (accommodationKeys.length > 0) {
-        console.log(`다중 숙박편 발견 (ID 조회): ${accommodationKeys.length}개`);
-        accommodationKeys.sort((a, b) => {
-          const numA = parseInt(a.split('_')[2]);
-          const numB = parseInt(b.split('_')[2]);
-          return numA - numB;
-        });
-        
-        for (const key of accommodationKeys) {
+      // accmo_info_1, accmo_info_2, ... 추출
+      Object.keys(planItem).forEach(key => {
+        if (key.startsWith('accmo_info_') && key.match(/accmo_info_\d+$/)) {
           try {
-            const accommodationData = typeof planItem[key] === 'string'
-              ? JSON.parse(planItem[key])
-              : planItem[key];
+            const accommodationData = typeof planItem[key] === 'string' ? JSON.parse(planItem[key]) : planItem[key];
             accommodationInfos.push(accommodationData);
           } catch (error) {
             console.error(`숙박편 정보 파싱 오류 (${key}):`, error);
           }
         }
-        
-        // 하위 호환성을 위해 첫 번째 숙박편을 accommodationInfo로 설정
-        if (accommodationInfos.length > 0) {
-          accommodationInfo = accommodationInfos[0];
-        }
+      });
+      
+      // 하위 호환성을 위한 단일 정보
+      if (accommodationInfos.length > 0) {
+        accommodationInfo = accommodationInfos[0];
       }
-      // 기존 단일 숙박편 형식 처리 (하위 호환성)
-      else if (planItem.accmo_info) {
-        try {
-          accommodationInfo = typeof planItem.accmo_info === 'string'
-            ? JSON.parse(planItem.accmo_info)
-            : planItem.accmo_info;
-          accommodationInfos = [accommodationInfo];
-          console.log('기존 단일 숙박편 정보 처리 완료 (ID 조회)');
-        } catch (error) {
-          console.error('기존 숙박편 정보 파싱 오류 (ID 조회):', error);
-          accommodationInfo = planItem.accmo_info; // 파싱 실패 시 원본 유지
-        }
-      }
+      
+      console.log(`travel-plans에서 추출: 숙박편 ${accommodationInfos.length}개`);
 
       return {
         statusCode: 200,
@@ -467,105 +418,53 @@ export const handler = async (event) => {
       const planItem = result.Items[0];
       const processedData = processItemData(planItem);
       
-      // 다중 항공편 정보 처리
+      // travel-plans 테이블에서 다중 항공편/숙박편 정보 추출 (saved-plans와 동일한 로직)
       let flightInfos = [];
       let flightInfo = null;
       let isRoundTrip = false;
       
-      // 새로운 다중 항공편 형식 처리 (flight_info_1, flight_info_2, ...)
-      const flightKeys = Object.keys(planItem).filter(key => key.startsWith('flight_info_') && key.match(/flight_info_\d+$/));
-      if (flightKeys.length > 0) {
-        console.log(`다중 항공편 발견 (newest 조회): ${flightKeys.length}개`);
-        flightKeys.sort((a, b) => {
-          const numA = parseInt(a.split('_')[2]);
-          const numB = parseInt(b.split('_')[2]);
-          return numA - numB;
-        });
-        
-        for (const key of flightKeys) {
+      // flight_info_1, flight_info_2, ... 추출
+      Object.keys(planItem).forEach(key => {
+        if (key.startsWith('flight_info_') && key.match(/flight_info_\d+$/)) {
           try {
-            const flightData = typeof planItem[key] === 'string' 
-              ? JSON.parse(planItem[key]) 
-              : planItem[key];
+            const flightData = typeof planItem[key] === 'string' ? JSON.parse(planItem[key]) : planItem[key];
             flightInfos.push(flightData);
-            
-            // 첫 번째 항공편으로 왕복 여부 판단
-            if (flightInfos.length === 1) {
-              isRoundTrip = flightData.itineraries && flightData.itineraries.length > 1;
-            }
           } catch (error) {
             console.error(`항공편 정보 파싱 오류 (${key}):`, error);
           }
         }
-        
-        // 하위 호환성을 위해 첫 번째 항공편을 flightInfo로 설정
-        if (flightInfos.length > 0) {
-          flightInfo = flightInfos[0];
-        }
-        console.log('다중 항공편 정보 처리 완료 (newest):', { 총개수: flightInfos.length, 왕복여부: isRoundTrip });
+      });
+      
+      // 하위 호환성을 위한 단일 정보
+      if (flightInfos.length > 0) {
+        flightInfo = flightInfos[0];
+        isRoundTrip = flightInfos.length > 0 && flightInfos[0].itineraries && flightInfos[0].itineraries.length > 1;
       }
-      // 기존 단일 항공편 형식 처리 (하위 호환성)
-      else if (planItem.flight_info) {
-        try {
-          flightInfo = typeof planItem.flight_info === 'string' 
-            ? JSON.parse(planItem.flight_info) 
-            : planItem.flight_info;
-          flightInfos = [flightInfo];
-          isRoundTrip = planItem.is_round_trip === true ||
-                        flightInfo.oneWay === false ||
-                        flightInfo.isRoundTrip === true ||
-                        (flightInfo.itineraries && flightInfo.itineraries.length > 1);
-          console.log('기존 단일 항공편 정보 처리 완료 (newest):', { 항공사: flightInfo.validatingAirlineCodes, 왕복여부: isRoundTrip });
-        } catch (error) {
-          console.error('기존 항공편 정보 파싱 오류 (newest):', error);
-          flightInfo = null;
-        }
-      }
+      
+      console.log(`travel-plans에서 추출 (newest): 항공편 ${flightInfos.length}개`);
 
       // 다중 숙박편 정보 처리
       let accommodationInfos = [];
       let accommodationInfo = null;
       
-      // 새로운 다중 숙박편 형식 처리 (accmo_info_1, accmo_info_2, ...)
-      const accommodationKeys = Object.keys(planItem).filter(key => key.startsWith('accmo_info_') && key.match(/accmo_info_\d+$/));
-      if (accommodationKeys.length > 0) {
-        console.log(`다중 숙박편 발견 (newest 조회): ${accommodationKeys.length}개`);
-        accommodationKeys.sort((a, b) => {
-          const numA = parseInt(a.split('_')[2]);
-          const numB = parseInt(b.split('_')[2]);
-          return numA - numB;
-        });
-        
-        for (const key of accommodationKeys) {
+      // accmo_info_1, accmo_info_2, ... 추출
+      Object.keys(planItem).forEach(key => {
+        if (key.startsWith('accmo_info_') && key.match(/accmo_info_\d+$/)) {
           try {
-            const accommodationData = typeof planItem[key] === 'string'
-              ? JSON.parse(planItem[key])
-              : planItem[key];
+            const accommodationData = typeof planItem[key] === 'string' ? JSON.parse(planItem[key]) : planItem[key];
             accommodationInfos.push(accommodationData);
           } catch (error) {
             console.error(`숙박편 정보 파싱 오류 (${key}):`, error);
           }
         }
-        
-        // 하위 호환성을 위해 첫 번째 숙박편을 accommodationInfo로 설정
-        if (accommodationInfos.length > 0) {
-          accommodationInfo = accommodationInfos[0];
-        }
-        console.log('다중 숙박편 정보 처리 완료 (newest):', { 총개수: accommodationInfos.length });
+      });
+      
+      // 하위 호환성을 위한 단일 정보
+      if (accommodationInfos.length > 0) {
+        accommodationInfo = accommodationInfos[0];
       }
-      // 기존 단일 숙박편 형식 처리 (하위 호환성)
-      else if (planItem.accmo_info) {
-        try {
-          accommodationInfo = typeof planItem.accmo_info === 'string'
-            ? JSON.parse(planItem.accmo_info)
-            : planItem.accmo_info;
-          accommodationInfos = [accommodationInfo];
-          console.log('기존 단일 숙박편 정보 처리 완료 (newest 조회)');
-        } catch (error) {
-          console.error('기존 숙박편 정보 파싱 오류 (newest 조회):', error);
-          accommodationInfo = planItem.accmo_info; // 파싱 실패 시 원본 유지
-        }
-      }
+      
+      console.log(`travel-plans에서 추출 (newest): 숙박편 ${accommodationInfos.length}개`);
 
       return {
         statusCode: 200,
