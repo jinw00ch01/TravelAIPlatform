@@ -499,4 +499,319 @@ export const travelApi = {
   },
 };
 
+// 날씨 API 관련 함수 추가
+export const weatherApi = {
+  // AWS Lambda를 통한 날씨 정보 조회
+  getWeatherByCoordinates: async (lat, lng) => {
+    try {
+      console.log(`[API] 날씨 데이터 요청 시작 - 위도: ${lat}, 경도: ${lng}`);
+      
+      // AWS Lambda 함수 엔드포인트
+      const WEATHER_API_URL = `https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/weatherAPI`;
+      
+      // 요청 데이터 구성
+      const requestData = {
+        lat: lat,
+        lon: lng
+      };
+      
+      console.log(`[API] 날씨 API 요청 URL: ${WEATHER_API_URL}`);
+      console.log(`[API] 날씨 API 요청 데이터:`, requestData);
+      
+      const response = await axios.post(WEATHER_API_URL, requestData, {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000 // 15초 타임아웃
+      });
+      
+      console.log(`[API] 날씨 API 응답 상태: ${response.status}`);
+      console.log(`[API] 날씨 API 전체 응답 데이터:`, response.data);
+      
+      if (response.data && response.data.forecasts) {
+        console.log(`[API] 날씨 데이터 응답 성공 - ${response.data.forecasts.length}개 항목`);
+        console.log(`[API] 첫 번째 예보 데이터 샘플:`, response.data.forecasts[0]);
+        return response.data;
+      } else if (response.data && response.data.list) {
+        // OpenWeatherMap API 직접 호출 형식으로 받은 경우 처리
+        console.log(`[API] OpenWeatherMap 형식으로 받은 날씨 데이터 - ${response.data.list.length}개 항목`);
+        console.log(`[API] 첫 번째 예보 데이터 샘플:`, response.data.list[0]);
+        return {
+          city: response.data.city,
+          forecasts: response.data.list
+        };
+      } else {
+        console.error(`[API] 날씨 데이터 형식 오류:`, response.data);
+        throw new Error('날씨 데이터 형식이 올바르지 않습니다.');
+      }
+    } catch (error) {
+      console.error(`[API] 날씨 데이터 요청 중 오류:`, error);
+      console.error(`[API] 오류 상세:`, error.response?.data || error.message);
+      throw error;
+    }
+  },
+  
+  // 특정 시간대에 가장 가까운 날씨 정보 찾기
+  findClosestForecast: (forecasts, targetTime) => {
+    if (!forecasts || !Array.isArray(forecasts) || forecasts.length === 0) {
+      return null;
+    }
+    
+    // 목표 시간을 Date 객체로 변환
+    const targetDate = new Date(targetTime);
+    const targetHour = targetDate.getHours();
+    console.log(`[API] 가장 가까운 날씨 예보 찾기 - 목표 시간: ${targetDate.toLocaleString('ko-KR')} (${targetHour}시)`);
+    
+    // 사용 가능한 예보 시간들 로깅
+    const availableForecasts = forecasts.slice(0, 10).map(f => {
+      const date = new Date(f.dt * 1000);
+      return {
+        time: date.toLocaleString('ko-KR'),
+        hour: date.getHours(),
+        date: date.toISOString().split('T')[0]
+      };
+    });
+    console.log(`[API] 사용 가능한 예보 시간들 (처음 10개):`, availableForecasts);
+    
+    // OpenWeatherMap API의 3시간 간격 예보 시간: 00, 03, 06, 09, 12, 15, 18, 21
+    const forecastHours = [0, 3, 6, 9, 12, 15, 18, 21];
+    
+    // 일정 시간에 가장 가까운 예보 시간 찾기
+    let closestForecastHour = forecastHours.reduce((closest, current) => {
+      const currentDiff = Math.abs(current - targetHour);
+      const closestDiff = Math.abs(closest - targetHour);
+      
+      // 더 가까운 시간 선택
+      if (currentDiff < closestDiff) {
+        return current;
+      }
+      
+      // 거리가 같을 경우 미래 시간 우선 (예: 13시 일정의 경우 12시보다 15시 선택)
+      if (currentDiff === closestDiff && current > targetHour) {
+        return current;
+      }
+      
+      return closest;
+    });
+    
+    console.log(`[API] 일정 시간 ${targetHour}시 → 선택된 예보 시간: ${closestForecastHour}시`);
+    
+    // 해당 날짜의 선택된 시간대 예보 찾기
+    const targetDateStr = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD 형식
+    
+    console.log(`[API] 찾는 조건: 날짜=${targetDateStr}, 시간=${closestForecastHour}시`);
+    
+    const matchingForecast = forecasts.find(forecast => {
+      const forecastDate = new Date(forecast.dt * 1000);
+      const forecastDateStr = forecastDate.toISOString().split('T')[0];
+      const forecastHour = forecastDate.getHours();
+      
+      const isMatch = forecastDateStr === targetDateStr && forecastHour === closestForecastHour;
+      
+      if (isMatch) {
+        console.log(`[API] 정확한 매칭 발견: ${forecastDate.toLocaleString('ko-KR')}`);
+      }
+      
+      return isMatch;
+    });
+    
+    if (matchingForecast) {
+      const matchedTime = new Date(matchingForecast.dt * 1000);
+      console.log(`[API] 매칭된 예보: ${matchedTime.toLocaleString('ko-KR')} (${matchedTime.getHours()}시)`);
+      return matchingForecast;
+    }
+    
+    // 정확한 매칭이 없는 경우 가장 가까운 시간대 선택 (기존 로직)
+    console.log(`[API] 정확한 매칭 실패, 가장 가까운 시간대로 대체`);
+    
+    const targetTimestamp = targetDate.getTime();
+    
+    const fallbackForecast = forecasts.reduce((closest, current) => {
+      const currentTimestamp = new Date(current.dt * 1000).getTime();
+      
+      if (!closest) return current;
+      
+      const closestTimestamp = new Date(closest.dt * 1000).getTime();
+      const currentDiff = Math.abs(currentTimestamp - targetTimestamp);
+      const closestDiff = Math.abs(closestTimestamp - targetTimestamp);
+      
+      // 현재 검사 중인 예보가 더 가까운 경우
+      if (currentDiff < closestDiff) {
+        return current;
+      }
+      
+      // 거리가 같을 경우 미래 예보 우선
+      if (currentDiff === closestDiff && currentTimestamp > targetTimestamp) {
+        return current;
+      }
+      
+      return closest;
+    }, null);
+    
+    if (fallbackForecast) {
+      const fallbackTime = new Date(fallbackForecast.dt * 1000);
+      console.log(`[API] Fallback 예보 선택: ${fallbackTime.toLocaleString('ko-KR')} (${fallbackTime.getHours()}시)`);
+    }
+    
+    return fallbackForecast;
+  },
+  
+  // 일정에 맞는 날씨 정보 찾기
+  getWeatherForSchedules: async (schedules, startDate, selectedDay) => {
+    if (!schedules || schedules.length === 0) {
+      console.warn('[API] 일정 데이터가 없어 날씨 정보를 가져올 수 없습니다.');
+      return {};
+    }
+    
+    try {
+      // 첫 번째 유효한 위치(위도/경도) 정보가 있는 일정 찾기
+      const locationSchedule = schedules.find(item => item.lat && item.lng);
+      
+      if (!locationSchedule) {
+        console.warn('[API] 날씨 데이터를 가져올 위치 정보가 없습니다.');
+        return {};
+      }
+      
+      // 해당 위치의 날씨 정보 요청
+      console.log('[API] 날씨 API getWeatherByCoordinates 호출:', {
+        lat: locationSchedule.lat,
+        lng: locationSchedule.lng
+      });
+      
+      const weatherData = await weatherApi.getWeatherByCoordinates(
+        locationSchedule.lat, 
+        locationSchedule.lng
+      );
+      
+      if (!weatherData || !weatherData.forecasts) {
+        console.warn('[API] 날씨 API에서 유효한 응답이 없습니다.');
+        return {};
+      }
+      
+      console.log('[API] 날씨 API 응답 받음, 일정별 매칭 시작');
+      console.log('[API] 받은 날씨 데이터 구조:', {
+        cityInfo: weatherData.city,
+        forecastsCount: weatherData.forecasts.length,
+        firstForecast: weatherData.forecasts[0],
+        lastForecast: weatherData.forecasts[weatherData.forecasts.length - 1]
+      });
+      
+      // 각 일정별로 가장 가까운 시간대의 날씨 찾기
+      const result = {};
+      
+      schedules.forEach(schedule => {
+        if (!schedule.id || !schedule.time) return;
+        
+        try {
+          // 일정 시간 결정을 위한 기준 날짜 설정
+          let scheduleDate;
+          const dayNumber = parseInt(selectedDay) || 1;
+          
+          if (startDate) {
+            // 기준 날짜(start_date)로부터 일수 계산
+            scheduleDate = new Date(startDate);
+            scheduleDate.setDate(scheduleDate.getDate() + (dayNumber - 1));
+          } else {
+            // startDate가 없으면 현재 날짜 사용
+            scheduleDate = new Date();
+          }
+          
+          // 시간 문자열 파싱 (예: "14:00", "체크인", "오후 3:30" 등)
+          let hours = 12, minutes = 0;
+          
+          if (schedule.time === '체크인' || schedule.time === '체크아웃') {
+            // 체크인/체크아웃은 정오로 설정
+            hours = 12;
+            minutes = 0;
+          } else {
+            // 시간 포맷 파싱
+            const timeRegex = /(\d{1,2})(?::(\d{1,2}))?(?:\s*(오전|오후))?/;
+            const match = schedule.time.match(timeRegex);
+            
+            if (match) {
+              hours = parseInt(match[1]) || 0;
+              minutes = parseInt(match[2] || '0');
+              
+              // 오전/오후 처리
+              if (match[3] === '오후' && hours < 12) {
+                hours += 12;
+              } else if (match[3] === '오전' && hours === 12) {
+                hours = 0;
+              }
+            }
+          }
+          
+          scheduleDate.setHours(hours, minutes, 0, 0);
+          
+          // 계산된 날짜가 예보 범위 내에 있는지 확인
+          const today = new Date();
+          const fiveDaysLater = new Date();
+          fiveDaysLater.setDate(today.getDate() + 5);
+          
+          console.log(`[API] 일정 "${schedule.name}" 시간 결정:`, {
+            id: schedule.id,
+            timeStr: schedule.time,
+            parsedTime: `${hours}:${minutes}`,
+            scheduleDate: scheduleDate.toISOString(),
+            isInForecastRange: scheduleDate >= today && scheduleDate <= fiveDaysLater,
+            forecastRangeStart: today.toISOString(),
+            forecastRangeEnd: fiveDaysLater.toISOString()
+          });
+          
+          // 예보 범위를 벗어나는 경우 "예측불가" 객체 반환
+          if (scheduleDate < today || scheduleDate > fiveDaysLater) {
+            console.warn(`[API] 일정 "${schedule.name}" 날짜가 예보 범위를 벗어남, 예측불가로 설정`);
+            
+            result[schedule.id] = {
+              isOutOfRange: true,
+              weather: [{
+                id: 999,
+                main: "예측불가",
+                description: "예측불가"
+              }],
+              main: {
+                temp: null
+              },
+              dt: Math.floor(scheduleDate.getTime() / 1000),
+              scheduleTime: scheduleDate.toISOString(),
+              forecastTime: scheduleDate.toISOString()
+            };
+            return; // 다음 일정으로 넘어감
+          }
+          
+          // 예보 범위 내에서만 실제 날씨 예보 찾기
+          const closestForecast = weatherApi.findClosestForecast(
+            weatherData.forecasts, 
+            scheduleDate
+          );
+          
+          if (closestForecast) {
+            console.log(`[API] 일정 "${schedule.name}" 매칭된 날씨:`, {
+              scheduleTime: scheduleDate.toLocaleString('ko-KR'),
+              forecastTime: new Date(closestForecast.dt * 1000).toLocaleString('ko-KR'),
+              temp: closestForecast.main.temp,
+              weather: closestForecast.weather[0].description
+            });
+            
+            result[schedule.id] = {
+              ...closestForecast,
+              scheduleTime: scheduleDate.toISOString(),
+              forecastTime: new Date(closestForecast.dt * 1000).toISOString()
+            };
+          }
+        } catch (scheduleError) {
+          console.error(`[API] 일정 "${schedule.name || schedule.id}" 날씨 처리 중 오류:`, scheduleError);
+        }
+      });
+      
+      console.log(`[API] 날씨 정보 매칭 완료: ${Object.keys(result).length}개 일정`);
+      console.log(`[API] 최종 결과 데이터:`, result);
+      return result;
+    } catch (error) {
+      console.error('[API] 일정별 날씨 데이터 처리 중 오류:', error);
+      return {};
+    }
+  }
+};
+
 export default apiClient;

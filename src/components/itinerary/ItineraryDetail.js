@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { weatherApi } from '../../services/api';
 
 const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState('');
   const [selectedDateKey, setSelectedDateKey] = useState(null); // "1", "2"와 같은 내부 키
   const [itineraryData, setItineraryData] = useState(null);
+  const [weatherData, setWeatherData] = useState({}); // 날씨 데이터 저장
+  const [loadingWeather, setLoadingWeather] = useState(false); // 날씨 로딩 상태
   
   useEffect(() => {
     console.log('[ItineraryDetail] useEffect[itinerary] - START. Received itinerary prop:', itinerary ? JSON.parse(JSON.stringify(itinerary)) : itinerary);
@@ -71,6 +74,128 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
     setSelectedDateKey(dateKey);
   }, []);
 
+  // 날씨 데이터 가져오기
+  useEffect(() => {
+    const fetchWeatherData = async () => {
+      if (!selectedDateKey || !itineraryData || !itineraryData[selectedDateKey] || 
+          !itineraryData[selectedDateKey].schedules) {
+        console.log('[ItineraryDetail] 날씨 데이터를 가져오기 위한 기본 조건이 충족되지 않음:', {
+          selectedDateKey,
+          hasItineraryData: !!itineraryData,
+          hasSelectedDateData: itineraryData ? !!itineraryData[selectedDateKey] : false,
+          hasSchedules: itineraryData && itineraryData[selectedDateKey] ? !!itineraryData[selectedDateKey].schedules : false
+        });
+        return;
+      }
+      
+      try {
+        setLoadingWeather(true);
+        console.log('[ItineraryDetail] 날씨 데이터 로드 시작:', selectedDateKey);
+        
+        const schedules = itineraryData[selectedDateKey].schedules;
+        // 일정 정보에 위도/경도 데이터가 있는지 확인
+        const hasLocationData = schedules.some(item => item.lat && item.lng);
+        
+        // 시작 날짜 결정
+        let startDate = itinerary.start_date;
+        
+        // 시작 날짜가 없는 경우 대체 방법으로 날짜 추출
+        if (!startDate) {
+          console.log('[ItineraryDetail] start_date가 없음, 대체 방법 사용');
+          
+          // 방법 1: 일정 제목에서 날짜 추출 시도 (예: "5/31 1일차: ...")
+          if (itineraryData[selectedDateKey].title) {
+            const dateMatch = itineraryData[selectedDateKey].title.match(/(\d+)\/(\d+)/);
+            if (dateMatch) {
+              const month = parseInt(dateMatch[1]);
+              const day = parseInt(dateMatch[2]);
+              const currentYear = new Date().getFullYear();
+              startDate = new Date(currentYear, month - 1, day).toISOString();
+              console.log(`[ItineraryDetail] 일정 제목에서 날짜 추출: ${startDate}`);
+            }
+          }
+          
+          // 방법 2: 위 방법으로 추출 실패 시 현재 날짜 사용
+          if (!startDate) {
+            startDate = new Date().toISOString();
+            console.log(`[ItineraryDetail] 현재 날짜를 시작 날짜로 사용: ${startDate}`);
+          }
+        }
+        
+        console.log('[ItineraryDetail] 일정 데이터:', {
+          schedulesCount: schedules.length,
+          hasLocationData,
+          firstSchedule: schedules[0],
+          startDate
+        });
+        
+        if (!hasLocationData) {
+          console.warn('[ItineraryDetail] 위치 정보(위도/경도)가 있는 일정이 없습니다.');
+          setLoadingWeather(false);
+          return;
+        }
+        
+        // 날씨 API 호출
+        console.log('[ItineraryDetail] 날씨 API 호출 직전', {
+          scheduleCount: schedules.length,
+          startDate,
+          selectedDateKey
+        });
+        
+        try {
+          // 직접 첫 번째 위치 데이터로 API 호출 테스트
+          const testSchedule = schedules.find(item => item.lat && item.lng);
+          if (testSchedule) {
+            console.log('[ItineraryDetail] 테스트 API 호출:', {
+              lat: testSchedule.lat,
+              lng: testSchedule.lng
+            });
+            
+            const testResult = await weatherApi.getWeatherByCoordinates(
+              testSchedule.lat,
+              testSchedule.lng
+            );
+            console.log('[ItineraryDetail] 테스트 API 응답:', testResult);
+          }
+        } catch (testError) {
+          console.error('[ItineraryDetail] 테스트 API 호출 실패:', testError);
+        }
+        
+        const weatherResults = await weatherApi.getWeatherForSchedules(
+          schedules, 
+          startDate, 
+          selectedDateKey
+        );
+        
+        console.log('[ItineraryDetail] 날씨 데이터 로드 완료:', Object.keys(weatherResults).length);
+        console.log('[ItineraryDetail] 전체 날씨 데이터:', weatherResults);
+        
+        // 각 일정별 날씨 정보 상세 출력
+        Object.entries(weatherResults).forEach(([scheduleId, weatherInfo]) => {
+          const schedule = schedules.find(s => s.id === scheduleId);
+          console.log(`[ItineraryDetail] 일정 "${schedule?.name || scheduleId}" 날씨 정보:`, {
+            scheduleId,
+            scheduleName: schedule?.name,
+            scheduleTime: schedule?.time,
+            weatherTemp: weatherInfo.main?.temp,
+            weatherDescription: weatherInfo.weather?.[0]?.description,
+            forecastTime: new Date(weatherInfo.dt * 1000).toLocaleString('ko-KR'),
+            scheduleDateTime: weatherInfo.scheduleTime ? new Date(weatherInfo.scheduleTime).toLocaleString('ko-KR') : 'N/A',
+            fullWeatherData: weatherInfo
+          });
+        });
+        
+        setWeatherData(weatherResults);
+      } catch (error) {
+        console.error('[ItineraryDetail] 날씨 데이터 로드 실패:', error);
+      } finally {
+        setLoadingWeather(false);
+      }
+    };
+    
+    fetchWeatherData();
+  }, [selectedDateKey, itineraryData, itinerary.start_date]);
+
   if (!itineraryData || Object.keys(itineraryData).filter(key => !isNaN(parseInt(key))).length === 0) {
     // 숫자 키를 가진 일차 데이터가 없으면 로딩 또는 정보 없음 메시지 표시 강화
     return <div className="p-6 text-center">여행 정보를 불러오는 중이거나 표시할 일차별 정보가 없습니다...</div>;
@@ -112,6 +237,78 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
   // console.log('[ItineraryDetail] Computed currentDateData for key:', selectedDateKey, currentDateData ? JSON.parse(JSON.stringify(currentDateData)) : currentDateData);
 
   const schedules = currentDateData?.schedules || [];
+
+  // 날씨 아이콘 매핑 함수
+  const getWeatherIcon = (weatherId) => {
+    if (weatherId >= 200 && weatherId < 300) return '⛈️'; // 뇌우
+    if (weatherId >= 300 && weatherId < 400) return '🌧️'; // 이슬비
+    if (weatherId >= 500 && weatherId < 600) return '🌧️'; // 비
+    if (weatherId >= 600 && weatherId < 700) return '❄️'; // 눈
+    if (weatherId >= 700 && weatherId < 800) return '🌫️'; // 안개
+    if (weatherId === 800) return '☀️'; // 맑음
+    if (weatherId > 800) return '☁️'; // 구름
+    return '🌡️'; // 기본값
+  };
+  
+  // 날씨 정보 표시 컴포넌트
+  const WeatherInfo = ({ scheduleId }) => {
+    const weatherInfo = weatherData[scheduleId];
+    
+    if (!weatherInfo || !weatherInfo.weather || weatherInfo.weather.length === 0) {
+      return null;
+    }
+    
+    // 예보 범위를 벗어나는 경우 처리
+    if (weatherInfo.isOutOfRange) {
+      return (
+        <div className="flex flex-wrap items-center text-sm mt-2 bg-red-50 rounded-md p-1.5 px-2 border border-red-200">
+          <span className="text-lg mr-1">❌</span>
+          <span className="font-medium text-red-600">예측불가</span>
+          <span className="ml-1 text-xs text-red-500">예보 범위 초과</span>
+        </div>
+      );
+    }
+    
+    // 날씨 정보 추출
+    const weatherId = weatherInfo.weather[0].id;
+    const icon = getWeatherIcon(weatherId);
+    const temp = weatherInfo.main.temp ? Math.round(weatherInfo.main.temp) : null;
+    const description = weatherInfo.weather[0].description;
+    
+    // 예보 시간
+    let forecastTime;
+    if (weatherInfo.dt) {
+      // Unix 타임스탬프 (초)
+      forecastTime = new Date(weatherInfo.dt * 1000);
+    } else if (weatherInfo.forecastTime) {
+      // ISO 문자열
+      forecastTime = new Date(weatherInfo.forecastTime);
+    } else {
+      forecastTime = new Date();
+    }
+    
+    // 한국어 날짜 포맷 옵션
+    const timeFormatOptions = { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      hour12: false  // 24시간제로 표시
+    };
+    
+    return (
+      <div className="flex flex-wrap items-center text-sm mt-2 bg-blue-50 rounded-md p-1.5 px-2">
+        <span className="text-lg mr-1">{icon}</span>
+        {temp !== null ? (
+          <span className="font-medium">{temp}°C</span>
+        ) : (
+          <span className="font-medium text-gray-500">-°C</span>
+        )}
+        <span className="ml-1 text-xs text-gray-600">{description}</span>
+        <div className="ml-auto text-xs text-gray-500 flex items-center">
+          <span>{forecastTime.toLocaleTimeString('ko-KR', timeFormatOptions)} 기준</span>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="p-6">
@@ -258,6 +455,13 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
           <div className="mb-6 text-center text-gray-500">표시할 날짜 정보가 없습니다.</div>
         )}
 
+        {/* 날씨 데이터 로딩 인디케이터 */}
+        {loadingWeather && (
+          <div className="text-center text-sm text-blue-500 mb-2">
+            <span className="inline-block animate-spin mr-1">🔄</span> 날씨 정보 로딩 중...
+          </div>
+        )}
+
         {/* 일정 타임라인 */}
         <div className="mb-8">
           <h3 className="text-xl font-semibold text-gray-800 mb-4">
@@ -332,6 +536,9 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
                             {item.duration && <div>소요시간: {item.duration}</div>}
                             {item.address && <div>주소: {item.address}</div>}
                             {item.notes && <div className="text-gray-500">{item.notes}</div>}
+                            
+                            {/* 날씨 정보 표시 */}
+                            {item.id && <WeatherInfo scheduleId={item.id} />}
                           </div>
                         </div>
                       </div>
@@ -351,13 +558,13 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
             <div>
               <h4 className="font-medium text-gray-700 mb-2">준비물</h4>
               <ul className="list-disc list-inside text-gray-600 space-y-1">
-                <li>여권</li><li>현지 통화 (엔)</li><li>여행 보험</li><li>필수 의류</li>
+                <li>여권</li><li>현지 통화 </li><li>여행 보험</li><li>필수 의류</li>
               </ul>
             </div>
             <div>
               <h4 className="font-medium text-gray-700 mb-2">주의사항</h4>
               <ul className="list-disc list-inside text-gray-600 space-y-1">
-                <li>일본 날씨 확인</li><li>지하철/교통 정보 확인</li><li>비상 연락처</li><li>여행자 에티켓 준수</li>
+                <li>날씨 확인</li><li>지하철/교통 정보 확인</li><li>비상 연락처</li><li>여행자 에티켓 준수</li>
               </ul>
             </div>
           </div>
