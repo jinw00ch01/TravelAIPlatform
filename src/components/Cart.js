@@ -131,99 +131,126 @@ const Cart = () => {
       console.log('[Cart] 여행 계획 상세 응답:', response.data);
 
       if (response.data.success) {
-        // 항공권 정보 파싱
-        let flightInfo = null;
-        try {
-          flightInfo = typeof response.data.plan.flight_details === 'string' 
-            ? JSON.parse(response.data.plan.flight_details)
-            : response.data.plan.flight_details;
-          console.log('[Cart] 파싱된 항공권 정보:', flightInfo);
-        } catch (e) {
-          console.error('[Cart] 항공권 정보 파싱 오류:', e);
+        // 다중 항공편 정보 파싱 (flight_info_1, flight_info_2, ...)
+        const flightInfos = [];
+        let flightIndex = 1;
+        while (response.data.plan[`flight_info_${flightIndex}`]) {
+          try {
+            const flightData = typeof response.data.plan[`flight_info_${flightIndex}`] === 'string'
+              ? JSON.parse(response.data.plan[`flight_info_${flightIndex}`])
+              : response.data.plan[`flight_info_${flightIndex}`];
+            flightInfos.push(flightData);
+            console.log(`[Cart] 파싱된 항공편 ${flightIndex} 정보:`, flightData);
+          } catch (e) {
+            console.error(`[Cart] 항공편 ${flightIndex} 정보 파싱 오류:`, e);
+          }
+          flightIndex++;
         }
 
-        // 숙소 정보 파싱
-        let accommodationInfo = null;
-        try {
-          accommodationInfo = typeof response.data.plan.accmo_info === 'string'
-            ? JSON.parse(response.data.plan.accmo_info)
-            : response.data.plan.accmo_info;
-          console.log('[Cart] 파싱된 숙소 정보:', accommodationInfo);
-        } catch (e) {
-          console.error('[Cart] 숙소 정보 파싱 오류:', e);
+        // 다중 숙박편 정보 파싱 (accmo_info_1, accmo_info_2, ...)
+        const accommodationInfos = [];
+        let accmoIndex = 1;
+        while (response.data.plan[`accmo_info_${accmoIndex}`]) {
+          try {
+            const accmoData = typeof response.data.plan[`accmo_info_${accmoIndex}`] === 'string'
+              ? JSON.parse(response.data.plan[`accmo_info_${accmoIndex}`])
+              : response.data.plan[`accmo_info_${accmoIndex}`];
+            accommodationInfos.push(accmoData);
+            console.log(`[Cart] 파싱된 숙박편 ${accmoIndex} 정보:`, accmoData);
+          } catch (e) {
+            console.error(`[Cart] 숙박편 ${accmoIndex} 정보 파싱 오류:`, e);
+          }
+          accmoIndex++;
         }
 
         const updatedPlanDetails = {
           ...response.data.plan,
-          flightInfo,
-          accommodationInfo
+          flightInfos,
+          accommodationInfos,
+          totalFlights: response.data.plan.total_flights || 0,
+          totalAccommodations: response.data.plan.total_accommodations || 0
         };
         setPlanDetails(updatedPlanDetails);
         
         // 장바구니 아이템 구성
         const items = [];
         
-        // 항공권 데이터 추가
-        if (flightInfo && Array.isArray(flightInfo)) {
-          flightInfo.forEach((flight, index) => {
-            const price = flight?.flightOfferDetails?.flightOfferData?.price?.total;
-            if (price) {
-              const departure = flight.flightOfferDetails?.flightOfferData?.itineraries?.[0]?.segments?.[0];
-              items.push({
-                id: `flight-${index}-${planId}`,
-                name: `${departure?.departure?.iataCode || ''} → ${departure?.arrival?.iataCode || ''} 항공편`,
-                type: 'flight',
-                quantity: 1,
-                price: parseFloat(price),
-                details: {
-                  departure: departure?.departure?.at ? new Date(departure.departure.at).toLocaleString('ko-KR') : '정보 없음',
-                  arrival: departure?.arrival?.at ? new Date(departure.arrival.at).toLocaleString('ko-KR') : '정보 없음',
-                  duration: flight.flightOfferDetails?.flightOfferData?.itineraries?.[0]?.duration || '정보 없음'
-                }
-              });
-            }
-          });
-        }
-        
-        // 숙소 데이터 추가
-        if (accommodationInfo?.hotel) {
-          const checkIn = new Date(accommodationInfo.checkIn);
-          const checkOut = new Date(accommodationInfo.checkOut);
-          const nights = Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
-          
-          // 선택된 룸 정보 가져오기
-          const selectedRoom = accommodationInfo.room || accommodationInfo.selectedRoom;
-          console.log('[Cart] 선택된 룸 정보:', selectedRoom);
-
-          // 룸 가격 계산
-          let roomPrice = 0;
-          if (selectedRoom?.price) {
-            roomPrice = typeof selectedRoom.price === 'string' 
-              ? parseFloat(selectedRoom.price.replace(/[^0-9.]/g, ''))
-              : selectedRoom.price;
-          } else if (selectedRoom?.rates?.[0]?.price) {
-            roomPrice = typeof selectedRoom.rates[0].price === 'string'
-              ? parseFloat(selectedRoom.rates[0].price.replace(/[^0-9.]/g, ''))
-              : selectedRoom.rates[0].price;
+        // 다중 항공편 데이터 추가
+        flightInfos.forEach((flightInfo, index) => {
+          const price = flightInfo?.price?.total || flightInfo?.flightOfferDetails?.flightOfferData?.price?.total;
+          if (price) {
+            // 항공편 정보 추출
+            const itinerary = flightInfo?.itineraries?.[0] || flightInfo?.flightOfferDetails?.flightOfferData?.itineraries?.[0];
+            const departure = itinerary?.segments?.[0];
+            const arrival = itinerary?.segments?.[itinerary.segments.length - 1];
+            
+            items.push({
+              id: `flight-${index}-${planId}`,
+              name: `${departure?.departure?.iataCode || ''} → ${arrival?.arrival?.iataCode || ''} 항공편 ${index + 1}`,
+              type: 'flight',
+              quantity: 1,
+              price: parseFloat(price),
+              originalData: flightInfo,
+              details: {
+                departure: departure?.departure?.at ? new Date(departure.departure.at).toLocaleString('ko-KR') : '정보 없음',
+                arrival: arrival?.arrival?.at ? new Date(arrival.arrival.at).toLocaleString('ko-KR') : '정보 없음',
+                duration: itinerary?.duration || '정보 없음',
+                carrier: departure?.carrierCode || '정보 없음',
+                flightNumber: departure?.number || '정보 없음'
+              }
+            });
           }
-
-          items.push({
-            id: `accommodation-${planId}`,
-            name: accommodationInfo.hotel.hotel_name || accommodationInfo.hotel.name || '숙소',
-            type: 'accommodation',
-            quantity: nights,
-            price: roomPrice,
-            details: {
-              address: accommodationInfo.hotel.address,
-              checkIn: checkIn.toLocaleString('ko-KR'),
-              checkOut: checkOut.toLocaleString('ko-KR'),
-              nights: nights,
-              roomType: selectedRoom?.name || selectedRoom?.room_type || '선택된 객실',
-              roomDescription: selectedRoom?.description || selectedRoom?.room_description,
-              amenities: selectedRoom?.amenities || []
+        });
+        
+        // 다중 숙박편 데이터 추가
+        accommodationInfos.forEach((accommodationInfo, index) => {
+          if (accommodationInfo?.hotel) {
+            const checkIn = new Date(accommodationInfo.checkIn);
+            const checkOut = new Date(accommodationInfo.checkOut);
+            const nights = Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
+            
+            // 가격 정보 추출
+            let roomPrice = 0;
+            const hotel = accommodationInfo.hotel;
+            const room = accommodationInfo.room;
+            
+            // 다양한 가격 필드에서 가격 추출 시도
+            if (room?.price) {
+              roomPrice = typeof room.price === 'string' 
+                ? parseFloat(room.price.replace(/[^0-9.]/g, ''))
+                : parseFloat(room.price);
+            } else if (room?.rates?.[0]?.price) {
+              roomPrice = typeof room.rates[0].price === 'string'
+                ? parseFloat(room.rates[0].price.replace(/[^0-9.]/g, ''))
+                : parseFloat(room.rates[0].price);
+            } else if (hotel?.composite_price_breakdown?.gross_amount?.value) {
+              roomPrice = parseFloat(hotel.composite_price_breakdown.gross_amount.value);
+            } else if (hotel?.price) {
+              roomPrice = typeof hotel.price === 'string'
+                ? parseFloat(hotel.price.replace(/[^0-9.]/g, ''))
+                : parseFloat(hotel.price);
             }
-          });
-        }
+
+                         items.push({
+               id: `accommodation-${index}-${planId}`,
+               name: `${hotel.hotel_name || hotel.hotel_name_trans || hotel.name || '숙소'} ${index + 1}`,
+               type: 'accommodation',
+               quantity: 1, // 숙박편 가격은 이미 전체 기간 총액이므로 수량은 1
+               price: roomPrice, // 이미 전체 숙박 기간의 총 요금
+               originalData: accommodationInfo,
+               details: {
+                 address: hotel.address || hotel.address_trans || '주소 정보 없음',
+                 checkIn: checkIn.toLocaleString('ko-KR'),
+                 checkOut: checkOut.toLocaleString('ko-KR'),
+                 nights: nights,
+                 roomType: room?.name || room?.room_type || '선택된 객실',
+                 roomDescription: room?.description || room?.room_description || '',
+                 amenities: room?.amenities || [],
+                 hotelId: hotel.hotel_id || hotel.id
+               }
+             });
+          }
+        });
         
         console.log('[Cart] 생성된 장바구니 아이템:', items);
         setCartItems(items);
@@ -497,7 +524,7 @@ const Cart = () => {
                   <div className="cart-item-price">
                     <div className="quantity-info">
                       {item.type === 'accommodation' ? (
-                        <span className="nights-info">{formatNumber(item.quantity)}박</span>
+                        <span className="nights-info">{formatNumber(item.details.nights)}박</span>
                       ) : (
                         <div className="quantity-controls">
                           <button 
@@ -518,7 +545,7 @@ const Cart = () => {
                     </div>
                     <div className="price-info">
                       <div className="unit-price">
-                        1{item.type === 'accommodation' ? '박' : '인'} {formatPrice(item.price)}
+                        {item.type === 'accommodation' ? `${item.details.nights}박 총액` : `1인 ${formatPrice(item.price)}`}
                       </div>
                       <div className="total-price">{formatPrice(item.price * item.quantity)}</div>
                     </div>
@@ -592,28 +619,13 @@ const Cart = () => {
                   </div>
                   <div className="cart-item-price">
                     <div className="quantity-info">
-                      <div className="quantity-controls">
-                        <button 
-                          className="quantity-btn"
-                          onClick={() => handleQuantityChange(item.id, -1)}
-                          disabled={item.quantity <= 1}
-                        >
-                          -
-                        </button>
-                        <span className="item-quantity">{formatNumber(item.quantity)}박</span>
-                        <button 
-                          className="quantity-btn"
-                          onClick={() => handleQuantityChange(item.id, 1)}
-                        >
-                          +
-                        </button>
-                      </div>
+                      <span className="nights-info">{formatNumber(item.details.nights)}박</span>
                     </div>
                     <div className="price-info">
                       <div className="unit-price">
-                        1박 {formatPrice(item.price)}
+                        {item.details.nights}박 총액
                       </div>
-                      <div className="total-price">{formatPrice(item.price * item.quantity)}</div>
+                      <div className="total-price">{formatPrice(item.price)}</div>
                     </div>
                   </div>
                   <button 

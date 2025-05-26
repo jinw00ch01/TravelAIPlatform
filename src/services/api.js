@@ -344,7 +344,7 @@ export const travelApi = {
       });
       return response.data;
     } catch (error) {
-      console.error('getToursAndActivities API 오류:', error);
+      //console.error('getToursAndActivities API 오류:', error);
       throw error;
     }
   },

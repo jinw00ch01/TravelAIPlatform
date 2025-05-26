@@ -261,10 +261,10 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
     // 예보 범위를 벗어나는 경우 처리
     if (weatherInfo.isOutOfRange) {
       return (
-        <div className="flex flex-wrap items-center text-sm mt-2 bg-red-50 rounded-md p-1.5 px-2 border border-red-200">
-          <span className="text-lg mr-1">❌</span>
-          <span className="font-medium text-red-600">예측불가</span>
-          <span className="ml-1 text-xs text-red-500">예보 범위 초과</span>
+        <div className="flex flex-wrap items-center text-sm mt-2 bg-gray-50 rounded-md p-1.5 px-2 border border-gray-200">
+          <span className="text-lg mr-1">❓</span>
+          <span className="font-medium text-gray-600">예측불가</span>
+          <span className="ml-1 text-xs text-gray-500">예보 범위 초과</span>
         </div>
       );
     }

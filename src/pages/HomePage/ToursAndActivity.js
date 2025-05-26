@@ -67,6 +67,7 @@ const ToursAndActivity = () => {
       const formattedStartDate = startDate ? format(new Date(startDate), "yyyy-MM-dd") : "";
       const formattedEndDate = endDate ? format(new Date(endDate), "yyyy-MM-dd") : "";
 
+      /*
       console.log('API 요청 파라미터:', {
         latitude,
         longitude,
@@ -74,6 +75,7 @@ const ToursAndActivity = () => {
         startDate: formattedStartDate,
         endDate: formattedEndDate,
       });
+      */
 
       const res = await travelApi.getToursAndActivities({
         latitude,
@@ -83,16 +85,18 @@ const ToursAndActivity = () => {
         endDate: formattedEndDate,
       });
 
-      console.log('API 응답:', res);
+      //console.log('API 응답:', res);
 
       setActivities(Array.isArray(res.data) ? res.data : []);
     } catch (e) {
-      console.error("❌ API Error:", e);
+      //console.error("❌ API Error:", e);
+      /*
       console.error("에러 상세:", {
         message: e.message,
         response: e.response?.data,
         status: e.response?.status
       });
+      */
       setError("액티비티 데이터를 불러오지 못했습니다.");
       setActivities([]); // 실패 시 안전하게 초기화
     }

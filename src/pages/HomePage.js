@@ -368,32 +368,7 @@ export const HomePage = () => {
    * @returns {Object} { isValid: boolean, error: string }
    */
   const validateFlightAccommodationCompatibility = (flight, accommodation) => {
-    if (!flight || !accommodation) {
-      return { isValid: true, error: null };
-    }
-
-    const isRoundTrip = flight.itineraries.length > 1;
-    const checkOutDate = new Date(accommodation.checkOut);
-
-    // 왕복편인 경우 오는 편 출발 시간과 체크아웃 시간 비교
-    if (isRoundTrip) {
-      const inboundDeparture = new Date(flight.itineraries[1].segments[0].departure.at);
-      const departureDateOnly = new Date(inboundDeparture.getFullYear(), inboundDeparture.getMonth(), inboundDeparture.getDate());
-      const checkOutDateOnly = new Date(checkOutDate.getFullYear(), checkOutDate.getMonth(), checkOutDate.getDate());
-      
-      if (departureDateOnly.getTime() === checkOutDateOnly.getTime()) {
-        const departureHour = inboundDeparture.getHours();
-        const checkOutHour = parseInt(accommodation.hotel.checkout_until.split(':')[0]);
-        
-        if (departureHour < checkOutHour + 2) { // 체크아웃 후 최소 2시간 여유 필요
-          return {
-            isValid: false,
-            error: `귀국 항공편 출발 시간(${inboundDeparture.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })})이 호텔 체크아웃 시간(${accommodation.hotel.checkout_until}) 이후 2시간 이내입니다. 공항 이동 시간이 부족할 수 있습니다.`
-          };
-        }
-      }
-    }
-
+    // 항공편과 숙박편 간의 시간 검증은 사용자의 자유도를 위해 제거
     return { isValid: true, error: null };
   };
 
@@ -574,7 +549,7 @@ export const HomePage = () => {
       // 3초 후 오류 메시지 제거
       setTimeout(() => {
         setValidationErrors([]);
-      }, 5000);
+      }, 8000);
       return;
     }
 
@@ -786,12 +761,20 @@ export const HomePage = () => {
           >
             {/* 오른쪽 AI 생성 이미지 */}
             <div className="absolute right-[0%] top-[5px] w-[694px] h-[815px] rounded-lg overflow-hidden">
-              <img src="/images/travel_right.gif" alt="여행 명소" className="w-full h-full object-cover" />
+              <img 
+                src={isProcessing ? "/images/travel_right.gif" : "/images/travel_right.png"} 
+                alt="여행 명소" 
+                className="w-full h-full object-cover transition-opacity duration-500" 
+              />
             </div>
             
             {/* 왼쪽 AI 생성 이미지 */}
-            <div className="absolute left-[0%] top-[5px] w-[694px] h-[810px] rounded-lg overflow-hidden">
-              <img src="/images/travel_left.gif" alt="여행 명소" className="w-full h-full object-cover" />
+            <div className="absolute left-[0%] top-[5px] w-[694px] h-[815px] rounded-lg overflow-hidden">
+              <img 
+                src={isProcessing ? "/images/travel_left.gif" : "/images/travel_left.png"} 
+                alt="여행 명소" 
+                className="w-full h-full object-cover transition-opacity duration-500" 
+              />
             </div>
           </div>
 
