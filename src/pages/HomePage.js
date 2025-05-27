@@ -1212,6 +1212,7 @@ export const HomePage = () => {
           defaultEndDate={endDate}
           isMultipleMode={selectedFlights.length > 0} // 이미 항공편이 선택되어 있으면 다중 모드
           selectedFlights={selectedFlights}
+          key={isFlightDialogOpen ? 'open' : 'closed'} // 다이얼로그 열릴 때마다 컴포넌트 재생성
         />
 
         {/* 숙박 검색 다이얼로그 */}

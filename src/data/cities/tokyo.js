@@ -49,14 +49,6 @@ export const tokyoActivities = [
     images: ["https://images.holibob.tech/eyJrZXkiOiJwcm9kdWN0SW1hZ2VzL2JhNmI3MjlmLTU4YWUtNDZjMC05ZTNhLWY1ZTcxZDkzN2I5YyIsImVkaXRzIjp7InJlc2l6ZSI6eyJmaXQiOiJjb3ZlciIsIndpZHRoIjoxOTIwLCJoZWlnaHQiOjEwODB9fX0="]
   },
   {
-    id: "139550168",
-    name: "Cherry Blossom & Mt. Fuji Tour with an English-Speaking Guide",
-    translatedName: "벚꽃 및 산영어를 구사하는 가이드와 함께하는 후지 투어",
-    price: "465.0 USD",
-    bookingLink: "https://amadeus.booking.holibob.tech/product/80af2564-2968-44f3-8a21-c83471c3ca01",
-    images: ["https://images.holibob.tech/eyJrZXkiOiJwcm9kdWN0SW1hZ2VzLzQyN2NjYmE0LWVhMjQtNDlhMy1hNjk0LTViMDc0Mjc5YThhNSIsImVkaXRzIjp7InJlc2l6ZSI6eyJmaXQiOiJjb3ZlciIsIndpZHRoIjoxOTIwLCJoZWlnaHQiOjEwODB9fX0="]
-  },
-  {
     id: "139657431",
     name: "Fuji Sightseeing Tour (With English or Japanese Speaking Guide)",
     translatedName: "후지 관광 투어 (영어 또는 일본어 가이드 포함)",

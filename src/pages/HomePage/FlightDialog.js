@@ -101,6 +101,11 @@ const FlightDialog = ({
   // 초기값 세팅 (대략 30일 후 기본 출발일 등)
   useEffect(() => {
     if (isOpen) {
+      // 다이얼로그를 열 때마다 로컬 선택 상태 완전 초기화
+      setSelectedFlightIdLocal(null);
+      setFlightResults([]); // 이전 검색 결과도 초기화
+      setFlightError(null);
+      
       // 다이얼로그를 열 때 부모에서 전달된 날짜를 우선 사용
       if (defaultStartDate) {
         setStartDate(defaultStartDate);
@@ -186,6 +191,7 @@ const FlightDialog = ({
     setIsLoadingFlights(true);
     setFlightError(null);
     setFlightResults([]);
+    setSelectedFlightIdLocal(null); // 새로운 검색 시 로컬 선택 상태 초기화
 
     const paramsToApi = {
       originCode: selectedOrigin.iataCode,
@@ -261,12 +267,21 @@ const FlightDialog = ({
 
   // 결과 렌더링 내 항공편 선택 버튼 클릭 핸들러 업데이트
   const handleFlightSelect = (flight) => {
-    // 선택한 항공편 ID를 로컬 상태에 저장 (UI 강조 표시용)
+    // 다중 선택 모드가 아닌 경우에만 로컬 선택 상태를 업데이트
+    if (!isMultipleMode) {
     setSelectedFlightIdLocal(flight.id);
+    }
     
     // 부모 컴포넌트로 항공편 정보와 함께 dictionaries와 airportInfoCache도 전달
     // 다중 선택 모드 여부도 함께 전달
     onSelectFlight(flight, dictionaries, airportInfoCache, isMultipleMode);
+  };
+
+  // 다이얼로그 닫기 핸들러
+  const handleClose = () => {
+    // 다이얼로그 닫을 때 로컬 상태 정리
+    setSelectedFlightIdLocal(null);
+    onClose();
   };
 
   // isOpen이 false 일 때 다이얼로그를 렌더링하지 않음
@@ -286,7 +301,7 @@ const FlightDialog = ({
               </p>
             )}
           </div>
-          <Button variant="ghost" className="rounded-full p-1 hover:bg-gray-100" onClick={onClose}>
+          <Button variant="ghost" className="rounded-full p-1 hover:bg-gray-100" onClick={handleClose}>
             <X className="h-6 w-6" />
           </Button>
         </div>
@@ -598,9 +613,10 @@ const FlightDialog = ({
                     );
                   };
 
-                  // 이미 선택된 항공편인지 확인
-                  const isAlreadySelected = selectedFlightIds.includes(flight.id);
-                  const isCurrentlySelected = selectedFlightIdLocal === flight.id;
+                  // 이미 선택된 항공편인지 확인 (다중 선택 모드에서만)
+                  const isAlreadySelected = isMultipleMode && selectedFlightIds.includes(flight.id);
+                  // 단일 선택 모드일 때만 현재 선택 상태를 표시
+                  const isCurrentlySelected = !isMultipleMode && selectedFlightIdLocal === flight.id;
 
                   return (
                     <div

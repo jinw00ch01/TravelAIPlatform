@@ -65,14 +65,6 @@ export const bangkokActivities = [
     images: ["https://aws-tiqets-cdn.imgix.net/images/content/e91477a7a0894e649eb1aa77e2d20b7b.jpeg?auto=format%2Ccompress&fit=crop&h=1284&ixlib=python-3.2.1&q=70&w=1284&s=a8b411fb344996af7b130252638146fc"]
   },
   {
-    id: "139445307",
-    name: "Coral Island, Pattaya Viewpoint & Sanctuary of Truth: Guided Tour from Bangkok",
-    translatedName: "코럴 아일랜드, 파타야 뷰포인트, 진실의 성지: 가이드 투어 (방콕 출발)",
-    price: "89.32 EUR",
-    bookingLink: "https://www.tiqets.com/en/checkout/tickets-for-coral-island-pattaya-viewpoint-sanctuary-of-truth-guided-tour-from-bangkok-p1099222/booking_details/?partner=amadeus",
-    images: ["https://aws-tiqets-cdn.imgix.net/images/content/d4b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5.jpeg?auto=format%2Ccompress&fit=crop&h=1284&ixlib=python-3.2.1&q=70&w=1284&s=724efdd0ebbc2d3a711157071e724cd0"]
-  },
-  {
     id: "139001306",
     name: "Day out to Ayutthaya with return Grand Pearl River Cruise",
     translatedName: "왕복 그랜드 펄 리버 크루즈와 함께 아유타야로 떠나는 하루",

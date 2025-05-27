@@ -49,7 +49,6 @@ function optimizeAccommodationData(accommodationData) {
     const hotel = { ...optimized.hotel };
     
     // 불필요한 필드 제거
-    delete hotel.main_photo_url; // 큰 이미지 URL 제거
     delete hotel.review_nr; // 리뷰 수는 필수가 아님
     delete hotel.distance_to_center; // 거리 정보는 간소화
     
@@ -678,9 +677,11 @@ async function performUpdate(userId, planId, body, updateType, now, isSharedUser
           return null;
         }
         // 불필요한 필드 제거로 크기 최적화
+        /*
         if (key === 'photos' && Array.isArray(value) && value.length > 3) {
           return value.slice(0, 3); // 사진은 최대 3개만 저장
         }
+        */
         if (key === 'facilities' && Array.isArray(value) && value.length > 10) {
           return value.slice(0, 10); // 시설은 최대 10개만 저장
         }
