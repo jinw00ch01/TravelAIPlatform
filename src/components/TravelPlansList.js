@@ -68,6 +68,8 @@ const TravelPlansList = ({ onSelectPlan }) => {
         // 공유받은 플랜인지 확인
         const isSharedPlan = plan.is_shared_with_me === true;
         const ownerEmail = plan.original_owner || plan.user_id || '알 수 없음';
+        // 결제 상태 확인
+        const isPaidPlan = plan.paid_plan === 1 || plan.paid_plan === true;
         
         return (
           <div
@@ -85,6 +87,11 @@ const TravelPlansList = ({ onSelectPlan }) => {
                 {isSharedPlan && (
                   <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-sky-100 text-sky-800">
                     공유된 플랜
+                  </span>
+                )}
+                {isPaidPlan && (
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    결제됨
                   </span>
                 )}
               </div>
