@@ -26,12 +26,14 @@ const ItineraryManager = () => {
           return;
         }
         
-        // 모든 저장된 계획을 가져옵니다 (유료/무료 구분 없이)
-        const savedPlans = response.plans;
-        console.log('[ItineraryManager] 저장된 계획:', savedPlans);
+        // 결제 완료된 계획만 필터링
+        const savedPlans = response.plans.filter(plan => plan.paid_plan === 1);
+        console.log('[ItineraryManager] 전체 계획:', response.plans.length);
+        console.log('[ItineraryManager] 결제 완료된 계획:', savedPlans.length);
+        console.log('[ItineraryManager] 필터링된 계획:', savedPlans);
         
         if (savedPlans.length === 0) {
-          setError('저장된 여행 계획이 없습니다.');
+          setError('결제 완료된 여행 계획이 없습니다. 여행 계획을 결제한 후 이용해주세요.');
           setLoading(false);
         } else {
           loadDetailedPlans(savedPlans);

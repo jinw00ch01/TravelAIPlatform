@@ -6,6 +6,22 @@ import { ko } from 'date-fns/locale';
 import { useAuth } from './auth/AuthContext';
 import './Cart.css';
 
+// JWT 토큰 디코딩 함수
+const decodeJWT = (token) => {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      throw new Error('Invalid JWT token format');
+    }
+    
+    const payload = JSON.parse(atob(parts[1]));
+    return { payload };
+  } catch (error) {
+    console.error('JWT 디코딩 오류:', error);
+    throw error;
+  }
+};
+
 const Cart = () => {
   const navigate = useNavigate();
   const { getJwtToken } = useAuth();
@@ -13,7 +29,6 @@ const Cart = () => {
   // 상태 관리
   const [plans, setPlans] = useState([]);
   const [selectedPlan, setSelectedPlan] = useState(null);
-  const [planDetails, setPlanDetails] = useState(null);
   const [cartItems, setCartItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -116,7 +131,6 @@ const Cart = () => {
   const fetchPlanDetails = async (planId, token, email) => {
     try {
       setLoading(true);
-      console.log('[Cart] 여행 계획 상세 정보 요청:', { planId, email });
       
       const response = await axios.post(
         'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/travel/checkplan',
@@ -128,8 +142,6 @@ const Cart = () => {
         }
       );
 
-      console.log('[Cart] 여행 계획 상세 응답:', response.data);
-
       if (response.data.success) {
         // 다중 항공편 정보 파싱 (flight_info_1, flight_info_2, ...)
         const flightInfos = [];
@@ -140,7 +152,6 @@ const Cart = () => {
               ? JSON.parse(response.data.plan[`flight_info_${flightIndex}`])
               : response.data.plan[`flight_info_${flightIndex}`];
             flightInfos.push(flightData);
-            console.log(`[Cart] 파싱된 항공편 ${flightIndex} 정보:`, flightData);
           } catch (e) {
             console.error(`[Cart] 항공편 ${flightIndex} 정보 파싱 오류:`, e);
           }
@@ -156,21 +167,13 @@ const Cart = () => {
               ? JSON.parse(response.data.plan[`accmo_info_${accmoIndex}`])
               : response.data.plan[`accmo_info_${accmoIndex}`];
             accommodationInfos.push(accmoData);
-            console.log(`[Cart] 파싱된 숙박편 ${accmoIndex} 정보:`, accmoData);
           } catch (e) {
             console.error(`[Cart] 숙박편 ${accmoIndex} 정보 파싱 오류:`, e);
           }
           accmoIndex++;
         }
 
-        const updatedPlanDetails = {
-          ...response.data.plan,
-          flightInfos,
-          accommodationInfos,
-          totalFlights: response.data.plan.total_flights || 0,
-          totalAccommodations: response.data.plan.total_accommodations || 0
-        };
-        setPlanDetails(updatedPlanDetails);
+
         
         // 장바구니 아이템 구성
         const items = [];
@@ -252,7 +255,6 @@ const Cart = () => {
           }
         });
         
-        console.log('[Cart] 생성된 장바구니 아이템:', items);
         setCartItems(items);
         
         // 기본적으로 모든 아이템 선택
@@ -356,18 +358,19 @@ const Cart = () => {
   const handlePayment = async () => {
     try {
       const itemsToPay = cartItems
-        .filter(item => selectedItems.includes(item.id))
-        .map(item => ({
-          type: item.type,
-          data: item.originalData
-        }));
+        .filter(item => selectedItems.includes(item.id));
 
       if (itemsToPay.length === 0) {
         alert('결제할 항목을 선택해주세요.');
         return;
       }
 
-      // 결제 API 호출
+      // 이미 결제된 계획인지 확인
+      if (selectedPlan?.paid_plan === 1) {
+        alert('이미 결제된 계획입니다.\n결제 완료된 여행 계획은 다시 결제할 수 없습니다.');
+        return;
+      }
+
       const tokenData = await getJwtToken();
       const token = tokenData?.token;
       
@@ -375,40 +378,143 @@ const Cart = () => {
         alert('로그인이 필요합니다.');
         return;
       }
-      
-      console.log('[Cart] 결제 요청 데이터:', {
-        plan_id: selectedPlan?.plan_id,
-        items: itemsToPay,
-        email: userEmail,
-        total_amount: calculateTotal(),
-        discount: discountAmount
-      });
-      
-      const response = await axios.post(
-        'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/travel/payment', 
-        {
-          plan_id: selectedPlan?.plan_id,
-          items: itemsToPay,
-          email: userEmail,
-          total_amount: calculateTotal(),
-          discount: discountAmount
-        }, 
-        {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
-      );
 
-      console.log('[Cart] 결제 응답:', response.data);
-
-      if (response.data.success) {
-        alert('결제가 완료되었습니다.');
-        // 결제 완료 후 홈으로 이동
-        navigate('/');
-      } else {
-        throw new Error(response.data.message || '결제에 실패했습니다.');
+      // JWT 토큰 디코딩
+      let payload = null;
+      
+      try {
+        const decodedToken = decodeJWT(token);
+        payload = decodedToken?.payload;
+      } catch (decodeError) {
+        console.error('JWT 토큰 디코딩 실패:', decodeError);
       }
+      
+      // 다양한 필드에서 사용자 ID 찾기
+      const currentUserId = payload?.user_id || 
+                           payload?.userId || 
+                           payload?.email || 
+                           payload?.username || 
+                           payload?.sub || 
+                           payload?.id ||
+                           userEmail || '';
+
+
+
+      if (!currentUserId || !selectedPlan?.plan_id) {
+        alert(`사용자 정보 또는 여행 계획 정보가 없습니다.\n사용자: ${currentUserId}\n계획 ID: ${selectedPlan?.plan_id}`);
+        return;
+      }
+
+      // Lambda 함수가 기대하는 정확한 형태로 데이터 준비
+      const userId = String(currentUserId);
+      const planId = parseInt(selectedPlan.plan_id);
+
+      // paid_plan을 1로 업데이트
+      try {
+
+        // 데이터 검증
+        if (!userId || isNaN(planId)) {
+          alert('사용자 정보 또는 계획 ID가 올바르지 않습니다.');
+          return;
+        }
+
+        const requestPayload = {
+          user_id: userId,
+          plan_id: planId
+        };
+
+
+        
+        const updateResponse = await axios.post(
+          'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/travel/updatePaid_plan',
+          requestPayload,  // axios가 자동으로 JSON으로 변환
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+
+
+        // 응답 처리
+        if (updateResponse.status === 200) {
+          let responseData = updateResponse.data;
+          
+          // JSON 파싱
+          if (typeof responseData === 'string') {
+            try {
+              responseData = JSON.parse(responseData);
+            } catch (parseError) {
+              alert('응답 데이터 파싱에 실패했습니다.');
+              return;
+            }
+          }
+
+          // Lambda 프록시 응답 처리
+          if (responseData.body && typeof responseData.body === 'string') {
+            try {
+              responseData = JSON.parse(responseData.body);
+            } catch (bodyParseError) {
+              console.error('Body 파싱 실패:', bodyParseError);
+            }
+          }
+
+          if (responseData.success === true) {
+            alert(`결제가 완료되었습니다!\n총 결제금액: ${formatPrice(calculateTotal())}\n여행 계획이 결제 완료 상태로 업데이트되었습니다.`);
+            navigate('/');
+          } else {
+            const errorMessage = responseData.message || 'paid_plan 업데이트에 실패했습니다.';
+            alert(`결제 처리 중 오류가 발생했습니다: ${errorMessage}`);
+          }
+        } else {
+          alert('결제 처리 중 예상치 못한 응답을 받았습니다.');
+        }
+              } catch (updateErr) {
+          console.error('[Cart] paid_plan 업데이트 오류:', updateErr);
+          console.error('[Cart] 오류 응답:', updateErr.response);
+          console.error('[Cart] 오류 상태 코드:', updateErr.response?.status);
+          console.error('[Cart] 오류 데이터:', updateErr.response?.data);
+          
+          let errorMessage = '알 수 없는 오류가 발생했습니다.';
+          
+          if (updateErr.response) {
+            const status = updateErr.response.status;
+            const data = updateErr.response.data;
+            
+            if (status === 400) {
+              // Lambda 함수에서 400 에러가 발생하는 경우
+              errorMessage = `요청 데이터 오류: ${data?.message || '필수 데이터가 누락되었습니다.'}`;
+              console.error('[Cart] 400 에러 - 전송된 데이터:', { user_id: userId, plan_id: planId });
+            } else if (status === 404) {
+              errorMessage = '해당 여행 계획을 찾을 수 없습니다. 계획이 존재하는지 확인해주세요.';
+            } else if (status === 500) {
+              // Lambda 함수 내부 오류
+              if (data?.message) {
+                if (data.message.includes('ValidationException')) {
+                  errorMessage = 'DynamoDB Key 구조 오류: 데이터 타입을 확인해주세요.';
+                } else if (data.message.includes('AccessDenied')) {
+                  errorMessage = 'DynamoDB 접근 권한이 없습니다. 관리자에게 문의하세요.';
+                } else if (data.message.includes('ResourceNotFound')) {
+                  errorMessage = 'DynamoDB 테이블을 찾을 수 없습니다. 테이블 설정을 확인하세요.';
+                } else {
+                  errorMessage = `서버 내부 오류: ${data.message}`;
+                }
+              } else {
+                errorMessage = '서버 내부 오류가 발생했습니다.';
+              }
+            } else {
+              errorMessage = `서버 오류 (${status}): ${data?.message || updateErr.response.statusText}`;
+            }
+          } else if (updateErr.request) {
+            errorMessage = '서버에 연결할 수 없습니다. 네트워크 연결을 확인해주세요.';
+          } else {
+            errorMessage = updateErr.message;
+          }
+          
+          alert(`결제 처리 중 오류가 발생했습니다: ${errorMessage}`);
+        }
     } catch (err) {
       alert(err.message || '결제 중 오류가 발생했습니다.');
       console.error('[Cart] 결제 실패:', err);
@@ -458,6 +564,7 @@ const Cart = () => {
                   {plans.map((plan) => (
                     <option key={plan.plan_id} value={plan.plan_id}>
                       {plan.name} ({format(new Date(plan.last_updated), 'yyyy년 MM월 dd일', { locale: ko })})
+                      {plan.paid_plan === 1 ? ' [결제완료]' : ' [미결제]'}
                     </option>
                   ))}
                 </select>
@@ -743,21 +850,47 @@ const Cart = () => {
             </div>
             <div className="total-price">
               <span>총 결제금액</span>
-              <span className="final-price">{formatPrice(calculateTotal())}</span>
+              <span className="final-price">
+                {formatPrice(calculateTotal())}
+                {selectedPlan?.paid_plan === 1 && (
+                  <span style={{ 
+                    marginLeft: '10px', 
+                    fontSize: '14px', 
+                    color: '#28a745',
+                    fontWeight: 'bold'
+                  }}>
+                    (결제완료)
+                  </span>
+                )}
+              </span>
             </div>
             <div className="cart-buttons">
               <button 
                 className="continue-shopping"
-                onClick={() => navigate('/')}
+                onClick={() => navigate('/itinerary')}
               >
                 쇼핑 계속하기
               </button>
-              <button 
-                className="checkout"
-                onClick={handlePayment}
-              >
-                결제하기
-              </button>
+              {selectedPlan?.paid_plan === 1 ? (
+                <button 
+                  className="checkout"
+                  disabled
+                  style={{
+                    backgroundColor: '#6c757d',
+                    cursor: 'not-allowed',
+                    opacity: 0.6
+                  }}
+                >
+                  이미 결제 완료
+                </button>
+              ) : (
+                <button 
+                  className="checkout"
+                  onClick={handlePayment}
+                >
+                  결제하기
+                </button>
+              )}
             </div>
           </div>
         </div>
