@@ -537,6 +537,57 @@ export const travelApi = {
       throw error;
     }
   },
+
+  // 계획 삭제 API
+  deletePlan: async (planId) => {
+    try {
+      console.log(`[API] 계획 삭제 요청 시작 - Plan ID: ${planId}`);
+      
+      const token = await getTokenForAPI();
+      if (!token) {
+        throw new Error('인증 토큰을 가져올 수 없습니다.');
+      }
+      
+      const DELETE_PLAN_URL = `${API_URL}/api/travel/deleteplan`;
+      
+      const requestData = {
+        plan_id: planId
+      };
+      
+      console.log(`[API] 삭제 요청 URL: ${DELETE_PLAN_URL}`);
+      console.log(`[API] 삭제 요청 데이터:`, requestData);
+      
+      const response = await fetch(DELETE_PLAN_URL, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(requestData)
+      });
+      
+      console.log(`[API] 삭제 응답 상태: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error(`[API] 삭제 오류 응답:`, errorData);
+        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log(`[API] 삭제 응답 데이터:`, data);
+      
+      if (data && data.success) {
+        console.log(`[API] 계획 삭제 성공 - 액션: ${data.action}`);
+        return data;
+      } else {
+        throw new Error(data?.message || '계획 삭제에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error(`[API] 계획 삭제 중 오류:`, error);
+      throw error;
+    }
+  },
 };
 
 // 날씨 API 관련 함수 추가
