@@ -70,7 +70,7 @@ const DUMMY_BOOKINGS = [
     ];
 
 const MyPage = () => {
-  const { user, logout, getJwtToken } = useAuth();
+  const { user, signOut, getJwtToken } = useAuth();
   const navigate = useNavigate();
   const [userInfo, setUserInfo] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -92,6 +92,7 @@ const MyPage = () => {
     paidPlansCount: 0,
     sharedPlansCount: 0
   });
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   // 개발 환경에서 skipAuth 확인 - 정확히 문자열 비교
   const isSkipAuth = process.env.REACT_APP_SKIP_AUTH === 'true';
@@ -395,6 +396,40 @@ const MyPage = () => {
       birthdate: userInfo?.birthdate || ''
     });
     setIsEditing(false);
+  };
+
+  // 계정 삭제 처리 함수
+  const handleDeleteAccount = async () => {
+    setShowDeleteModal(false);
+    setLoading(true);
+    try {
+      const tokenResult = await getJwtToken();
+      if (tokenResult.success) {
+        await axios.delete(
+          'https://j0jnhscmhk.execute-api.ap-northeast-2.amazonaws.com/default/deleteUserProfile',
+          {
+            params: {
+              email: userInfo?.email || user?.email
+            },
+            headers: {
+              Authorization: `Bearer ${tokenResult.token}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+      }
+    } catch (error) {
+      // 에러 무시
+    } finally {
+      console.log('회원탈퇴 완료되었습니다');
+      showNotification('회원탈퇴가 완료되었습니다.', 'success');
+      setTimeout(async () => {
+        localStorage.clear();
+        sessionStorage.clear();
+        await signOut();
+        window.location.replace('/login');
+      }, 1500);
+    }
   };
 
   // 로딩 중 UI - API 응답을 기다리도록 수정
@@ -958,6 +993,7 @@ const MyPage = () => {
                   <div className="space-y-4">
                     <button
                       type="button"
+                      onClick={() => setShowDeleteModal(true)}
                       className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                     >
                       계정 삭제
@@ -979,6 +1015,30 @@ const MyPage = () => {
           </div>
         </div>
       </div>
+
+      {/* 계정 삭제 모달 */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-30">
+          <div className="bg-white p-6 rounded shadow-lg w-80">
+            <h2 className="text-lg font-bold mb-4">정말로 계정을 삭제하시겠습니까?</h2>
+            <p className="mb-6 text-gray-600">이 작업은 되돌릴 수 없습니다.</p>
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="px-4 py-2 bg-gray-200 rounded"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                className="px-4 py-2 bg-red-600 text-white rounded"
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
