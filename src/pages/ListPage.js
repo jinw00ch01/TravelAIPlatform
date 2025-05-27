@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../components/auth/AuthContext';
+import { travelApi } from '../services/api';
 
 function ListPage() {
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0); // 강제 새로고침용 키
+  const [deleteModal, setDeleteModal] = useState({ isOpen: false, plan: null });
+  const [isDeleting, setIsDeleting] = useState(false);
   const { getJwtToken } = useAuth();
 
   // 페이지 로드시 자동으로 API 호출
@@ -74,6 +77,52 @@ function ListPage() {
   const handleRefresh = () => {
     console.log('[ListPage] 새로고침 요청');
     setRefreshKey(prevKey => prevKey + 1); // 상태 변경으로 useEffect 재실행
+  };
+
+  // 삭제 확인 모달 열기
+  const handleDeleteClick = (plan, event) => {
+    event.preventDefault(); // Link 클릭 방지
+    event.stopPropagation();
+    setDeleteModal({ isOpen: true, plan });
+  };
+
+  // 삭제 확인 모달 닫기
+  const handleDeleteCancel = () => {
+    setDeleteModal({ isOpen: false, plan: null });
+  };
+
+  // 실제 삭제 실행
+  const handleDeleteConfirm = async () => {
+    if (!deleteModal.plan) return;
+
+    setIsDeleting(true);
+    try {
+      console.log('[ListPage] 계획 삭제 시도:', deleteModal.plan.plan_id);
+      
+      const response = await travelApi.deletePlan(deleteModal.plan.plan_id);
+      
+      if (response && response.success) {
+        console.log('[ListPage] 삭제 성공:', response);
+        
+        // 성공 메시지 표시
+        alert(response.message || '계획이 성공적으로 삭제되었습니다.');
+        
+        // 목록에서 해당 계획 제거
+        setPlans(prevPlans => 
+          prevPlans.filter(plan => plan.plan_id !== deleteModal.plan.plan_id)
+        );
+        
+        // 모달 닫기
+        setDeleteModal({ isOpen: false, plan: null });
+      } else {
+        throw new Error(response?.message || '삭제에 실패했습니다.');
+      }
+    } catch (err) {
+      console.error('[ListPage] 삭제 실패:', err);
+      alert(`삭제 실패: ${err.message}`);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   if (loading) {
@@ -145,20 +194,42 @@ function ListPage() {
                 }`}
               >
                 <div className="p-5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h2 className="text-xl font-semibold text-gray-800 truncate">
-                      {plan.name}
-                    </h2>
-                    {isSharedPlan && (
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-sky-100 text-sky-800">
-                        공유된 플랜
-                      </span>
-                    )}
-                    {isPaidPlan && (
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        결제됨
-                      </span>
-                    )}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <h2 className="text-xl font-semibold text-gray-800 truncate">
+                        {plan.name}
+                      </h2>
+                      {isSharedPlan && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-sky-100 text-sky-800">
+                          공유된 플랜
+                        </span>
+                      )}
+                      {isPaidPlan && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          결제됨
+                        </span>
+                      )}
+                    </div>
+                    {/* 삭제 버튼 */}
+                    <button
+                      onClick={(e) => handleDeleteClick(plan, e)}
+                      className="ml-2 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                      title="계획 삭제"
+                    >
+                      <svg 
+                        className="w-5 h-5" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round" 
+                          strokeWidth={2} 
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" 
+                        />
+                      </svg>
+                    </button>
                   </div>
                   {isSharedPlan && (
                     <p className="text-sky-700 text-sm mb-2">
@@ -180,6 +251,40 @@ function ListPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* 삭제 확인 모달 */}
+      {deleteModal.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              계획 삭제 확인
+            </h3>
+            <p className="text-gray-600 mb-6">
+              "{deleteModal.plan?.name}" 계획을 정말 삭제하시겠습니까?
+              <br />
+              <span className="text-red-600 text-sm font-medium">
+                이 작업은 되돌릴 수 없습니다.
+              </span>
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={handleDeleteCancel}
+                disabled={isDeleting}
+                className="px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                disabled={isDeleting}
+                className="px-4 py-2 text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isDeleting ? '삭제 중...' : '삭제'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
