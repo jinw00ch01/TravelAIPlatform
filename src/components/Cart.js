@@ -403,11 +403,15 @@ const Cart = () => {
 
         
         const updateResponse = await axios.post(
-          'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/travel/updatePaid_plan',
-          requestPayload,  // axios가 자동으로 JSON으로 변환
+          'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/travel/save',
+          {
+            plan_id: planId,
+            update_type: 'paid_plan',
+            paid_plan: 1
+          },
           {
             headers: {
-              'Authorization': `Bearer ${token}`,
+              Authorization: `Bearer ${token}`,
               'Content-Type': 'application/json'
             }
           }
