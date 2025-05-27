@@ -634,15 +634,34 @@ const usePlannerActions = ({
     const { source, destination } = result;
     if (!travelPlans[selectedDay] || !travelPlans[selectedDay].schedules) return;
 
-    const daySchedules = [...travelPlans[selectedDay].schedules];
-    const [reorderedItem] = daySchedules.splice(source.index, 1);
-    daySchedules.splice(destination.index, 0, reorderedItem);
+    // 드래그 가능한 일정들만 필터링 (항공편과 숙박편 제외)
+    const allSchedules = travelPlans[selectedDay].schedules;
+    const draggableSchedules = allSchedules.filter(schedule => 
+      schedule.type !== 'Flight_Departure' && 
+      schedule.type !== 'Flight_Return' && 
+      schedule.type !== 'Flight_OneWay' && 
+      schedule.type !== 'accommodation'
+    );
+    const fixedSchedules = allSchedules.filter(schedule => 
+      schedule.type === 'Flight_Departure' || 
+      schedule.type === 'Flight_Return' || 
+      schedule.type === 'Flight_OneWay' || 
+      schedule.type === 'accommodation'
+    );
+
+    // 드래그 가능한 일정들의 순서만 변경
+    const reorderedDraggableSchedules = [...draggableSchedules];
+    const [movedItem] = reorderedDraggableSchedules.splice(source.index, 1);
+    reorderedDraggableSchedules.splice(destination.index, 0, movedItem);
+
+    // 고정 일정들과 재정렬된 일반 일정들을 합쳐서 새 배열 생성
+    const newSchedules = [...fixedSchedules, ...reorderedDraggableSchedules];
 
     setTravelPlans(prev => ({
       ...prev,
       [selectedDay]: {
         ...prev[selectedDay],
-        schedules: daySchedules
+        schedules: newSchedules
       }
     }));
   }, [travelPlans, selectedDay, setTravelPlans]);
