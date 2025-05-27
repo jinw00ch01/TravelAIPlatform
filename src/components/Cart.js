@@ -379,47 +379,24 @@ const Cart = () => {
         return;
       }
 
-      // JWT 토큰 디코딩
-      let payload = null;
-      
-      try {
-        const decodedToken = decodeJWT(token);
-        payload = decodedToken?.payload;
-      } catch (decodeError) {
-        console.error('JWT 토큰 디코딩 실패:', decodeError);
-      }
-      
-      // 다양한 필드에서 사용자 ID 찾기
-      const currentUserId = payload?.user_id || 
-                           payload?.userId || 
-                           payload?.email || 
-                           payload?.username || 
-                           payload?.sub || 
-                           payload?.id ||
-                           userEmail || '';
-
-
-
-      if (!currentUserId || !selectedPlan?.plan_id) {
-        alert(`사용자 정보 또는 여행 계획 정보가 없습니다.\n사용자: ${currentUserId}\n계획 ID: ${selectedPlan?.plan_id}`);
+      if (!selectedPlan?.plan_id) {
+        alert('여행 계획 정보가 없습니다.');
         return;
       }
 
       // Lambda 함수가 기대하는 정확한 형태로 데이터 준비
-      const userId = String(currentUserId);
       const planId = parseInt(selectedPlan.plan_id);
 
       // paid_plan을 1로 업데이트
       try {
 
         // 데이터 검증
-        if (!userId || isNaN(planId)) {
-          alert('사용자 정보 또는 계획 ID가 올바르지 않습니다.');
+        if (isNaN(planId)) {
+          alert('계획 ID가 올바르지 않습니다.');
           return;
         }
 
         const requestPayload = {
-          user_id: userId,
           plan_id: planId
         };
 
@@ -486,7 +463,7 @@ const Cart = () => {
             if (status === 400) {
               // Lambda 함수에서 400 에러가 발생하는 경우
               errorMessage = `요청 데이터 오류: ${data?.message || '필수 데이터가 누락되었습니다.'}`;
-              console.error('[Cart] 400 에러 - 전송된 데이터:', { user_id: userId, plan_id: planId });
+              console.error('[Cart] 400 에러 - 전송된 데이터:', { plan_id: planId });
             } else if (status === 404) {
               errorMessage = '해당 여행 계획을 찾을 수 없습니다. 계획이 존재하는지 확인해주세요.';
             } else if (status === 500) {
@@ -551,7 +528,25 @@ const Cart = () => {
           {/* 여행 계획 선택 섹션 */}
           {plans.length > 0 && (
             <div className="travel-plans-section">
-              <h2 className="section-title">여행 계획 선택</h2>
+              <h2 className="section-title">
+                여행 계획 선택
+                {selectedPlan?.is_shared_with_me && (
+                  <span 
+                    style={{
+                      marginLeft: '10px',
+                      padding: '4px 8px',
+                      backgroundColor: '#e6f3ff',
+                      color: '#0066cc',
+                      borderRadius: '12px',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      border: '1px solid #b3d9ff'
+                    }}
+                  >
+                    공유된 플랜
+                  </span>
+                )}
+              </h2>
               <div className="plans-selector">
                 <select 
                   className="plan-select" 
@@ -562,13 +557,36 @@ const Cart = () => {
                   }}
                 >
                   {plans.map((plan) => (
-                    <option key={plan.plan_id} value={plan.plan_id}>
+                    <option 
+                      key={plan.plan_id} 
+                      value={plan.plan_id}
+                      style={{
+                        backgroundColor: plan.is_shared_with_me ? '#e6f3ff' : 'white',
+                        color: plan.is_shared_with_me ? '#0066cc' : 'black'
+                      }}
+                    >
                       {plan.name} ({format(new Date(plan.last_updated), 'yyyy년 MM월 dd일', { locale: ko })})
+                      {plan.is_shared_with_me ? ' (공유됨)' : ''}
                       {plan.paid_plan === 1 ? ' [결제완료]' : ' [미결제]'}
                     </option>
                   ))}
                 </select>
               </div>
+              {selectedPlan?.is_shared_with_me && (
+                <div style={{
+                  marginTop: '10px',
+                  padding: '10px',
+                  backgroundColor: '#f0f8ff',
+                  border: '1px solid #b3d9ff',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  color: '#0066cc'
+                }}>
+                  <strong>📤 공유받은 계획</strong>
+                  <br />
+                  원래 소유자: {selectedPlan.original_owner || selectedPlan.user_id || '알 수 없음'}
+                </div>
+              )}
               <div className="divider"></div>
             </div>
           )}
