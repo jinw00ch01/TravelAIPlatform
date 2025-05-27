@@ -955,6 +955,13 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightM
         )
         .addTo(map.current);
 
+      // 마커에 위치 정보 저장 (팝업을 외부에서 열기 위함)
+      marker._customData = {
+        lat: lat,
+        lng: lng,
+        schedules: schedules
+      };
+
       markers.current.push(marker);
       bounds.extend(marker.getLngLat());
       scheduleCount++;
@@ -1050,16 +1057,40 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightM
     setIsSelectingLocation(false);
   };
 
-  // 선택된 위치가 변경될 때마다 지도 중심점 업데이트
+  // 선택된 위치가 변경될 때마다 지도 중심점 업데이트 및 마커 팝업 열기
   useEffect(() => {
-    if (map.current && selectedLocation) {
+    if (map.current && selectedLocation && isMapReady) {
+      // 먼저 모든 열려있는 팝업 닫기
+      markers.current.forEach(marker => {
+        if (marker.getPopup() && marker.getPopup().isOpen()) {
+          marker.getPopup().remove();
+        }
+      });
+
+      // 지도 중심점 이동
       map.current.flyTo({
         center: [selectedLocation.lng, selectedLocation.lat],
         zoom: 15,
         essential: true
       });
+
+      // 해당 위치의 마커 찾아서 팝업 즉시 열기
+      const targetMarker = markers.current.find(marker => {
+        const markerData = marker._customData;
+        if (!markerData) return false;
+        
+        // 좌표가 일치하는 마커 찾기 (소수점 6자리까지 비교)
+        const latMatch = Math.abs(parseFloat(markerData.lat) - parseFloat(selectedLocation.lat)) < 0.000001;
+        const lngMatch = Math.abs(parseFloat(markerData.lng) - parseFloat(selectedLocation.lng)) < 0.000001;
+        
+        return latMatch && lngMatch;
+      });
+
+      if (targetMarker && targetMarker.getPopup()) {
+        targetMarker.togglePopup();
+      }
     }
-  }, [selectedLocation]);
+  }, [selectedLocation, isMapReady]);
 
   // 탭 전환 시 지도 크기 조정 및 마커 다시 렌더링
   useEffect(() => {
