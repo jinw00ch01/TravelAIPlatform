@@ -87,6 +87,11 @@ const MyPage = () => {
   const [bookings, setBookings] = useState([]);
   const [notification, setNotification] = useState(null);
   const [apiResponseReceived, setApiResponseReceived] = useState(false);
+  const [travelStats, setTravelStats] = useState({
+    myPlansCount: 0,
+    paidPlansCount: 0,
+    sharedPlansCount: 0
+  });
 
   // 개발 환경에서 skipAuth 확인 - 정확히 문자열 비교
   const isSkipAuth = process.env.REACT_APP_SKIP_AUTH === 'true';
@@ -103,6 +108,62 @@ const MyPage = () => {
     setTimeout(() => {
       setNotification(null);
     }, 5000);
+  };
+
+  // 여행 통계 데이터 가져오기
+  const fetchTravelStats = async () => {
+    try {
+      console.log('여행 통계 데이터 가져오기 시작');
+      
+      const tokenData = await getJwtToken();
+      const token = tokenData?.token;
+      
+      if (!token) {
+        console.warn('토큰이 없어 여행 통계를 가져올 수 없습니다.');
+        return;
+      }
+
+      const response = await axios.post(
+        'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/travel/checklist',
+        { mode: 'list' },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000
+        }
+      );
+
+      if (response.data.success && response.data.plans) {
+        const plans = response.data.plans;
+        
+        // 내 계획 수 (공유받은 것 제외)
+        const myPlansCount = plans.filter(plan => !plan.is_shared_with_me).length;
+        
+        // 결제된 계획 수 (공유받은 것 제외)
+        const paidPlansCount = plans.filter(plan => 
+          !plan.is_shared_with_me && (plan.paid_plan === 1 || plan.paid_plan === true)
+        ).length;
+        
+        // 공유받은 계획 수
+        const sharedPlansCount = plans.filter(plan => plan.is_shared_with_me === true).length;
+
+        setTravelStats({
+          myPlansCount,
+          paidPlansCount,
+          sharedPlansCount
+        });
+
+        console.log('여행 통계 업데이트:', {
+          myPlansCount,
+          paidPlansCount,
+          sharedPlansCount
+        });
+      }
+    } catch (error) {
+      console.error('여행 통계 가져오기 실패:', error);
+    }
   };
 
   // getBookingStatusStyle 함수 추가
@@ -147,6 +208,9 @@ const MyPage = () => {
           
           showNotification('개발 모드: 더미 데이터가 로드되었습니다.', 'info');
           setApiResponseReceived(true);
+          
+          // 개발 모드에서도 여행 통계 가져오기
+          fetchTravelStats();
         } 
         // skipAuth가 false인 경우 실제 API 호출
         else {
@@ -203,6 +267,9 @@ const MyPage = () => {
               }
               
               showNotification(`Lambda 응답 수신: ${response.data.user.name}님의 정보가 로드되었습니다.`, 'success');
+              
+              // 여행 통계 가져오기
+              fetchTravelStats();
             } else {
               throw new Error(response.data.message || '데이터를 가져오는데 실패했습니다.');
             }
@@ -438,22 +505,23 @@ const MyPage = () => {
         )}
 
         {/* 여행 통계 */}
-        {userInfo?.stats && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <div className="bg-white shadow rounded-lg p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">총 여행 횟수</h3>
-              <p className="text-3xl font-bold text-primary">{userInfo.stats.totalTrips || 0}회</p>
-            </div>
-            <div className="bg-white shadow rounded-lg p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">방문한 국가</h3>
-              <p className="text-3xl font-bold text-primary">{userInfo.stats.countries || 0}개국</p>
-            </div>
-            <div className="bg-white shadow rounded-lg p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">리뷰 작성 수</h3>
-              <p className="text-3xl font-bold text-primary">{userInfo.stats.reviews || 0}개</p>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <div className="bg-white shadow rounded-lg p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">내 계획 수</h3>
+            <p className="text-3xl font-bold text-primary">{travelStats.myPlansCount}개</p>
+            <p className="text-sm text-gray-500 mt-1">공유받은 계획 제외</p>
           </div>
-        )}
+          <div className="bg-white shadow rounded-lg p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">결제된 계획 수</h3>
+            <p className="text-3xl font-bold text-green-600">{travelStats.paidPlansCount}개</p>
+            <p className="text-sm text-gray-500 mt-1">내 계획 중 결제 완료</p>
+          </div>
+          <div className="bg-white shadow rounded-lg p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">공유받은 계획 수</h3>
+            <p className="text-3xl font-bold text-blue-600">{travelStats.sharedPlansCount}개</p>
+            <p className="text-sm text-gray-500 mt-1">다른 사용자가 공유한 계획</p>
+          </div>
+        </div>
 
         {/* 탭 네비게이션 */}
         <div className="bg-white shadow rounded-lg mb-8">
