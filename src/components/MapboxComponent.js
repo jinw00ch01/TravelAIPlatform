@@ -78,6 +78,7 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightM
   const [isSelectingLocation, setIsSelectingLocation] = useState(false);
   const [selectingLocationType, setSelectingLocationType] = useState(null);
   const [routeGeometry, setRouteGeometry] = useState(null);
+  const [isMapReady, setIsMapReady] = useState(false);
 
   // Google Maps API 스크립트 로드
   useEffect(() => {
@@ -512,6 +513,9 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightM
           }
         });
         }
+        
+        // 지도 준비 완료 상태 설정
+        setIsMapReady(true);
       });
     }
 
@@ -834,12 +838,12 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightM
     };
 
     waitForMap();
-  }, [transportMode, travelPlans, selectedDay, isGoogleMapsLoaded]);
+  }, [transportMode, travelPlans, selectedDay, isGoogleMapsLoaded, resizeTrigger]);
 
   // 마커 표시
   useEffect(() => {
-    // 지도가 초기화된 경우만 실행
-    if (!map.current || !map.current.getSource('route')) return;
+    // 지도가 준비되지 않았으면 대기
+    if (!map.current || !isMapReady) return;
 
     // 기존 마커 모두 제거
     markers.current.forEach(marker => marker.remove());
@@ -850,6 +854,9 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightM
     // 표시할 일정 데이터 선택 (전체 보기 또는 선택된 날짜만)
     const bounds = new mapboxgl.LngLatBounds();
     let scheduleCount = 0;
+
+    // 같은 위치의 마커들을 그룹화하기 위한 Map
+    const locationGroups = new Map();
 
     Object.keys(travelPlans).forEach(dayKey => {
       // 선택된 날짜가 아니고 showAllMarkers가 false면 건너뜀
@@ -874,42 +881,83 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightM
         return schedule.lat && schedule.lng;
       });
 
-      // 각 일정에 대해 마커 생성
+      // 각 일정에 대해 위치별로 그룹화
       daySchedules.forEach((schedule, index) => {
         const dayNumber = parseInt(dayKey);
-        const color = dayColors[dayNumber % dayColors.length];
+        const locationKey = `${schedule.lat},${schedule.lng}`;
         
-        const markerElement = document.createElement('div');
-        markerElement.className = 'custom-marker';
-        markerElement.innerHTML = `
-          <div class="marker-content">
-            <div class="marker-number" style="background-color: ${color}">
-              ${showAllMarkers ? `${dayNumber}-${index + 1}` : `${index + 1}`}
-            </div>
-            <div class="marker-dot" style="background-color: ${color}"></div>
-          </div>
-        `;
-
-        const marker = new mapboxgl.Marker(markerElement)
-          .setLngLat([schedule.lng, schedule.lat])
-          .setPopup(
-            new mapboxgl.Popup({ offset: 25 })
-              .setHTML(`
-                <div style="padding: 10px;">
-                  <h3 style="margin: 0 0 5px 0; color: ${color};">
-                    ${showAllMarkers ? `${dayNumber}일차 ${index + 1}번째 장소` : `${index + 1}번째 장소`}
-                  </h3>
-                  <p style="margin: 0; font-size: 14px;">${schedule.name}</p>
-                  <p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">${schedule.address}</p>
-                </div>
-              `)
-          )
-          .addTo(map.current);
-
-        markers.current.push(marker);
-        bounds.extend(marker.getLngLat());
-        scheduleCount++;
+        if (!locationGroups.has(locationKey)) {
+          locationGroups.set(locationKey, {
+            lat: schedule.lat,
+            lng: schedule.lng,
+            schedules: []
+          });
+        }
+        
+        locationGroups.get(locationKey).schedules.push({
+          ...schedule,
+          dayNumber,
+          originalIndex: index + 1
+        });
       });
+    });
+
+    // 각 위치 그룹에 대해 마커 생성
+    locationGroups.forEach((group, locationKey) => {
+      const { lat, lng, schedules } = group;
+      
+      // 마커 번호 생성 (day-index 형태로)
+      const markerNumbers = schedules.map(schedule => 
+        showAllMarkers ? `${schedule.dayNumber}-${schedule.originalIndex}` : `${schedule.originalIndex}`
+      );
+      
+      // 첫 번째 일정의 색상 사용
+      const firstSchedule = schedules[0];
+      const color = dayColors[firstSchedule.dayNumber % dayColors.length];
+      
+      const markerElement = document.createElement('div');
+      markerElement.className = 'custom-marker';
+      
+      // 클러스터된 마커 표시 (여러 개면 숫자들을 쉼표로 구분)
+      const displayNumbers = markerNumbers.join(',');
+      
+      markerElement.innerHTML = `
+        <div class="marker-content">
+          <div class="marker-number" style="background-color: ${color}; ${markerNumbers.length > 1 ? 'font-size: 10px; padding: 2px 4px;' : ''}">
+            ${displayNumbers}
+          </div>
+          <div class="marker-dot" style="background-color: ${color}"></div>
+        </div>
+      `;
+
+      // 팝업 내용 생성 (여러 일정이 있는 경우 모두 표시)
+      const popupContent = schedules.map(schedule => `
+        <div style="margin-bottom: ${schedules.length > 1 ? '10px' : '0'}; ${schedules.length > 1 ? 'border-bottom: 1px solid #eee; padding-bottom: 8px;' : ''}">
+          <h4 style="margin: 0 0 5px 0; color: ${color}; font-size: 14px;">
+            ${showAllMarkers ? `${schedule.dayNumber}일차 ${schedule.originalIndex}번째 장소` : `${schedule.originalIndex}번째 장소`}
+          </h4>
+          <p style="margin: 0; font-size: 13px; font-weight: bold;">${schedule.name}</p>
+          <p style="margin: 2px 0 0 0; font-size: 11px; color: #666;">${schedule.address}</p>
+          ${schedule.time ? `<p style="margin: 2px 0 0 0; font-size: 11px; color: #888;">시간: ${schedule.time}</p>` : ''}
+        </div>
+      `).join('');
+
+      const marker = new mapboxgl.Marker(markerElement)
+        .setLngLat([lng, lat])
+        .setPopup(
+          new mapboxgl.Popup({ offset: 25 })
+            .setHTML(`
+              <div style="padding: 10px; max-width: 250px;">
+                ${schedules.length > 1 ? `<h3 style="margin: 0 0 10px 0; color: ${color}; font-size: 16px;">같은 위치 일정 (${schedules.length}개)</h3>` : ''}
+                ${popupContent}
+              </div>
+            `)
+        )
+        .addTo(map.current);
+
+      markers.current.push(marker);
+      bounds.extend(marker.getLngLat());
+      scheduleCount++;
     });
 
     // 모든 마커가 보이도록 지도 범위 조정
@@ -920,7 +968,7 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightM
           maxZoom: 15 // 최대 줌 레벨 제한
       });
     }
-  }, [travelPlans, selectedDay, showAllMarkers, hideFlightMarkers]);
+  }, [isMapReady, travelPlans, selectedDay, showAllMarkers, hideFlightMarkers, resizeTrigger]);
 
   // 좌표가 동일한지 확인하는 헬퍼 함수 추가
   const coordinatesAreEqual = (coord1, coord2) => {
@@ -1013,15 +1061,22 @@ const MapboxComponent = ({ travelPlans, selectedDay, showAllMarkers, hideFlightM
     }
   }, [selectedLocation]);
 
+  // 탭 전환 시 지도 크기 조정 및 마커 다시 렌더링
   useEffect(() => {
-    if (map.current) {
+    if (map.current && resizeTrigger !== undefined && isMapReady) {
+      // 지도 크기 조정
       map.current.resize();
+      
+      // 약간의 지연 후 추가 크기 조정
       const timeout = setTimeout(() => {
-        if (map.current) map.current.resize();
-      }, 350);
+        if (map.current) {
+          map.current.resize();
+        }
+      }, 100);
+      
       return () => clearTimeout(timeout);
     }
-  }, [resizeTrigger]);
+  }, [resizeTrigger, isMapReady]);
 
   return (
     <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
