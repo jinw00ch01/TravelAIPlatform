@@ -38,6 +38,54 @@ const SAVED_PLANS_TABLE = process.env.SAVED_PLANS_TABLE || "saved_plans";
 // 개발 모드 여부 (테스트용)
 const DEV_MODE = process.env.NODE_ENV !== "production";
 
+// 숙박편 데이터 최적화 함수
+function optimizeAccommodationData(accommodationData) {
+  if (!accommodationData) return accommodationData;
+  
+  const optimized = { ...accommodationData };
+  
+  // 호텔 정보 최적화
+  if (optimized.hotel) {
+    const hotel = { ...optimized.hotel };
+    
+    // 불필요한 필드 제거
+    delete hotel.main_photo_url; // 큰 이미지 URL 제거
+    delete hotel.review_nr; // 리뷰 수는 필수가 아님
+    delete hotel.distance_to_center; // 거리 정보는 간소화
+    
+    optimized.hotel = hotel;
+  }
+  
+  // 객실 정보 최적화
+  if (optimized.room) {
+    const room = { ...optimized.room };
+    
+    // 사진은 최대 2개만 유지
+    if (room.photos && Array.isArray(room.photos)) {
+      room.photos = room.photos.slice(0, 2);
+    }
+    
+    // 시설 정보는 최대 5개만 유지
+    if (room.facilities && Array.isArray(room.facilities)) {
+      room.facilities = room.facilities.slice(0, 5);
+    }
+    
+    // 긴 설명 제한
+    if (room.description && room.description.length > 200) {
+      room.description = room.description.substring(0, 200) + '...';
+    }
+    
+    // 불필요한 상세 정보 제거
+    delete room.priceBreakdown;
+    delete room.blockInfo;
+    delete room.highlights;
+    
+    optimized.room = room;
+  }
+  
+  return optimized;
+}
+
 // DynamoDB 형식의 객체를 일반 JavaScript 객체로 변환하는 함수
 function convertDynamoDBToJS(item) {
   if (!item) return null;
@@ -390,10 +438,11 @@ async function handleCreatePlan(userEmail, body) {
         flightColumns[`flight_info_${index + 1}`] = JSON.stringify(cleanData(flightInfo));
       });
 
-      // 다중 숙박편 정보를 개별 컬럼으로 저장
+      // 다중 숙박편 정보를 개별 컬럼으로 저장 (최적화 적용)
       const accommodationColumns = {};
       finalAccommodations.forEach((accommodationInfo, index) => {
-        accommodationColumns[`accmo_info_${index + 1}`] = JSON.stringify(cleanData(accommodationInfo));
+        const optimizedAccommodation = optimizeAccommodationData(accommodationInfo);
+        accommodationColumns[`accmo_info_${index + 1}`] = JSON.stringify(cleanData(optimizedAccommodation));
       });
 
       const itemToSave = {
@@ -416,7 +465,26 @@ async function handleCreatePlan(userEmail, body) {
       };
 
       console.log("DynamoDB에 저장할 최종 아이템 구조:", Object.keys(itemToSave));
-    console.log("저장될 shared_email 값:", itemToSave.shared_email);
+      console.log("저장될 shared_email 값:", itemToSave.shared_email);
+      
+      // 데이터 크기 체크
+      const itemSizeInBytes = Buffer.byteLength(JSON.stringify(itemToSave), 'utf8');
+      const itemSizeInKB = (itemSizeInBytes / 1024).toFixed(2);
+      console.log(`아이템 크기: ${itemSizeInKB} KB (최대 400KB)`);
+      
+      if (itemSizeInBytes > 400 * 1024) {
+        console.error(`⚠️ 아이템 크기가 DynamoDB 제한(400KB)을 초과했습니다: ${itemSizeInKB} KB`);
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({
+            success: false,
+            message: `데이터 크기가 너무 큽니다 (${itemSizeInKB} KB). 일부 데이터를 줄여주세요.`,
+            currentSize: itemSizeInKB,
+            maxSize: "400 KB"
+          })
+        };
+      }
       
       const putCmd = new PutCommand({
         TableName: SAVED_PLANS_TABLE,
@@ -601,13 +669,24 @@ async function performUpdate(userId, planId, body, updateType, now, isSharedUser
   let expressionAttributeValues = { ":now": now };
   let expressionAttributeNames = {};
 
-  // NaN, Infinity 등 직렬화 불가능한 값 처리
+  // NaN, Infinity 등 직렬화 불가능한 값 처리 및 데이터 최적화
   const cleanData = (obj) => {
     if (obj === null || obj === undefined) return obj;
     try {
       return JSON.parse(JSON.stringify(obj, (key, value) => {
         if (typeof value === 'number' && !Number.isFinite(value)) {
           return null;
+        }
+        // 불필요한 필드 제거로 크기 최적화
+        if (key === 'photos' && Array.isArray(value) && value.length > 3) {
+          return value.slice(0, 3); // 사진은 최대 3개만 저장
+        }
+        if (key === 'facilities' && Array.isArray(value) && value.length > 10) {
+          return value.slice(0, 10); // 시설은 최대 10개만 저장
+        }
+        // 긴 설명 텍스트 제한
+        if (typeof value === 'string' && value.length > 1000) {
+          return value.substring(0, 1000) + '...';
         }
         return value;
       }));
@@ -651,12 +730,13 @@ async function performUpdate(userId, planId, body, updateType, now, isSharedUser
       expressionAttributeValues[":flight"] = JSON.stringify(cleanData(body.flightInfo));
     }
     
-    // 다중 숙박편 정보 처리
+    // 다중 숙박편 정보 처리 (최적화 적용)
     if (body.accommodationInfos && Array.isArray(body.accommodationInfos)) {
       body.accommodationInfos.forEach((accommodationInfo, index) => {
         const fieldName = `accmo_info_${index + 1}`;
         updateExpression += `, ${fieldName} = :${fieldName}`;
-        expressionAttributeValues[`:${fieldName}`] = JSON.stringify(cleanData(accommodationInfo));
+        const optimizedAccommodation = optimizeAccommodationData(accommodationInfo);
+        expressionAttributeValues[`:${fieldName}`] = JSON.stringify(cleanData(optimizedAccommodation));
       });
       
       // 총 숙박편 개수 업데이트
@@ -721,12 +801,13 @@ async function performUpdate(userId, planId, body, updateType, now, isSharedUser
       expressionAttributeValues[":flight"] = JSON.stringify(cleanData(body.flightInfo));
     }
     
-    // 다중 숙박편 정보 처리 (전체 수정 모드)
+    // 다중 숙박편 정보 처리 (전체 수정 모드, 최적화 적용)
     if (body.accommodationInfos && Array.isArray(body.accommodationInfos)) {
       body.accommodationInfos.forEach((accommodationInfo, index) => {
         const fieldName = `accmo_info_${index + 1}`;
         updateExpression += `, ${fieldName} = :${fieldName}`;
-        expressionAttributeValues[`:${fieldName}`] = JSON.stringify(cleanData(accommodationInfo));
+        const optimizedAccommodation = optimizeAccommodationData(accommodationInfo);
+        expressionAttributeValues[`:${fieldName}`] = JSON.stringify(cleanData(optimizedAccommodation));
       });
       
       // 총 숙박편 개수 업데이트

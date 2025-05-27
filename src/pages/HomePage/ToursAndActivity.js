@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
-import { travelApi } from "../../services/api";
+// import { travelApi } from "../../services/api"; // API 호출 제거
 import { format } from "date-fns";
+import { CITY_ACTIVITIES } from "../../data/cityActivitiesData";
 
 const EUR_TO_KRW = 1480; 
 
@@ -12,8 +13,7 @@ const CITIES = [
   { name: "오사카", latitude: 34.6937378, longitude: 135.5021651 },
   { name: "뉴욕", latitude: 40.7127753, longitude: -74.0059728 },
   { name: "파리", latitude: 48.8566969, longitude: 2.3514616 },
-  { name: "방콕", latitude: 13.7563309, longitude: 100.5017651 },
-  { name: "로마", latitude: 41.9027835, longitude: 12.4963655 }
+  { name: "방콕", latitude: 13.7563309, longitude: 100.5017651 }
 ];
 
 // 유로 가격 문자열에서 숫자만 추출 후 원화로 변환
@@ -60,46 +60,24 @@ const ToursAndActivity = () => {
     setLongitude(city.longitude);
   };
 
-  const fetchActivities = async () => {
+  // 하드코딩된 데이터에서 액티비티 가져오기
+  const fetchActivities = () => {
     setLoading(true);
     setError("");
-    try {
-      const formattedStartDate = startDate ? format(new Date(startDate), "yyyy-MM-dd") : "";
-      const formattedEndDate = endDate ? format(new Date(endDate), "yyyy-MM-dd") : "";
-
-      /*
-      console.log('API 요청 파라미터:', {
-        latitude,
-        longitude,
-        radius,
-        startDate: formattedStartDate,
-        endDate: formattedEndDate,
-      });
-      */
-
-      const res = await travelApi.getToursAndActivities({
-        latitude,
-        longitude,
-        radius,
-        startDate: formattedStartDate,
-        endDate: formattedEndDate,
-      });
-
-      //console.log('API 응답:', res);
-
-      setActivities(Array.isArray(res.data) ? res.data : []);
-    } catch (e) {
-      //console.error("❌ API Error:", e);
-      /*
-      console.error("에러 상세:", {
-        message: e.message,
-        response: e.response?.data,
-        status: e.response?.status
-      });
-      */
-      setError("액티비티 데이터를 불러오지 못했습니다.");
-      setActivities([]); // 실패 시 안전하게 초기화
+    
+    console.log('🔥 선택된 도시:', selectedCity);
+    
+    // 선택된 도시의 액티비티 데이터 가져오기
+    const cityActivities = CITY_ACTIVITIES[selectedCity] || [];
+    
+    console.log('🔥 하드코딩된 데이터:', cityActivities);
+    console.log('🔥 데이터 개수:', cityActivities.length);
+    
+    if (cityActivities.length > 0) {
+      console.log('🔥 첫 번째 액티비티:', cityActivities[0]);
     }
+    
+    setActivities(cityActivities);
     setLoading(false);
   };
 
@@ -113,7 +91,7 @@ const ToursAndActivity = () => {
   useEffect(() => {
     fetchActivities();
     // eslint-disable-next-line
-  }, [latitude, longitude]);
+  }, [selectedCity]);
 
   return (
     <section className="w-full bg-[#f5f3ea] py-12 relative">

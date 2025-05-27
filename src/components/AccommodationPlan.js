@@ -692,11 +692,7 @@ const AccommodationPlan = forwardRef(({
     }
   };
 
-  const handleAddToPlanClick = async () => {
-    if (!selectedHotel) {
-      alert('먼저 상세 정보를 볼 호텔을 선택해주세요.');
-      return;
-    }
+  const handleRoomSelect = (hotel, room) => {
     if (dayOrderLength === 0) { 
       alert('일정을 먼저 생성해주세요. 사이드바에서 날짜를 추가할 수 있습니다.');
       return;
@@ -706,14 +702,28 @@ const AccommodationPlan = forwardRef(({
         console.warn('[AccommodationPlan] travelPlans 상태와 dayOrderLength가 일치하지 않거나 travelPlans가 비어있습니다.', travelPlans, dayOrderLength);
     }
 
-    // 숙박편 데이터 준비
+    // 체크인/체크아웃 시간 설정 (AccomodationDialog.js와 동일한 로직)
+    const combineDateTime = (dateObj, timeStr) => {
+      if (!dateObj || !timeStr || timeStr === '정보 없음') return dateObj;
+      const [hh, mm] = timeStr.split(':');
+      const newDate = new Date(dateObj);
+      newDate.setHours(parseInt(hh, 10), parseInt(mm || '0', 10), 0, 0);
+      return newDate;
+    };
+
+    const checkInWithTime = combineDateTime(formData.checkIn, hotel.checkin_from);
+    const checkOutWithTime = combineDateTime(formData.checkOut, hotel.checkout_until);
+
+    // 숙박편 데이터 준비 (AccomodationDialog.js와 동일한 구조)
     const accommodationToAdd = {
-      hotel: selectedHotel,
-      roomList: roomData?.rooms,
-      checkIn: formData.checkIn,
-      checkOut: formData.checkOut,
-      lat: selectedHotel.latitude,
-      lng: selectedHotel.longitude
+      hotel,
+      room,
+      checkIn: checkInWithTime,
+      checkOut: checkOutWithTime,
+      adults: parseInt(formData.adults) || 2,
+      children: parseInt(formData.children) || 0,
+      lat: hotel.latitude,
+      lng: hotel.longitude
     };
 
     // 유효성 검사 수행
@@ -722,11 +732,12 @@ const AccommodationPlan = forwardRef(({
     }
 
     // 최종 확인 팝업
-    const checkInStr = formatDateString(formData.checkIn);
-    const checkOutStr = formatDateString(formData.checkOut);
-    const hotelName = selectedHotel.hotel_name_trans || selectedHotel.hotel_name;
+    const checkInStr = formatDateString(checkInWithTime);
+    const checkOutStr = formatDateString(checkOutWithTime);
+    const hotelName = hotel.hotel_name_trans || hotel.hotel_name;
+    const roomName = room.name || '선택된 객실';
     
-    if (window.confirm(`${hotelName}\n(${checkInStr} ~ ${checkOutStr})\n\n이 숙소를 일정에 추가하시겠습니까?`)) {
+    if (window.confirm(`${hotelName}\n${roomName}\n(${checkInStr} ~ ${checkOutStr})\n\n이 숙소를 일정에 추가하시겠습니까?`)) {
       if (!onAddToSchedule) {
         alert('일정 추가 기능을 사용할 수 없습니다.');
         return;
@@ -739,7 +750,7 @@ const AccommodationPlan = forwardRef(({
       setValidationAlert({
         severity: 'success',
         title: '✅ 숙박편 추가 완료',
-        message: `${hotelName}이(가) 여행 계획에 추가되었습니다.`
+        message: `${hotelName} - ${roomName}이(가) 여행 계획에 추가되었습니다.`
       });
       
       // 3초 후 Alert 자동 숨김
@@ -1452,48 +1463,7 @@ const AccommodationPlan = forwardRef(({
                                 <Button
                                   variant="contained"
                                   color="primary"
-                                  onClick={() => {
-                                    // 숙박편 데이터 준비
-                                    const accommodationToAdd = {
-                                      hotel: selectedHotel,
-                                      room,
-                                      roomList: roomData.rooms,
-                                      checkIn: formData.checkIn,
-                                      checkOut: formData.checkOut,
-                                      lat: selectedHotel.latitude,
-                                      lng: selectedHotel.longitude
-                                    };
-
-                                    // 유효성 검사 수행
-                                    if (!validateAndAddAccommodation(accommodationToAdd)) {
-                                      return;
-                                    }
-
-                                    // 최종 확인 및 추가
-                                    const checkInStr = formatDateString(formData.checkIn);
-                                    const checkOutStr = formatDateString(formData.checkOut);
-                                    const hotelName = selectedHotel.hotel_name_trans || selectedHotel.hotel_name;
-                                    const roomName = room.name || '선택된 객실';
-                                    
-                                    if (window.confirm(`${hotelName}\n${roomName}\n(${checkInStr} ~ ${checkOutStr})\n\n이 객실을 일정에 추가하시겠습니까?`)) {
-                                      if (onAddToSchedule) {
-                                        onAddToSchedule(accommodationToAdd);
-                                      }
-                                      if (onForceRefreshDay) onForceRefreshDay();
-                                      
-                                      // 성공 메시지 표시
-                                      setValidationAlert({
-                                        severity: 'success',
-                                        title: '✅ 숙박편 추가 완료',
-                                        message: `${hotelName} - ${roomName}이(가) 여행 계획에 추가되었습니다.`
-                                      });
-                                      
-                                      // 3초 후 Alert 자동 숨김
-                                      setTimeout(() => setValidationAlert(null), 7000);
-                                      
-                                      setModalOpen(false);
-                                    }
-                                  }}
+                                  onClick={() => handleRoomSelect(selectedHotel, room)}
                                   fullWidth
                                 >
                                   이 객실로 일정에 추가
@@ -1577,7 +1547,10 @@ const AccommodationPlan = forwardRef(({
                   key={dayKey}
                   fullWidth
                   sx={{ my: 1 }}
-                  onClick={() => handleAddToPlanClick()}
+                  onClick={() => {
+                    // 이 다이얼로그는 더 이상 사용되지 않으므로 닫기만 함
+                    setAddToPlanDialogOpen(false);
+                  }}
                 >
                   {dateStr}
                 </Button>

@@ -338,13 +338,13 @@ export const travelApi = {
   getToursAndActivities: async (params) => {
     try {
       const response = await apiClient.post('api/amadeus/Tours_and_Activities', params, {
-        timeout: 10000,
+        timeout: 50000,
         retry: 2,
         retryDelay: 1000
       });
       return response.data;
     } catch (error) {
-      //console.error('getToursAndActivities API 오류:', error);
+      console.error('getToursAndActivities API 오류:', error);
       throw error;
     }
   },

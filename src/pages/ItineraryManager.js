@@ -3,59 +3,6 @@ import Sidebar from '../components/itinerary/Sidebar';
 import ItineraryDetail from '../components/itinerary/ItineraryDetail';
 import { travelApi } from '../services/api';
 
-// 샘플 데이터 - 실제 사용 시 지우거나 주석 처리하세요
-const SAMPLE_ITINERARY_DATA = {
-  "1": {
-    "title": "5/24 1일차: 도쿄 시부야 & 신주쿠 탐험",
-    "schedules": [
-      {
-        "id": "flight-departure-1",
-        "name": "ICN → NRT 항공편",
-        "time": "오후 12:55",
-        "address": "NRT",
-        "category": "항공편",
-        "type": "Flight_Departure",
-        "duration": "2시간 35분",
-        "notes": "가격: ₩333,200",
-        "lat": null,
-        "lng": null,
-        "flightOfferDetails": {/* 항공편 상세정보 생략 */}
-      },
-      {
-        "id": "1-1",
-        "name": "시부야 스크램블 교차로",
-        "time": "13:55",
-        "lat": 35.6594,
-        "lng": 139.7009,
-        "category": "장소",
-        "duration": "1시간",
-        "notes": "세계에서 가장 붐비는 교차로 체험",
-        "cost": "0",
-        "address": "일본 〒150-0043 Tokyo, Shibuya City, Dogenzaka, 2 Chome−24"
-      },
-      // 나머지 일정은 원래 데이터와 동일하게 포함
-    ]
-  },
-  "2": {
-    "title": "5/25 2일차: 아사쿠사 & 우에노 문화 체험",
-    "schedules": [
-      // 2일차 일정 데이터
-    ]
-  },
-  "3": {
-    "title": "5/26 3일차: 하라주쿠 & 오다이바 트렌드 탐방",
-    "schedules": [
-      // 3일차 일정 데이터
-    ]
-  },
-  "4": {
-    "title": "5/27 4일차: 나리타로 이동",
-    "schedules": [
-      // 4일차 일정 데이터
-    ]
-  }
-};
-
 const ItineraryManager = () => {
   const [selectedItinerary, setSelectedItinerary] = useState(null);
   const [itineraries, setItineraries] = useState([]);
@@ -134,91 +81,111 @@ const ItineraryManager = () => {
             }
           }
 
-          // 항공편 정보 파싱
-          let flightInfo = null;
-          if (response.plan.flight_details) {
+          // 다중 항공편 정보 파싱 (flight_info_1, flight_info_2, ...)
+          const flightInfos = [];
+          let flightIndex = 1;
+          while (response.plan[`flight_info_${flightIndex}`]) {
             try {
-              flightInfo = typeof response.plan.flight_details === 'string'
-                ? JSON.parse(response.plan.flight_details)
-                : response.plan.flight_details;
-              console.log(`[ItineraryManager] Plan ${plan.plan_id} 항공편 정보 파싱 완료:`, flightInfo);
+              const flightData = typeof response.plan[`flight_info_${flightIndex}`] === 'string'
+                ? JSON.parse(response.plan[`flight_info_${flightIndex}`])
+                : response.plan[`flight_info_${flightIndex}`];
+              flightInfos.push(flightData);
+              console.log(`[ItineraryManager] Plan ${plan.plan_id} 항공편 ${flightIndex} 정보 파싱 완료:`, flightData);
             } catch (e) {
-              console.error(`[ItineraryManager] Plan ${plan.plan_id} 항공편 정보 파싱 오류:`, e);
+              console.error(`[ItineraryManager] Plan ${plan.plan_id} 항공편 ${flightIndex} 정보 파싱 오류:`, e);
             }
+            flightIndex++;
           }
 
-          // 숙박 정보 파싱
-          let accommodationInfo = null;
-          if (response.plan.accmo_info) {
+          // 다중 숙박 정보 파싱 (accmo_info_1, accmo_info_2, ...)
+          const accommodationInfos = [];
+          let accmoIndex = 1;
+          while (response.plan[`accmo_info_${accmoIndex}`]) {
             try {
-              accommodationInfo = typeof response.plan.accmo_info === 'string'
-                ? JSON.parse(response.plan.accmo_info)
-                : response.plan.accmo_info;
-              console.log(`[ItineraryManager] Plan ${plan.plan_id} 숙박 정보 파싱 완료:`, accommodationInfo);
+              const accmoData = typeof response.plan[`accmo_info_${accmoIndex}`] === 'string'
+                ? JSON.parse(response.plan[`accmo_info_${accmoIndex}`])
+                : response.plan[`accmo_info_${accmoIndex}`];
+              accommodationInfos.push(accmoData);
+              console.log(`[ItineraryManager] Plan ${plan.plan_id} 숙박 ${accmoIndex} 정보 파싱 완료:`, accmoData);
             } catch (e) {
-              console.error(`[ItineraryManager] Plan ${plan.plan_id} 숙박 정보 파싱 오류:`, e);
+              console.error(`[ItineraryManager] Plan ${plan.plan_id} 숙박 ${accmoIndex} 정보 파싱 오류:`, e);
             }
+            accmoIndex++;
           }
 
-          // 일정에 항공편과 숙박 정보 추가
+          // 일정에 다중 항공편과 숙박 정보 추가
           if (schedules && typeof schedules === 'object') {
             Object.keys(schedules).forEach(dayKey => {
               const daySchedules = schedules[dayKey].schedules || [];
               
-              // 해당 날짜의 항공편 추가
-              if (flightInfo) {
-                const flightSchedules = flightInfo
-                  .filter(flight => {
-                    const flightDate = new Date(flight.flightOfferDetails?.flightOfferData?.itineraries?.[0]?.segments?.[0]?.departure?.at);
-                    const dayDate = new Date(response.plan.start_date);
-                    dayDate.setDate(dayDate.getDate() + parseInt(dayKey) - 1);
-                    return flightDate.toDateString() === dayDate.toDateString();
-                  })
-                  .map(flight => ({
-                    id: `flight-${flight.type}-${dayKey}`,
-                    name: flight.flightOfferDetails?.flightOfferData?.itineraries?.[0]?.segments?.[0]?.departure?.iataCode +
-                          ' → ' +
-                          flight.flightOfferDetails?.flightOfferData?.itineraries?.[0]?.segments?.[0]?.arrival?.iataCode,
-                    time: new Date(flight.flightOfferDetails?.flightOfferData?.itineraries?.[0]?.segments?.[0]?.departure?.at)
-                          .toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
-                    type: flight.type,
-                    category: '항공편',
-                    duration: flight.flightOfferDetails?.flightOfferData?.itineraries?.[0]?.duration,
-                    notes: `가격: ${flight.flightOfferDetails?.flightOfferData?.price?.total || '정보 없음'}`
-                  }));
-                daySchedules.push(...flightSchedules);
+              // 해당 날짜의 다중 항공편 추가
+              if (flightInfos && flightInfos.length > 0) {
+                flightInfos.forEach((flightInfo, flightIdx) => {
+                  if (flightInfo && flightInfo.flightOfferDetails?.flightOfferData?.itineraries) {
+                    const flightSchedules = flightInfo.flightOfferDetails.flightOfferData.itineraries
+                      .filter(itinerary => {
+                        const flightDate = new Date(itinerary.segments?.[0]?.departure?.at);
+                        const dayDate = new Date(response.plan.start_date);
+                        dayDate.setDate(dayDate.getDate() + parseInt(dayKey) - 1);
+                        return flightDate.toDateString() === dayDate.toDateString();
+                      })
+                      .map((itinerary, itineraryIdx) => ({
+                        id: `flight-${flightIdx}-${itineraryIdx}-${dayKey}`,
+                        name: itinerary.segments?.[0]?.departure?.iataCode +
+                              ' → ' +
+                              itinerary.segments?.[itinerary.segments.length - 1]?.arrival?.iataCode,
+                        time: new Date(itinerary.segments?.[0]?.departure?.at)
+                              .toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+                        type: 'Flight_Departure',
+                        category: '항공편',
+                        duration: itinerary.duration,
+                        notes: `가격: ${flightInfo.flightOfferDetails?.flightOfferData?.price?.total || '정보 없음'}`,
+                        lat: null, // 항공편은 위치 정보 없음
+                        lng: null
+                      }));
+                    daySchedules.push(...flightSchedules);
+                  }
+                });
               }
 
-              // 해당 날짜의 숙박 정보 추가
-              if (accommodationInfo?.hotel && accommodationInfo.checkIn) {
-                const checkInDate = new Date(accommodationInfo.checkIn);
-                const checkOutDate = new Date(accommodationInfo.checkOut);
-                const dayDate = new Date(response.plan.start_date);
-                dayDate.setDate(dayDate.getDate() + parseInt(dayKey) - 1);
+              // 해당 날짜의 다중 숙박 정보 추가
+              if (accommodationInfos && accommodationInfos.length > 0) {
+                accommodationInfos.forEach((accommodationInfo, accmoIdx) => {
+                  if (accommodationInfo?.hotel && accommodationInfo.checkIn) {
+                    const checkInDate = new Date(accommodationInfo.checkIn);
+                    const checkOutDate = new Date(accommodationInfo.checkOut);
+                    const dayDate = new Date(response.plan.start_date);
+                    dayDate.setDate(dayDate.getDate() + parseInt(dayKey) - 1);
 
-                if (dayDate.toDateString() === checkInDate.toDateString()) {
-                  daySchedules.push({
-                    id: `hotel-${accommodationInfo.hotel.hotel_id}-${dayKey}-in`,
-                    name: accommodationInfo.hotel.hotel_name,
-                    time: '체크인',
-                    type: 'accommodation',
-                    category: '숙소',
-                    address: accommodationInfo.hotel.address,
-                    hotelDetails: accommodationInfo
-                  });
-                }
+                    if (dayDate.toDateString() === checkInDate.toDateString()) {
+                      daySchedules.push({
+                        id: `hotel-${accommodationInfo.hotel.hotel_id || accmoIdx}-${dayKey}-in`,
+                        name: accommodationInfo.hotel.hotel_name || accommodationInfo.hotel.name,
+                        time: '체크인',
+                        type: 'accommodation',
+                        category: '숙소',
+                        address: accommodationInfo.hotel.address || accommodationInfo.hotel.address_trans,
+                        hotelDetails: accommodationInfo,
+                        lat: accommodationInfo.hotel.latitude || null,
+                        lng: accommodationInfo.hotel.longitude || null
+                      });
+                    }
 
-                if (dayDate.toDateString() === checkOutDate.toDateString()) {
-                  daySchedules.push({
-                    id: `hotel-${accommodationInfo.hotel.hotel_id}-${dayKey}-out`,
-                    name: accommodationInfo.hotel.hotel_name,
-                    time: '체크아웃',
-                    type: 'accommodation',
-                    category: '숙소',
-                    address: accommodationInfo.hotel.address,
-                    hotelDetails: accommodationInfo
-                  });
-                }
+                    if (dayDate.toDateString() === checkOutDate.toDateString()) {
+                      daySchedules.push({
+                        id: `hotel-${accommodationInfo.hotel.hotel_id || accmoIdx}-${dayKey}-out`,
+                        name: accommodationInfo.hotel.hotel_name || accommodationInfo.hotel.name,
+                        time: '체크아웃',
+                        type: 'accommodation',
+                        category: '숙소',
+                        address: accommodationInfo.hotel.address || accommodationInfo.hotel.address_trans,
+                        hotelDetails: accommodationInfo,
+                        lat: accommodationInfo.hotel.latitude || null,
+                        lng: accommodationInfo.hotel.longitude || null
+                      });
+                    }
+                  }
+                });
               }
 
               // 일정 시간순 정렬
@@ -236,8 +203,12 @@ const ItineraryManager = () => {
             ...plan,
             title: response.plan.name || plan.name,
             ...(schedules && typeof schedules === 'object' ? schedules : {}),
-            flightInfo,
-            accommodationInfo
+            flightInfo: flightInfos, // 다중 항공편 정보 배열
+            accommodationInfo: accommodationInfos.length > 0 ? accommodationInfos[0] : null, // 첫 번째 숙박 정보 (호환성)
+            flightInfos, // 전체 항공편 정보 배열
+            accommodationInfos, // 전체 숙박 정보 배열
+            totalFlights: response.plan.total_flights || flightInfos.length,
+            totalAccommodations: response.plan.total_accommodations || accommodationInfos.length
           };
           
           console.log(`[ItineraryManager] Plan ${plan.plan_id} 최종 처리 데이터:`, processedData);
