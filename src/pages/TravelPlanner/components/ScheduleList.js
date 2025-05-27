@@ -1,12 +1,14 @@
 import React from 'react';
 import {
-  Box, Typography, Paper, Grid, List, IconButton, Tooltip
+  Box, Typography, Paper, Grid, List, IconButton, Tooltip, Button
 } from '@mui/material';
 import { DragDropContext, Droppable } from 'react-beautiful-dnd';
 import { format as formatDateFns } from 'date-fns';
 import { formatPrice } from '../../../utils/flightFormatters';
 import CloseIcon from '@mui/icons-material/Close';
 import InfoIcon from '@mui/icons-material/Info';
+import AddIcon from '@mui/icons-material/Add';
+import HotelIcon from '@mui/icons-material/Hotel';
 
 const StrictModeDroppable = ({ children, ...props }) => {
   const [enabled, setEnabled] = React.useState(false);
@@ -34,7 +36,9 @@ const ScheduleList = ({
   renderScheduleItem,
   handleOpenPlannerFlightDetail,
   handleDeleteAccommodation,
-  handleDeleteFlight
+  handleDeleteFlight,
+  setIsSearchOpen,
+  setIsCustomAccommodationOpen
 }) => {
 
   return (
@@ -292,9 +296,31 @@ const ScheduleList = ({
 
       {/* 일반 일정 섹션 */}
       <Box sx={{ mb: 2 }}>
-        <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.primary', fontWeight: 'bold' }}>
-          📋 일반 일정 (드래그하여 순서 변경 가능)
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+          <Typography variant="subtitle2" sx={{ color: 'text.primary', fontWeight: 'bold' }}>
+            📋 일반 일정 (드래그하여 순서 변경 가능)
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={() => setIsSearchOpen(true)}
+              sx={{ fontSize: '0.75rem', py: 0.5, px: 1 }}
+            >
+              일정 추가
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<HotelIcon />}
+              onClick={() => setIsCustomAccommodationOpen(true)}
+              sx={{ fontSize: '0.75rem', py: 0.5, px: 1 }}
+            >
+              숙소 추가
+            </Button>
+          </Box>
+        </Box>
         <DragDropContext onDragEnd={handleScheduleDragEnd}>
           <StrictModeDroppable droppableId="schedules-main">
             {(providedList) => (

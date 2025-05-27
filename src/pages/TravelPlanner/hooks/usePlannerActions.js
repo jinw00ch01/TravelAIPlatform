@@ -114,33 +114,7 @@ const usePlannerActions = ({
       }
     }
 
-    // 2. 여행 시작일(첫째 날)과 마지막일에 항공편이 있는지 확인
-    const firstDay = dayKeys[0];
-    const lastDay = dayKeys[dayKeys.length - 1];
-    
-    const firstDaySchedules = travelPlans[firstDay]?.schedules || [];
-    const lastDaySchedules = travelPlans[lastDay]?.schedules || [];
-    
-    const firstDayFlights = firstDaySchedules.filter(s => 
-      s.type === 'Flight_Departure' || s.type === 'Flight_OneWay'
-    );
-    const lastDayFlights = lastDaySchedules.filter(s => 
-      s.type === 'Flight_Return' || s.type === 'Flight_OneWay'
-    );
-
-    if (firstDayFlights.length === 0) {
-      return { 
-        isValid: false, 
-        message: `여행 시작일(${firstDay}일차)에 출발 항공편이 없습니다. 여행 시작일에는 반드시 항공편이 필요합니다.` 
-      };
-    }
-
-    if (lastDayFlights.length === 0 && dayKeys.length > 1) {
-      return { 
-        isValid: false, 
-        message: `여행 마지막일(${lastDay}일차)에 귀국 항공편이 없습니다. 여행 마지막일에는 반드시 항공편이 필요합니다.` 
-      };
-    }
+    // 2. 항공편 검증 로직 제거 (선택 사항으로 변경)
 
     return { isValid: true, message: '검증 통과' };
   }, [travelPlans]);

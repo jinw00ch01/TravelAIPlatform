@@ -18,6 +18,15 @@ const TravelPlannerDialogs = ({
   isSearchOpen,
   setIsSearchOpen,
   onAddPlace,
+  // 개인 숙소 추가 다이얼로그
+  isCustomAccommodationOpen,
+  setIsCustomAccommodationOpen,
+  customAccommodationData,
+  setCustomAccommodationData,
+  handleSaveCustomAccommodation,
+  isCustomAccommodationSearchOpen,
+  setIsCustomAccommodationSearchOpen,
+  handleCustomAccommodationPlaceSelect,
   // 일정 수정 다이얼로그
   editDialogOpen,
   setEditDialogOpen,
@@ -69,8 +78,100 @@ const TravelPlannerDialogs = ({
     <>
       {/* 장소 검색 다이얼로그 */}
       <Dialog open={isSearchOpen} onClose={() => setIsSearchOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>장소 검색</DialogTitle>
+        <DialogTitle>일정 추가</DialogTitle>
         <DialogContent><SearchPopup onSelect={onAddPlace} onClose={() => setIsSearchOpen(false)} /></DialogContent>
+      </Dialog>
+
+      {/* 개인 숙소 추가 다이얼로그 */}
+      <Dialog open={isCustomAccommodationOpen} onClose={() => setIsCustomAccommodationOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>개인 숙소 추가</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              fullWidth
+              label="숙소 이름 *"
+              value={customAccommodationData?.name || ''}
+              onChange={e => setCustomAccommodationData(prev => ({ ...prev, name: e.target.value }))}
+              placeholder="예: 친구집, 민박, 게스트하우스"
+              required
+            />
+            <Box>
+              <TextField
+                fullWidth
+                label="주소 검색 *"
+                value={customAccommodationData?.address || ''}
+                onChange={e => setCustomAccommodationData(prev => ({ ...prev, address: e.target.value }))}
+                placeholder="숙소 주소를 검색하세요"
+                required
+              />
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => setIsCustomAccommodationSearchOpen(true)}
+                sx={{ mt: 1 }}
+              >
+                Google Places로 주소 검색
+              </Button>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <TextField
+                label="체크인 날짜 *"
+                type="date"
+                value={customAccommodationData?.checkIn || ''}
+                onChange={e => setCustomAccommodationData(prev => ({ ...prev, checkIn: e.target.value }))}
+                InputLabelProps={{ shrink: true }}
+                required
+                sx={{ flex: 1 }}
+              />
+              <TextField
+                label="체크아웃 날짜 *"
+                type="date"
+                value={customAccommodationData?.checkOut || ''}
+                onChange={e => setCustomAccommodationData(prev => ({ ...prev, checkOut: e.target.value }))}
+                InputLabelProps={{ shrink: true }}
+                required
+                sx={{ flex: 1 }}
+              />
+            </Box>
+            <TextField
+              fullWidth
+              label="연락처"
+              value={customAccommodationData?.contact || ''}
+              onChange={e => setCustomAccommodationData(prev => ({ ...prev, contact: e.target.value }))}
+              placeholder="연락처 (선택사항)"
+            />
+            <TextField
+              fullWidth
+              multiline
+              rows={3}
+              label="메모"
+              value={customAccommodationData?.notes || ''}
+              onChange={e => setCustomAccommodationData(prev => ({ ...prev, notes: e.target.value }))}
+              placeholder="추가 정보나 메모 (선택사항)"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setIsCustomAccommodationOpen(false)}>취소</Button>
+          <Button 
+            onClick={handleSaveCustomAccommodation} 
+            variant="contained"
+            disabled={!customAccommodationData?.name || !customAccommodationData?.address || !customAccommodationData?.checkIn || !customAccommodationData?.checkOut}
+          >
+            숙소 추가
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 개인 숙소 주소 검색 다이얼로그 */}
+      <Dialog open={isCustomAccommodationSearchOpen} onClose={() => setIsCustomAccommodationSearchOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>숙소 주소 검색</DialogTitle>
+        <DialogContent>
+          <SearchPopup 
+            onSelect={handleCustomAccommodationPlaceSelect} 
+            onClose={() => setIsCustomAccommodationSearchOpen(false)} 
+          />
+        </DialogContent>
       </Dialog>
 
       {/* 일정 수정 다이얼로그 */}
