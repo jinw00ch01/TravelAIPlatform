@@ -148,6 +148,8 @@ const useAccommodationHandlers = () => {
       const dayKey = dayOrder[diff];
       let time = '숙박';
       if (currentDate.getTime() === checkInDateZero.getTime()) time = '체크인';
+      
+      // 숙박편 일정 (주황색 카드)
       const newSchedule = {
         id: `hotel-${hotelWithRoomList.hotel_id}-${dayKey}`,
         name: hotelWithRoomList.hotel_name_trans || hotelWithRoomList.hotel_name,
@@ -162,21 +164,46 @@ const useAccommodationHandlers = () => {
         lng: hotelWithRoomList.lng || hotelWithRoomList.longitude
       };
       
+      // 일반 일정 (흰색 카드) - Accommodation에서 추가할 때만
+      const generalSchedule = {
+        id: `hotel-general-${hotelWithRoomList.hotel_id}-${dayKey}`,
+        name: hotelWithRoomList.hotel_name_trans || hotelWithRoomList.hotel_name,
+        time: time === '체크인' ? '14:00' : '숙박',
+        address: hotelWithRoomList.address,
+        category: '숙소',
+        duration: time === '체크인' ? '체크인' : '숙박',
+        notes: hotelWithRoomList.price ? `가격: ${hotelWithRoomList.price}` : (hotelWithRoomList.composite_price_breakdown?.gross_amount ? `가격: ${hotelWithRoomList.composite_price_breakdown.gross_amount} ${hotelWithRoomList.composite_price_breakdown.currency}` : ''),
+        lat: hotelWithRoomList.lat || hotelWithRoomList.latitude,
+        lng: hotelWithRoomList.lng || hotelWithRoomList.longitude
+      };
+      
       console.log('[useAccommodationHandlers] 생성된 일정:', newSchedule);
+      console.log('[useAccommodationHandlers] 생성된 일반 일정:', generalSchedule);
+      
       setTravelPlans(prevTravelPlans => {
         const updatedPlans = { ...prevTravelPlans };
         if (!updatedPlans[dayKey]) {
           updatedPlans[dayKey] = { title: getDayTitle(parseInt(dayKey)), schedules: [] };
         }
+        
+        // 숙박편 일정 추가 (중복 방지)
         if (!updatedPlans[dayKey].schedules.some(s => s.id === newSchedule.id)) {
           updatedPlans[dayKey].schedules.push(newSchedule);
         }
+        
+        // 일반 일정 추가 (중복 방지)
+        if (!updatedPlans[dayKey].schedules.some(s => s.id === generalSchedule.id)) {
+          updatedPlans[dayKey].schedules.push(generalSchedule);
+        }
+        
         return updatedPlans;
       });
       currentDate.setDate(currentDate.getDate() + 1);
     }
+    
     // 체크아웃날 블록 추가
     if (dayKeyOut) {
+      // 숙박편 일정 (주황색 카드)
       const outSchedule = {
         id: `hotel-${hotelWithRoomList.hotel_id}-${dayKeyOut}-out`,
         name: hotelWithRoomList.hotel_name_trans || hotelWithRoomList.hotel_name,
@@ -191,15 +218,38 @@ const useAccommodationHandlers = () => {
         lng: hotelWithRoomList.lng || hotelWithRoomList.longitude
       };
       
+      // 일반 일정 (흰색 카드) - 체크아웃
+      const generalOutSchedule = {
+        id: `hotel-general-${hotelWithRoomList.hotel_id}-${dayKeyOut}-out`,
+        name: hotelWithRoomList.hotel_name_trans || hotelWithRoomList.hotel_name,
+        time: '11:00',
+        address: hotelWithRoomList.address,
+        category: '숙소',
+        duration: '체크아웃',
+        notes: hotelWithRoomList.price ? `가격: ${hotelWithRoomList.price}` : (hotelWithRoomList.composite_price_breakdown?.gross_amount ? `가격: ${hotelWithRoomList.composite_price_breakdown.gross_amount} ${hotelWithRoomList.composite_price_breakdown.currency}` : ''),
+        lat: hotelWithRoomList.lat || hotelWithRoomList.latitude,
+        lng: hotelWithRoomList.lng || hotelWithRoomList.longitude
+      };
+      
       console.log('[useAccommodationHandlers] 체크아웃 일정 생성:', outSchedule);
+      console.log('[useAccommodationHandlers] 체크아웃 일반 일정 생성:', generalOutSchedule);
+      
       setTravelPlans(prevTravelPlans => {
         const updatedPlans = { ...prevTravelPlans };
         if (!updatedPlans[dayKeyOut]) {
           updatedPlans[dayKeyOut] = { title: getDayTitle(parseInt(dayKeyOut)), schedules: [] };
         }
+        
+        // 숙박편 일정 추가 (중복 방지)
         if (!updatedPlans[dayKeyOut].schedules.some(s => s.id === outSchedule.id)) {
           updatedPlans[dayKeyOut].schedules.push(outSchedule);
         }
+        
+        // 일반 일정 추가 (중복 방지)
+        if (!updatedPlans[dayKeyOut].schedules.some(s => s.id === generalOutSchedule.id)) {
+          updatedPlans[dayKeyOut].schedules.push(generalOutSchedule);
+        }
+        
         return updatedPlans;
       });
     }

@@ -867,7 +867,7 @@ const Cart = () => {
             <div className="cart-buttons">
               <button 
                 className="continue-shopping"
-                onClick={() => navigate('/')}
+                onClick={() => navigate('/itinerary')}
               >
                 쇼핑 계속하기
               </button>

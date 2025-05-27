@@ -145,28 +145,33 @@ export const isWithinTravelPeriod = (accommodation, travelStartDate, dayOrder) =
   const checkOut = parseDate(accommodation.checkOut);
   const startDate = parseDate(travelStartDate);
   
+  // 날짜만 비교하기 위해 시간 정보 제거
+  const checkInDateOnly = new Date(checkIn.getFullYear(), checkIn.getMonth(), checkIn.getDate());
+  const checkOutDateOnly = new Date(checkOut.getFullYear(), checkOut.getMonth(), checkOut.getDate());
+  const startDateOnly = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  
   // 여행 마지막일 계산 (시작일 + 일정 일수 - 1)
-  const travelEndDate = new Date(startDate);
-  travelEndDate.setDate(startDate.getDate() + (dayOrder.length - 1));
+  const travelEndDate = new Date(startDateOnly);
+  travelEndDate.setDate(startDateOnly.getDate() + (dayOrder.length - 1));
   
   console.log('[여행 기간 검사]', {
-    checkIn: formatDateString(checkIn),
-    checkOut: formatDateString(checkOut),
-    travelStart: formatDateString(startDate),
+    checkIn: formatDateString(checkInDateOnly),
+    checkOut: formatDateString(checkOutDateOnly),
+    travelStart: formatDateString(startDateOnly),
     travelEnd: formatDateString(travelEndDate),
     dayOrderLength: dayOrder.length
   });
 
   // 체크인이 여행 시작일보다 빠른 경우
-  if (checkIn.getTime() < startDate.getTime()) {
+  if (checkInDateOnly.getTime() < startDateOnly.getTime()) {
     return {
       isValid: false,
-      message: `체크인 날짜가 여행 시작일(${formatDateString(startDate)})보다 빠릅니다.`
+      message: `체크인 날짜가 여행 시작일(${formatDateString(startDateOnly)})보다 빠릅니다.`
     };
   }
 
-  // 체크아웃이 여행 마지막일보다 늦은 경우
-  if (checkOut.getTime() > travelEndDate.getTime()) {
+  // 체크아웃이 여행 마지막일보다 늦은 경우 (같은 날은 허용)
+  if (checkOutDateOnly.getTime() > travelEndDate.getTime()) {
     return {
       isValid: false,
       message: `체크아웃 날짜가 여행 마지막일(${formatDateString(travelEndDate)})보다 늦습니다.`

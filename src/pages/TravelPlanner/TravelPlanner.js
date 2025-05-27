@@ -589,7 +589,13 @@ const TravelPlanner = ({ loadMode }) => {
                 border: 1, borderColor: 'divider', borderRadius: 1,
                 bgcolor: 'background.paper',
                 '&:hover': { boxShadow: 3, borderColor: 'primary.main' },
-                // 일반 일정은 Paper 전체 클릭 이벤트 없음 (필요 시 추가)
+                cursor: schedule.lat && schedule.lng ? 'pointer' : 'default'
+              }}
+              onClick={() => {
+                // 위도/경도가 있으면 지도 이동
+                if (schedule.lat && schedule.lng) {
+                  handleScheduleClick(schedule);
+                }
               }}
             >
               <Grid container spacing={1} alignItems="center" sx={{ height: '100%' }}>
@@ -819,6 +825,22 @@ const TravelPlanner = ({ loadMode }) => {
             
             return !isSameAccommodation;
           }
+          
+          // 일반 일정 중에서도 같은 호텔의 숙소 관련 일정 제거
+          if (schedule.category === '숙소' && schedule.id && schedule.id.includes('hotel-general-')) {
+            const scheduleHotelIdFromId = schedule.id.split('-')[2]; // hotel-general-{hotelId}-{dayKey} 형식
+            const isSameHotelGeneral = scheduleHotelIdFromId === targetHotelId.toString();
+            
+            console.log('[TravelPlanner] 일반 일정 비교:', {
+              scheduleId: schedule.id,
+              scheduleHotelIdFromId,
+              targetHotelId,
+              isSameHotelGeneral
+            });
+            
+            return !isSameHotelGeneral;
+          }
+          
           return true;
         });
       }
