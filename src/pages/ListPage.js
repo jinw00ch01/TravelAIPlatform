@@ -127,12 +127,22 @@ function ListPage() {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">여행 계획 목록</h1>
-        <div className="flex justify-center items-center h-40">
-          <div className="animate-pulse flex flex-col items-center">
-            <div className="h-8 w-8 bg-primary rounded-full mb-2"></div>
-            <p className="text-gray-500">여행 계획을 불러오는 중...</p>
+      <div className="min-h-screen bg-gray-50 flex justify-center">
+        <div className="w-full max-w-[2160px] min-h-screen">
+          <div className="relative h-full">
+            {/* Hero background section */}
+            <div className="absolute w-full h-full top-0 left-0 bg-gradient-to-b from-sky-300 via-sky-200 to-white"></div>
+            
+            {/* Main container with gray overlay */}
+            <div className="absolute w-full max-w-[1200px] top-[50px] left-1/2 -translate-x-1/2 bg-gray-800/80 backdrop-blur-sm rounded-xl p-8 shadow-lg border border-gray-700">
+              <h1 className="text-3xl font-bold text-white mb-8">여행 계획 목록</h1>
+              <div className="flex justify-center items-center h-40">
+                <div className="animate-pulse flex flex-col items-center">
+                  <div className="h-8 w-8 bg-white rounded-full mb-2"></div>
+                  <p className="text-white">여행 계획을 불러오는 중...</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -140,9 +150,17 @@ function ListPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">여행 계획 목록</h1>
+    <div className="min-h-screen bg-gray-50 flex justify-center">
+      <div className="w-full max-w-[2160px] min-h-screen">
+        <div className="relative h-full">
+          {/* Hero background section */}
+          <div className="absolute w-full h-full top-0 left-0 bg-gradient-to-b from-sky-300 via-sky-200 to-white"></div>
+          
+          {/* Main container with gray overlay */}
+          <div className="absolute w-full max-w-[1200px] top-[50px] left-1/2 -translate-x-1/2 bg-gray-800/80 backdrop-blur-sm rounded-xl p-8 shadow-lg border border-gray-700">
+            <div className="max-w-7xl mx-auto">
+                    <div className="flex justify-between items-center mb-8">
+                <h1 className="text-3xl font-bold text-white">여행 계획 목록</h1>
         <div className="flex space-x-2">
           <button 
             onClick={handleRefresh} 
@@ -286,7 +304,11 @@ function ListPage() {
             </div>
           </div>
         </div>
-      )}
+            )}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
