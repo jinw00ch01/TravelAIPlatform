@@ -119,6 +119,20 @@ const TravelPlanner = ({ loadMode }) => {
   // 계획 공유 이메일 상태
   const [sharedEmailFromPlan, setSharedEmailFromPlan] = useState('');
 
+  // 개인 숙소 추가 상태
+  const [isCustomAccommodationOpen, setIsCustomAccommodationOpen] = useState(false);
+  const [isCustomAccommodationSearchOpen, setIsCustomAccommodationSearchOpen] = useState(false);
+  const [customAccommodationData, setCustomAccommodationData] = useState({
+    name: '',
+    address: '',
+    lat: '',
+    lng: '',
+    checkIn: '',
+    checkOut: '',
+    contact: '',
+    notes: ''
+  });
+
   // refs
   const mainAccommodationPlanRef = useRef(null);
   const sidebarAccommodationPlanRef = useRef(null);
@@ -711,27 +725,22 @@ const TravelPlanner = ({ loadMode }) => {
   const onAddAccommodationToSchedule = useCallback((hotelToAdd) => {
     console.log('[TravelPlanner] 숙박편 추가 시작:', hotelToAdd);
     
-    addAccommodationToSchedule(
+    const success = addAccommodationToSchedule(
       hotelToAdd,
       getDayTitle,
-      (updater) => {
-        setTravelPlans(prev => {
-          const updated = typeof updater === 'function' ? updater(prev) : updater;
-          console.log('[TravelPlanner] 숙박편 추가 후 travelPlans 업데이트:', updated);
-          
-          // 상태 업데이트 후 즉시 리렌더링 트리거
-          setTimeout(() => {
-            setSelectedDay(prev => prev); // 같은 값으로 set해도 리렌더링 트리거
-            console.log('[TravelPlanner] 숙박편 추가 후 selectedDay 리렌더링 트리거');
-          }, 0);
-          
-          return updated;
-        });
-      },
+      setTravelPlans,
       startDate,
       dayOrder,
       setLoadedAccommodationInfo
     );
+
+    // 성공한 경우에만 후속 처리
+    if (success) {
+      // 상태 업데이트 후 즉시 리렌더링 트리거
+      setTimeout(() => {
+        setSelectedDay(prev => prev); // 같은 값으로 set해도 리렌더링 트리거
+      }, 100);
+    }
   }, [addAccommodationToSchedule, getDayTitle, setTravelPlans, startDate, dayOrder, setLoadedAccommodationInfo]);
 
   // AI 메시지 핸들러 (useAIMessageHandler 훅 사용)
@@ -859,7 +868,122 @@ const TravelPlanner = ({ loadMode }) => {
     console.log('[TravelPlanner] 항공편 삭제 완료');
   }, [handleDeleteSchedule]);
 
+  // 개인 숙소 저장 핸들러
+  const handleSaveCustomAccommodation = useCallback(() => {
+    if (!customAccommodationData.name || !customAccommodationData.address || 
+        !customAccommodationData.checkIn || !customAccommodationData.checkOut) {
+      alert('필수 항목을 모두 입력해주세요.');
+      return;
+    }
 
+    // 체크인 날짜 검증
+    const checkInDate = new Date(customAccommodationData.checkIn);
+    const checkOutDate = new Date(customAccommodationData.checkOut);
+    
+    if (checkOutDate <= checkInDate) {
+      alert('체크아웃 날짜는 체크인 날짜보다 늦어야 합니다.');
+      return;
+    }
+
+    try {
+      // 개인 숙소 정보를 숙박편 형식으로 변환
+      const hotelDetails = {
+        hotel: {
+          hotel_id: `custom-${Date.now()}`,
+          hotel_name: customAccommodationData.name,
+          hotel_name_trans: customAccommodationData.name,
+          address: customAccommodationData.address,
+          address_trans: customAccommodationData.address,
+          latitude: customAccommodationData.lat || null,
+          longitude: customAccommodationData.lng || null,
+          main_photo_url: '',
+          price: '',
+          checkIn: customAccommodationData.checkIn,
+          checkOut: customAccommodationData.checkOut
+        },
+        checkIn: customAccommodationData.checkIn,
+        checkOut: customAccommodationData.checkOut,
+        contact: customAccommodationData.contact,
+        notes: customAccommodationData.notes,
+        // 최상위 레벨에도 위도/경도 추가
+        lat: customAccommodationData.lat || null,
+        lng: customAccommodationData.lng || null,
+        latitude: customAccommodationData.lat || null,
+        longitude: customAccommodationData.lng || null
+      };
+
+      // 기존 accommodation handlers 활용
+      const success = addAccommodationToSchedule(
+        hotelDetails, 
+        getDayTitle, 
+        setTravelPlans, 
+        startDate,
+        dayOrder, 
+        setLoadedAccommodationInfo
+      );
+
+      // 성공한 경우에만 후속 처리
+      if (success) {
+        // 상태 업데이트 후 즉시 리렌더링 트리거
+        setTimeout(() => {
+          setSelectedDay(prev => prev); // 같은 값으로 set해도 리렌더링 트리거
+        }, 100);
+
+        // 폼 초기화 및 다이얼로그 닫기
+        setCustomAccommodationData({
+          name: '',
+          address: '',
+          lat: '',
+          lng: '',
+          checkIn: '',
+          checkOut: '',
+          contact: '',
+          notes: ''
+        });
+        setIsCustomAccommodationOpen(false);
+        
+        alert('개인 숙소가 성공적으로 추가되었습니다!');
+      }
+    } catch (error) {
+      console.error('개인 숙소 추가 실패:', error);
+      alert('숙소 추가 중 오류가 발생했습니다.');
+    }
+  }, [customAccommodationData, addAccommodationToSchedule, getDayTitle, setTravelPlans, startDate, dayOrder, setLoadedAccommodationInfo]);
+
+  // 개인 숙소 장소 선택 핸들러
+  const handleCustomAccommodationPlaceSelect = useCallback((place) => {
+    // Google Places API 응답에서 위도/경도 추출
+    let lat = '';
+    let lng = '';
+    
+    if (place.geometry?.location) {
+      // Google Places API 표준 형식
+      if (typeof place.geometry.location.lat === 'function') {
+        lat = place.geometry.location.lat();
+        lng = place.geometry.location.lng();
+      } else {
+        lat = place.geometry.location.lat;
+        lng = place.geometry.location.lng;
+      }
+    } else if (place.lat && place.lng) {
+      // 직접적인 lat/lng 속성
+      lat = place.lat;
+      lng = place.lng;
+    } else if (place.latitude && place.longitude) {
+      // latitude/longitude 속성
+      lat = place.latitude;
+      lng = place.longitude;
+    }
+    
+    setCustomAccommodationData(prev => ({
+      ...prev,
+      address: place.formatted_address || place.name || place.address || '',
+      lat: lat || '',
+      lng: lng || ''
+    }));
+    
+    setIsCustomAccommodationSearchOpen(false);
+  }, []);
 
   if (!user && !process.env.REACT_APP_SKIP_AUTH) {
     return <Typography>로그인이 필요합니다.</Typography>;
@@ -943,20 +1067,23 @@ const TravelPlanner = ({ loadMode }) => {
             tempTitle={tempTitle}
             setTempTitle={setTempTitle}
             setTravelPlans={setTravelPlans}
-                        selectedDay={selectedDay} 
-                        showAllMarkers={showAllMarkers}
+            selectedDay={selectedDay}
+            showAllMarkers={showAllMarkers}
             setShowAllMarkers={setShowAllMarkers}
             showMap={showMap}
             setShowMap={setShowMap}
-            handleOpenShareDialog={() => dialogHandlers.handleOpenShareDialog(sharedEmailsFromLoader)}
+            handleOpenShareDialog={dialogHandlers.handleOpenShareDialog}
             setIsSearchOpen={dialogHandlers.setIsSearchOpen}
+            setIsCustomAccommodationOpen={setIsCustomAccommodationOpen}
             accommodationsToShow={accommodationsToShow}
             findSameDayAccommodations={findSameDayAccommodations}
             handleOpenAccommodationDetail={dialogHandlers.handleOpenAccommodationDetail}
+            startDate={startDate}
             handleScheduleDragEnd={handleScheduleDragEnd}
             renderScheduleItem={renderScheduleItem}
-                        hideFlightMarkers={hideFlightMarkers}
-                        selectedLocation={selectedLocation}
+            travelPlans={travelPlans}
+            hideFlightMarkers={hideFlightMarkers}
+            selectedLocation={selectedLocation}
             mapResizeTrigger={mapResizeTrigger}
             // 삭제 핸들러
             handleDeleteAccommodation={handleDeleteAccommodation}
@@ -970,32 +1097,31 @@ const TravelPlanner = ({ loadMode }) => {
             onAddAccommodationToSchedule={onAddAccommodationToSchedule}
             dayOrder={dayOrder}
             forceRefreshSelectedDay={forceRefreshSelectedDay}
-                isSidebarOpen={isSidebarOpen}
-            // 유효성 검사를 위한 추가 props
-            startDate={startDate}
-            travelPlans={travelPlans}
+            isSidebarOpen={isSidebarOpen}
             // 항공편 관련 props
             flightSearchParams={flightSearchParams}
             setFlightSearchParams={setFlightSearchParams}
-                originCities={originCities}
-                destinationCities={destinationCities}
-                originSearchQuery={originSearchQuery}
-                setOriginSearchQuery={setOriginSearchQuery}
-                destinationSearchQuery={destinationSearchQuery}
-                setDestinationSearchQuery={setDestinationSearchQuery}
-                handleCitySearch={handleCitySearch}
+            originCities={originCities}
+            destinationCities={destinationCities}
+            originSearchQuery={originSearchQuery}
+            setOriginSearchQuery={setOriginSearchQuery}
+            destinationSearchQuery={destinationSearchQuery}
+            setDestinationSearchQuery={setDestinationSearchQuery}
+            handleCitySearch={handleCitySearch}
             flightResults={flightResults}
             flightDictionaries={flightDictionaries}
-                airportInfoCache={airportInfoCache}
-                loadingAirportInfo={loadingAirportInfo}
-                isLoadingCities={isLoadingCities}
-                isLoadingFlights={isLoadingFlights}
+            airportInfoCache={airportInfoCache}
+            loadingAirportInfo={loadingAirportInfo}
+            isLoadingCities={isLoadingCities}
+            isLoadingFlights={isLoadingFlights}
             flightError={flightError}
-                handleFlightSearch={handleFlightSearch}
-                onAddFlightToSchedule={onAddFlightToSchedule}
+            handleFlightSearch={handleFlightSearch}
+            onAddFlightToSchedule={onAddFlightToSchedule}
             handleOpenPlannerFlightDetail={dialogHandlers.handleOpenPlannerFlightDetail}
-            
-              />
+            // 저장된 계획에서 로드된 다중 정보
+            loadedFlightInfos={loadedFlightInfos}
+            loadedAccommodationInfos={loadedAccommodationInfos}
+             />
         </Box>
 
         <TravelPlannerDialogs
@@ -1003,6 +1129,15 @@ const TravelPlanner = ({ loadMode }) => {
           isSearchOpen={dialogHandlers.isSearchOpen}
           setIsSearchOpen={dialogHandlers.setIsSearchOpen}
           onAddPlace={onAddPlace}
+          // 개인 숙소 추가 다이얼로그
+          isCustomAccommodationOpen={isCustomAccommodationOpen}
+          setIsCustomAccommodationOpen={setIsCustomAccommodationOpen}
+          customAccommodationData={customAccommodationData}
+          setCustomAccommodationData={setCustomAccommodationData}
+          handleSaveCustomAccommodation={handleSaveCustomAccommodation}
+          isCustomAccommodationSearchOpen={isCustomAccommodationSearchOpen}
+          setIsCustomAccommodationSearchOpen={setIsCustomAccommodationSearchOpen}
+          handleCustomAccommodationPlaceSelect={handleCustomAccommodationPlaceSelect}
           // 일정 수정 다이얼로그
           editDialogOpen={editDialogOpen}
           setEditDialogOpen={setEditDialogOpen}
@@ -1043,7 +1178,7 @@ const TravelPlanner = ({ loadMode }) => {
           handleRemoveSharedEmail={dialogHandlers.handleRemoveSharedEmail}
           shareMessage={dialogHandlers.shareMessage}
           isSharing={dialogHandlers.isSharing}
-          handleSharePlan={() => dialogHandlers.handleSharePlan(plannerHandleSharePlan, planId)}
+          handleSharePlan={dialogHandlers.handleSharePlan}
           isSharedPlan={isSharedPlanFromLoader}
           sharedEmailsFromLoader={sharedEmailsFromLoader}
           originalOwner={originalOwner}

@@ -24,6 +24,7 @@ const TravelPlannerMainContent = ({
   setShowMap,
   handleOpenShareDialog,
   setIsSearchOpen,
+  setIsCustomAccommodationOpen,
   accommodationsToShow,
   findSameDayAccommodations,
   handleOpenAccommodationDetail,
@@ -123,9 +124,6 @@ const TravelPlannerMainContent = ({
               >
                 플랜 공유
               </Button>
-              <Button variant="contained" startIcon={<SearchIcon />} onClick={() => setIsSearchOpen(true)}>
-                장소 검색
-              </Button>
             </Box>
           </Box>
           <Box sx={{ flex: 1, display: 'grid', gridTemplateColumns: showMap ? { xs: '1fr', md: '1fr 1fr' } : '1fr', gap: 2, overflow: 'hidden' }}>
@@ -141,6 +139,8 @@ const TravelPlannerMainContent = ({
               handleOpenPlannerFlightDetail={handleOpenPlannerFlightDetail}
               handleDeleteAccommodation={handleDeleteAccommodation}
               handleDeleteFlight={handleDeleteFlight}
+              setIsSearchOpen={setIsSearchOpen}
+              setIsCustomAccommodationOpen={setIsCustomAccommodationOpen}
             />
             {showMap && (
               <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, boxShadow: 1, overflow: 'hidden', height: '100%' }}>
