@@ -406,23 +406,75 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
               </h3>
               <div className="space-y-3">
                 {itinerary.flightInfo.map((flight, index) => {
-                  const departure = flight.flightOfferDetails?.flightOfferData?.itineraries?.[0]?.segments?.[0];
+                  console.log(`[ItineraryDetail] 항공편 ${index} 데이터:`, flight);
+                  
+                  // 다양한 데이터 구조에 대응
+                  let departure = null;
+                  let arrival = null;
+                  let departureTime = null;
+                  let price = null;
+                  
+                  // 구조 1: flightOfferDetails.flightOfferData.itineraries
+                  if (flight.flightOfferDetails?.flightOfferData?.itineraries?.[0]?.segments?.[0]) {
+                    const segment = flight.flightOfferDetails.flightOfferData.itineraries[0].segments[0];
+                    departure = segment.departure;
+                    arrival = segment.arrival;
+                    price = flight.flightOfferDetails.flightOfferData.price?.total;
+                  }
+                  // 구조 2: itineraries 직접 접근
+                  else if (flight.itineraries?.[0]?.segments?.[0]) {
+                    const segment = flight.itineraries[0].segments[0];
+                    departure = segment.departure;
+                    arrival = segment.arrival;
+                    price = flight.price?.total;
+                  }
+                  // 구조 3: 단순화된 형태
+                  else if (flight.departure || flight.origin) {
+                    departure = flight.departure || { iataCode: flight.origin, at: flight.departureTime };
+                    arrival = flight.arrival || { iataCode: flight.destination, at: flight.arrivalTime };
+                    price = flight.price;
+                  }
+                  
+                  // 날짜 처리
+                  if (departure?.at) {
+                    try {
+                      departureTime = new Date(departure.at);
+                      if (isNaN(departureTime.getTime())) {
+                        console.warn(`[ItineraryDetail] 잘못된 날짜 형식: ${departure.at}`);
+                        departureTime = null;
+                      }
+                    } catch (error) {
+                      console.error(`[ItineraryDetail] 날짜 파싱 오류:`, error);
+                      departureTime = null;
+                    }
+                  }
+                  
+                  console.log(`[ItineraryDetail] 항공편 ${index} 파싱 결과:`, {
+                    departure: departure?.iataCode,
+                    arrival: arrival?.iataCode,
+                    departureTime: departureTime?.toISOString(),
+                    price
+                  });
+                  
                   return (
                     <div key={index} className="border-b border-blue-100 pb-2 last:border-0">
                       <div className="font-medium">
-                        {departure?.departure?.iataCode} → {departure?.arrival?.iataCode}
+                        {departure?.iataCode || '출발지'} → {arrival?.iataCode || '도착지'}
                       </div>
                       <div className="text-sm text-gray-600">
-                        {new Date(departure?.departure?.at).toLocaleString('ko-KR', {
-                          month: 'numeric',
-                          day: 'numeric',
-                          hour: 'numeric',
-                          minute: 'numeric'
-                        })}
+                        {departureTime ? 
+                          departureTime.toLocaleString('ko-KR', {
+                            month: 'numeric',
+                            day: 'numeric',
+                            hour: 'numeric',
+                            minute: 'numeric'
+                          }) : 
+                          '출발시간 정보 없음'
+                        }
                       </div>
-                      {flight.flightOfferDetails?.flightOfferData?.price?.total && (
+                      {price && (
                         <div className="text-blue-600 text-sm">
-                          가격: {flight.flightOfferDetails.flightOfferData.price.total}
+                          가격: {price}
                         </div>
                       )}
                     </div>
