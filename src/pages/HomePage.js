@@ -861,7 +861,7 @@ export const HomePage = () => {
             {/* 상단 바 추가 */}
             <div className="flex justify-end mb-4">
                               <button 
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-full border border-blue-500 hover:border-blue-600 transition-all duration-200 flex items-center gap-2 shadow-lg"
+                  className="bg-blue-600/90 hover:bg-blue-700/90 text-white text-sm font-medium px-4 py-2 rounded border-0 transition-all duration-200 flex items-center gap-2 shadow-lg"
                   onClick={() => navigate("/planner/none")}
               >
                 <span>직접 일정 만들기</span>
@@ -1083,16 +1083,16 @@ export const HomePage = () => {
                   <div className="flex flex-col gap-1">
                     <Button 
                       variant="outline" 
-                      className="bg-blue-500 hover:bg-blue-600 text-white" 
+                      className="bg-blue-600 hover:bg-blue-700 text-white border-0" 
                       onClick={handleFlightSearchClick}
                     >
-                      항공편 검색
+                      ✈︎ 항공편 검색
                     </Button>
                     {selectedFlights.length > 0 && (
                       <Button 
                         variant="outline" 
                         size="sm"
-                        className="bg-blue-400 hover:bg-blue-500 text-white text-xs" 
+                        className="bg-blue-500 hover:bg-blue-600 text-white text-xs border-0" 
                         onClick={handleFlightSearchClick}
                       >
                         + 항공편 추가
@@ -1102,16 +1102,16 @@ export const HomePage = () => {
                   <div className="flex flex-col gap-1">
                     <Button 
                       variant="outline" 
-                      className="bg-green-500 hover:bg-green-600 text-white" 
+                      className="bg-green-600 hover:bg-green-700 text-white border-0" 
                       onClick={handleAccommodationSearchClick}
                     >
-                      숙박 검색
+                      ▦ 숙박 검색
                     </Button>
                     {selectedAccommodations.length > 0 && (
                       <Button 
                         variant="outline" 
                         size="sm"
-                        className="bg-green-400 hover:bg-green-500 text-white text-xs" 
+                        className="bg-green-500 hover:bg-green-600 text-white text-xs border-0" 
                         onClick={handleAccommodationSearchClick}
                       >
                         + 숙박 추가
