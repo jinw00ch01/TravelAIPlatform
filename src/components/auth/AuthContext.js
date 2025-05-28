@@ -28,9 +28,9 @@ export const AuthProvider = ({ children }) => {
 
   // 개발 환경에서 자동 인증을 사용할지 결정하는 함수
   const shouldUseDevAuth = () => {
-    console.log('자동 로그인 확인:');
-    console.log('- NODE_ENV:', process.env.NODE_ENV);
-    console.log('- REACT_APP_SKIP_AUTH:', process.env.REACT_APP_SKIP_AUTH);
+    //console.log('자동 로그인 확인:');
+    //console.log('- NODE_ENV:', process.env.NODE_ENV);
+    //console.log('- REACT_APP_SKIP_AUTH:', process.env.REACT_APP_SKIP_AUTH);
     
     // 개발 환경이고 REACT_APP_SKIP_AUTH가 명시적으로 'true'일 때만 자동 로그인 활성화
     return process.env.NODE_ENV === 'development' && process.env.REACT_APP_SKIP_AUTH === 'true';
@@ -41,7 +41,7 @@ export const AuthProvider = ({ children }) => {
     try {
       // 개발 환경에서 자동 인증 처리 - shouldUseDevAuth() 함수 사용
       if (shouldUseDevAuth()) {
-        console.log('개발 모드 자동 로그인 활성화됨');
+        //console.log('개발 모드 자동 로그인 활성화됨');
         setAuthState({
           isAuthenticated: true,
           user: {
@@ -57,18 +57,18 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
-      console.log('실제 인증 상태 확인 중...');
+      //console.log('실제 인증 상태 확인 중...');
       const { success, user, notAuthenticated } = await getCurrentUser();
       
       if (success && user) {
-        console.log('인증된 사용자 발견:', user.username);
+        //console.log('인증된 사용자 발견:', user.username);
         setAuthState({
           isAuthenticated: true,
           user,
           isLoading: false,
         });
       } else if (notAuthenticated) {
-        console.log('인증되지 않은 상태 확인');
+        //console.log('인증되지 않은 상태 확인');
         // 인증되지 않은 상태는 정상적인 상황으로 처리
         setAuthState({
           isAuthenticated: false,
@@ -76,7 +76,7 @@ export const AuthProvider = ({ children }) => {
           isLoading: false,
         });
       } else {
-        console.log('인증 상태 확인 실패');
+        //console.log('인증 상태 확인 실패');
         setAuthState({
           isAuthenticated: false,
           user: null,
@@ -84,7 +84,7 @@ export const AuthProvider = ({ children }) => {
         });
       }
     } catch (error) {
-      console.error('인증 상태 확인 오류:', error);
+      //console.error('인증 상태 확인 오류:', error);
       setAuthState({
         isAuthenticated: false,
         user: null,
@@ -95,12 +95,12 @@ export const AuthProvider = ({ children }) => {
 
   // 초기 인증 상태 확인
   useEffect(() => {
-    console.log('AuthProvider 마운트됨');
+    //console.log('AuthProvider 마운트됨');
     checkAuth();
 
     // Amplify 인증 이벤트 리스너 설정
     const unsubscribe = Hub.listen('auth', ({ payload }) => {
-      console.log('인증 이벤트 발생:', payload.event);
+      //console.log('인증 이벤트 발생:', payload.event);
       if (payload.event === 'signIn') {
         checkAuth();
       } else if (payload.event === 'signOut') {
@@ -113,7 +113,7 @@ export const AuthProvider = ({ children }) => {
     });
 
     return () => {
-      console.log('AuthProvider 언마운트됨');
+      //console.log('AuthProvider 언마운트됨');
       unsubscribe();
     };
   }, []);

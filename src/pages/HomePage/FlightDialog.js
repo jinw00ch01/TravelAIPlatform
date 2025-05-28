@@ -192,7 +192,7 @@ const FlightDialog = ({
       clearTimeout(debounceTimerRef.current);
     }
 
-    // 새로운 타이머 설정 (900ms 후 실행)
+    // ✅ useFlightHandlers와 다른 시간 설정으로 중복 방지 (500ms)
     debounceTimerRef.current = setTimeout(() => {
       debouncedCitySearch(value, type);
     }, 800);

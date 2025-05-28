@@ -11,6 +11,13 @@ const GET_AIRPORT_DETAILS_URL = 'https://lngdadu778.execute-api.ap-northeast-2.a
  * Amadeus 관련 API Gateway 엔드포인트를 호출하는 클래스
  */
 class AmadeusApi {
+  constructor() {
+    // ✅ 중복 요청 방지를 위한 캐시 및 진행 중인 요청 추적
+    this.searchCache = new Map(); // 검색 결과 캐시
+    this.pendingRequests = new Map(); // 진행 중인 요청 추적
+    this.cacheTimeout = 30000; // 30초 캐시 유지
+  }
+
   /**
    * 키워드를 사용하여 도시 또는 공항 정보를 검색합니다. (API Gateway 호출)
    * @param {string} keyword - 검색할 키워드 (2자 이상)
@@ -23,18 +30,55 @@ class AmadeusApi {
       return { data: [] }; // 빈 배열 반환 또는 오류 처리 선택
     }
 
+    // ✅ 캐시 키 생성
+    const cacheKey = `cities_${keyword.toLowerCase().trim()}`;
+    
+    // ✅ 캐시에서 결과 확인
+    const cachedResult = this.searchCache.get(cacheKey);
+    if (cachedResult && Date.now() - cachedResult.timestamp < this.cacheTimeout) {
+      console.log(`[AmadeusApi] Using cached result for: ${keyword}`);
+      return cachedResult.data;
+    }
+
+    // ✅ 이미 진행 중인 요청이 있는지 확인
+    if (this.pendingRequests.has(cacheKey)) {
+      console.log(`[AmadeusApi] Request already in progress for: ${keyword}, waiting...`);
+      return await this.pendingRequests.get(cacheKey);
+    }
+
     try {
       console.log(`[AmadeusApi] Searching cities/airports via Gateway: ${keyword}`);
-      const response = await axios.get(AIRPORT_CITY_SEARCH_URL, {
+      
+      // ✅ 새로운 요청 시작 - Promise를 먼저 저장
+      const requestPromise = axios.get(AIRPORT_CITY_SEARCH_URL, {
         params: {
           keyword,
           subType: 'CITY,AIRPORT', // 도시와 공항 모두 검색
         },
+      }).then(response => {
+        console.log('[AmadeusApi] City/Airport search response:', response.data);
+        
+        // ✅ 결과를 캐시에 저장
+        this.searchCache.set(cacheKey, {
+          data: response.data,
+          timestamp: Date.now()
+        });
+        
+        return response.data;
+      }).finally(() => {
+        // ✅ 요청 완료 후 진행 중인 요청에서 제거
+        this.pendingRequests.delete(cacheKey);
       });
-      console.log('[AmadeusApi] City/Airport search response:', response.data);
-      return response.data; // Lambda가 반환하는 객체 (data, dictionaries 등 포함 가능)
+
+      // ✅ 진행 중인 요청으로 등록
+      this.pendingRequests.set(cacheKey, requestPromise);
+      
+      return await requestPromise;
 
     } catch (error) {
+      // ✅ 오류 발생 시 진행 중인 요청에서 제거
+      this.pendingRequests.delete(cacheKey);
+      
       console.error('[AmadeusApi] Failed to search cities/airports via Gateway:', error.response?.data || error.message);
       const errorMessage = error.response?.data?.message || error.response?.data?.error || '도시/공항 정보 검색에 실패했습니다.';
       throw new Error(errorMessage);

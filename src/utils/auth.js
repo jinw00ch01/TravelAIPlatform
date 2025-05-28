@@ -8,6 +8,7 @@ import { Hub } from 'aws-amplify/utils';
 import CryptoJS from 'crypto-js';
 
 // CryptoJS 라이브러리 로딩 확인
+/*
 console.log('CryptoJS 로드 확인:', CryptoJS ? '로드됨' : '미로드');
 console.log('HmacSHA256 존재 확인:', CryptoJS.HmacSHA256 ? '존재' : '없음');
 
@@ -18,7 +19,7 @@ console.log('REACT_APP_USER_POOL_CLIENT_ID:', process.env.REACT_APP_USER_POOL_CL
 console.log('REACT_APP_CLIENT_SECRET 존재 여부:', process.env.REACT_APP_CLIENT_SECRET ? '존재' : '없음');
 console.log('REACT_APP_SECRET_HASH 값:', process.env.REACT_APP_SECRET_HASH);
 console.log('환경 변수 확인 (끝)');
-
+*/
 // 사용하지 않는 상수 제거 또는 주석 처리
 // const CLIENT_SECRET = process.env.REACT_APP_CLIENT_SECRET;
 // const CLIENT_ID = process.env.REACT_APP_CLIENT_ID;
@@ -31,9 +32,9 @@ export const configureAuth = () => {
   const userPoolClientId = process.env.REACT_APP_USER_POOL_CLIENT_ID;
   const region = process.env.REACT_APP_REGION || 'ap-northeast-2';
   
-  console.log('Amplify 설정 업데이트 - SPA 모드');
-  console.log('사용자 풀 ID:', userPoolId);
-  console.log('앱 클라이언트 ID:', userPoolClientId);
+  //console.log('Amplify 설정 업데이트 - SPA 모드');
+  //console.log('사용자 풀 ID:', userPoolId);
+  //console.log('앱 클라이언트 ID:', userPoolClientId);
   
   // Amplify v6 설정
   const config = {
@@ -59,7 +60,7 @@ export const configureAuth = () => {
     }
   };
   
-  console.log('Amplify 설정 적용:', JSON.stringify(config, null, 2));
+  //console.log('Amplify 설정 적용:', JSON.stringify(config, null, 2));
   Amplify.configure(config);
   
   return config;
@@ -67,14 +68,14 @@ export const configureAuth = () => {
 
 // SECRET_HASH 계산 함수
 export const calculateSecretHash = (username, clientId, clientSecret) => {
-  console.log('calculateSecretHash 호출됨');
+  //console.log('calculateSecretHash 호출됨');
   const message = username + clientId;
   try {
     const hmac = CryptoJS.HmacSHA256(message, clientSecret);
     const base64 = CryptoJS.enc.Base64.stringify(hmac);
     return base64;
   } catch (error) {
-    console.error('SECRET_HASH 계산 중 오류 발생:', error);
+    //console.error('SECRET_HASH 계산 중 오류 발생:', error);
     return null;
   }
 };
@@ -82,7 +83,7 @@ export const calculateSecretHash = (username, clientId, clientSecret) => {
 // 회원가입
 export const signUp = async (email, password, name, birthdate, phoneNumber) => {
   try {
-    console.log('회원가입 시작 - 파라미터 준비');
+    //console.log('회원가입 시작 - 파라미터 준비');
     
     // 회원가입 파라미터 생성
     const params = {
@@ -98,13 +99,14 @@ export const signUp = async (email, password, name, birthdate, phoneNumber) => {
       }
     };
     
-    console.log('signUp 요청 파라미터:', JSON.stringify(params, (key, val) => 
-      key === 'password' ? '***' : val
-    ));
-    
+
+    //console.log('signUp 요청 파라미터:', JSON.stringify(params, (key, val) => 
+    //  key === 'password' ? '***' : val
+    //));
+
     // 회원가입 요청
     const result = await signUpAuth(params);
-    console.log('회원가입 성공:', result);
+    //console.log('회원가입 성공:', result);
     
     return {
       success: true,
@@ -112,7 +114,7 @@ export const signUp = async (email, password, name, birthdate, phoneNumber) => {
       userSub: result.userSub
     };
   } catch (error) {
-    console.error('회원가입 오류:', error);
+    //console.error('회원가입 오류:', error);
     
     return {
       success: false,
@@ -131,7 +133,7 @@ export const confirmSignUp = async (email, code) => {
 
     return { success: true };
   } catch (error) {
-    console.error('회원가입 확인 오류:', error);
+    // console.error('회원가입 확인 오류:', error);
     return {
       success: false,
       message: error.message,
@@ -143,7 +145,7 @@ export const confirmSignUp = async (email, code) => {
 // 로그인
 export const signIn = async (email, password) => {
   try {
-    console.log('로그인 시도:', email);
+    //console.log('로그인 시도:', email);
     
     // Amplify signIn 호출
     const signInParams = {
@@ -151,24 +153,24 @@ export const signIn = async (email, password) => {
       password
     };
     
-    console.log('signIn 파라미터:', JSON.stringify(signInParams, (key, val) => 
-      key === 'password' ? '***' : val
-    ));
+    //console.log('signIn 파라미터:', JSON.stringify(signInParams, (key, val) => 
+    //  key === 'password' ? '***' : val
+    //));
     
     const result = await signInAuth(signInParams);
-    console.log('로그인 성공:', result.isSignedIn);
+    //console.log('로그인 성공:', result.isSignedIn);
     
     return { success: true, isSignedIn: result.isSignedIn };
   } catch (error) {
-    console.error('로그인 오류:', error);
+    //console.error('로그인 오류:', error);
     
     // SECRET_HASH 관련 오류인 경우
     if (error.message && error.message.includes('SECRET_HASH')) {
-      console.error('로그인 SECRET_HASH 오류');
+      //console.error('로그인 SECRET_HASH 오류');
       
       // 대안 방법으로 로그인 시도
       try {
-        console.log('대안 방법으로 로그인 시도...');
+        //console.log('대안 방법으로 로그인 시도...');
         const response = await fetch('https://cognito-idp.ap-northeast-2.amazonaws.com/', {
           method: 'POST',
           headers: {
@@ -191,7 +193,7 @@ export const signIn = async (email, password) => {
         });
         
         const data = await response.json();
-        console.log('대안 로그인 응답:', data);
+        //console.log('대안 로그인 응답:', data);
         
         if (data.AuthenticationResult) {
           // 세션 저장 로직 추가
@@ -204,7 +206,7 @@ export const signIn = async (email, password) => {
           throw new Error('인증 결과가 없습니다');
         }
       } catch (altError) {
-        console.error('대안 로그인 실패:', altError);
+        //console.error('대안 로그인 실패:', altError);
         return { 
           success: false, 
           message: '로그인 중 오류가 발생했습니다: ' + error.message
@@ -223,23 +225,21 @@ export const signIn = async (email, password) => {
 // 소셜 로그인
 export const federatedSignIn = async (provider) => {
   try {
-    console.log(`${provider} 소셜 로그인 시도`);
+    //console.log(`${provider} 소셜 로그인 시도`);
     
     // provider 문자열을 정규화 (첫 글자 대문자, 나머지 소문자)
     const providerName = provider.charAt(0).toUpperCase() + provider.slice(1).toLowerCase();
     
-    console.log(`사용할 provider: ${providerName}`);
+    //console.log(`사용할 provider: ${providerName}`);
     
     // Amplify v6 방식으로 소셜 로그인 구현
     // signInWithRedirect 메서드를 사용해야 하지만 Amplify v6에서는
     // 일반 signIn 메서드와 다른 구성 방식을 사용합니다
     if (providerName === 'Google' || providerName === 'Facebook') {
       // OAuth URL을 직접 구성하여 리디렉션
-      const userPoolId = process.env.REACT_APP_USER_POOL_ID;
       const clientId = process.env.REACT_APP_USER_POOL_CLIENT_ID;
       const domain = process.env.REACT_APP_OAUTH_DOMAIN;
       const redirectUri = encodeURIComponent(process.env.REACT_APP_REDIRECT_SIGN_IN);
-      const region = process.env.REACT_APP_REGION;
       
       // 현재 페이지 경로를 state로 저장
       const state = encodeURIComponent(JSON.stringify({ 
@@ -250,7 +250,7 @@ export const federatedSignIn = async (provider) => {
       // OAuth URL 구성
       const oauthUrl = `https://${domain}/oauth2/authorize?identity_provider=${providerName}&redirect_uri=${redirectUri}&response_type=code&client_id=${clientId}&scope=email+openid+profile&state=${state}`;
       
-      console.log(`리디렉션 URL: ${oauthUrl}`);
+      //console.log(`리디렉션 URL: ${oauthUrl}`);
       
       // 페이지 리디렉션
       window.location.href = oauthUrl;
@@ -260,7 +260,7 @@ export const federatedSignIn = async (provider) => {
       throw new Error(`지원하지 않는 소셜 로그인 제공자: ${providerName}`);
     }
   } catch (error) {
-    console.error('소셜 로그인 오류:', error);
+    //console.error('소셜 로그인 오류:', error);
     return { 
       success: false, 
       message: error.message || '소셜 로그인 중 오류가 발생했습니다.',
@@ -275,7 +275,7 @@ export const signOut = async () => {
     await signOutAuth();
     return { success: true };
   } catch (error) {
-    console.error('로그아웃 오류:', error);
+    //console.error('로그아웃 오류:', error);
     return { success: false, error: error.message };
   }
 };
@@ -283,16 +283,16 @@ export const signOut = async () => {
 // 현재 사용자 가져오기
 export const getCurrentUser = async () => {
   try {
-    console.log('현재 사용자 정보 가져오기 시도');
+    //console.log('현재 사용자 정보 가져오기 시도');
     
     // 1. 먼저 세션에서 토큰 정보 확인
     try {
       const session = await fetchAuthSession();
-      console.log('세션 정보 가져오기 성공:', session?.tokens ? '토큰 있음' : '토큰 없음');
+      //console.log('세션 정보 가져오기 성공:', session?.tokens ? '토큰 있음' : '토큰 없음');
       
       // 토큰이 있다면 사용자가 인증된 상태
       if (session?.tokens?.idToken) {
-        console.log('ID 토큰 확인됨');
+        //console.log('ID 토큰 확인됨');
         
         // 토큰에서 사용자 정보 추출
         const payload = session.tokens.idToken.payload;
@@ -306,7 +306,7 @@ export const getCurrentUser = async () => {
           picture: payload.picture
         };
         
-        console.log('토큰에서 추출한 사용자 정보:', user.email);
+        //console.log('토큰에서 추출한 사용자 정보:', user.email);
         
         return {
           success: true,
@@ -314,14 +314,14 @@ export const getCurrentUser = async () => {
         };
       }
     } catch (sessionError) {
-      console.log('세션 정보 가져오기 실패:', sessionError.message);
+      //console.log('세션 정보 가져오기 실패:', sessionError.message);
       // 세션 오류가 있어도 계속 진행하여 getCurrentUserAuth 시도
     }
     
     // 2. 호스팅 UI 로그인 확인
     try {
       if (localStorage.getItem('amplify-signin-with-hostedUI') === 'true') {
-        console.log('호스팅 UI를 통한 로그인 감지됨, 저장된 토큰에서 사용자 정보 추출 시도');
+        //console.log('호스팅 UI를 통한 로그인 감지됨, 저장된 토큰에서 사용자 정보 추출 시도');
         
         // 클라이언트 ID 가져오기
         const clientId = process.env.REACT_APP_USER_POOL_CLIENT_ID;
@@ -334,13 +334,13 @@ export const getCurrentUser = async () => {
         const lastAuthUser = localStorage.getItem(`${userPoolName}.LastAuthUser`);
         
         if (lastAuthUser) {
-          console.log('마지막 인증 사용자:', lastAuthUser);
+          //console.log('마지막 인증 사용자:', lastAuthUser);
           
           // 토큰 가져오기
           const idToken = localStorage.getItem(`${userPoolName}.${lastAuthUser}.idToken`);
           
           if (idToken) {
-            console.log('ID 토큰 발견');
+            //console.log('ID 토큰 발견');
             
             // 토큰 디코딩
             const decodedToken = decodeJWT(idToken);
@@ -355,7 +355,7 @@ export const getCurrentUser = async () => {
               picture: payload.picture
             };
             
-            console.log('로컬 스토리지 토큰에서 추출한 사용자 정보:', user.email);
+            //console.log('로컬 스토리지 토큰에서 추출한 사용자 정보:', user.email);
             
             return {
               success: true,
@@ -365,14 +365,14 @@ export const getCurrentUser = async () => {
         }
       }
     } catch (localStorageError) {
-      console.error('로컬 스토리지에서 사용자 정보 추출 실패:', localStorageError);
+      //console.error('로컬 스토리지에서 사용자 정보 추출 실패:', localStorageError);
       // 실패해도 계속 진행
     }
     
     // 3. getCurrentUserAuth 시도 (기존 방식)
     try {
       const user = await getCurrentUserAuth();
-      console.log('getCurrentUserAuth 성공:', user.username);
+      //console.log('getCurrentUserAuth 성공:', user.username);
       
       // getCurrentUserAuth에서 속성 정보는 제공하지 않기 때문에
       // 세션에서 추가 정보를 가져오거나 기본값 제공
@@ -387,16 +387,16 @@ export const getCurrentUser = async () => {
         }
       };
     } catch (authError) {
-      console.log('getCurrentUserAuth 실패:', authError.message);
+      //console.log('getCurrentUserAuth 실패:', authError.message);
       // 실패하면 인증되지 않은 상태로 처리
     }
     
     // 여기까지 왔다면 사용자가 인증되지 않은 상태
-    console.log('사용자가 인증되지 않았습니다.');
+    //console.log('사용자가 인증되지 않았습니다.');
     return { success: false, notAuthenticated: true };
   } catch (error) {
     // 모든 오류는 인증되지 않은 상태로 처리
-    console.error('현재 사용자 가져오기 오류:', error);
+    //console.error('현재 사용자 가져오기 오류:', error);
     return { success: false, error: error.message };
   }
 };
@@ -407,7 +407,7 @@ export const getJwtToken = async () => {
     // 로컬스토리지에서 먼저 시도
     const localToken = localStorage.getItem('idToken');
     if (localToken) {
-      console.log('로컬스토리지 토큰 사용');
+      //console.log('로컬스토리지 토큰 사용');
       return { success: true, token: localToken };
     }
 
@@ -420,7 +420,7 @@ export const getJwtToken = async () => {
 
     return { success: false, error: '유효한 토큰이 없습니다.', token: null };
   } catch (error) {
-    console.error('JWT 토큰 가져오기 오류:', error);
+    //console.error('JWT 토큰 가져오기 오류:', error);
     return {
       success: false,
       error: error.message,
@@ -436,7 +436,7 @@ export const forgotPassword = async (email) => {
     await resetPassword({ username: email });
     return { success: true };
   } catch (error) {
-    console.error('비밀번호 재설정 요청 오류:', error);
+    //console.error('비밀번호 재설정 요청 오류:', error);
     return { success: false, error: error.message };
   }
 };
@@ -451,7 +451,7 @@ export const forgotPasswordSubmit = async (email, code, newPassword) => {
     });
     return { success: true };
   } catch (error) {
-    console.error('비밀번호 재설정 확인 오류:', error);
+    //console.error('비밀번호 재설정 확인 오류:', error);
     return { success: false, error: error.message };
   }
 };
@@ -462,7 +462,7 @@ export const updateUserAttributes = async (attributes) => {
     await updateUserAttributesAuth({ userAttributes: attributes });
     return { success: true };
   } catch (error) {
-    console.error('사용자 속성 업데이트 오류:', error);
+    //console.error('사용자 속성 업데이트 오류:', error);
     return { success: false, error: error.message };
   }
 };
@@ -475,7 +475,7 @@ export const setupAuthListener = (callback) => {
 // 회원가입 - 대안 AWS SDK 사용 방법 (Amplify가 SECRET_HASH를 제대로 처리하지 못할 경우)
 export const signUpAlternative = async (email, password, name) => {
   try {
-    console.log('대안 회원가입 방법 시도 - AWS SDK 사용');
+    //console.log('대안 회원가입 방법 시도 - AWS SDK 사용');
     
     // 현재 날짜를 YYYY-MM-DD 형식으로 변환 (birthdate 속성용)
     const today = new Date();
@@ -503,9 +503,9 @@ export const signUpAlternative = async (email, password, name) => {
       ]
     };
     
-    console.log('SignUp 요청 데이터:', JSON.stringify(signUpData, (key, value) => 
-      key === 'Password' ? '***' : (key === 'SecretHash' ? value : value)
-    ));
+    //console.log('SignUp 요청 데이터:', JSON.stringify(signUpData, (key, value) => 
+    //  key === 'Password' ? '***' : (key === 'SecretHash' ? value : value)
+    //));
     
     // 직접 Cognito API를 호출하는 함수
     // 주의: 클라이언트 측에서 직접 Cognito API를 호출하는 것은 일반적으로 권장되지 않습니다.
@@ -532,7 +532,7 @@ export const signUpAlternative = async (email, password, name) => {
       userSub: result.UserSub
     };
   } catch (error) {
-    console.error('대안 회원가입 오류:', error);
+    //console.error('대안 회원가입 오류:', error);
     return {
       success: false,
       message: error.message

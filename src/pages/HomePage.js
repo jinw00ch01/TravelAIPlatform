@@ -49,6 +49,28 @@ export const HomePage = () => {
   const selectedFlight = selectedFlights.length > 0 ? selectedFlights[0] : null;
   const selectedAccommodation = selectedAccommodations.length > 0 ? selectedAccommodations[0] : null;
 
+  // ✅ 항공편 고유 식별자 생성 함수
+  const createFlightUniqueId = useCallback((flight) => {
+    if (!flight || !flight.itineraries || flight.itineraries.length === 0) {
+      return `${flight?.id || 'unknown'}-${Date.now()}`;
+    }
+    
+    // 모든 여정(가는편, 오는편)의 정보를 조합
+    const itineraryIds = flight.itineraries.map(itinerary => {
+      if (!itinerary.segments || itinerary.segments.length === 0) return '';
+      
+      const firstSegment = itinerary.segments[0];
+      const lastSegment = itinerary.segments[itinerary.segments.length - 1];
+      
+      return `${firstSegment.departure.iataCode}-${lastSegment.arrival.iataCode}-${firstSegment.departure.at}`;
+    }).join('|');
+    
+    return `${flight.id}-${itineraryIds}`;
+  }, []);
+
+  // 선택한 항공편들의 고유 ID 목록 (FlightDialog에서 사용)
+  const selectedFlightUniqueIds = selectedFlights.map(f => createFlightUniqueId(f));
+
   // 항공편 정보와 공항 정보를 합쳐서 확장된 항공편 정보를 만드는 함수
   const enrichFlightWithAirportInfo = useCallback((flight) => {
     if (!flight || !flight.itineraries || Object.keys(airportInfoCache).length === 0) {
@@ -123,19 +145,30 @@ export const HomePage = () => {
     
     console.log('[HomePage] Selected flight with airport info:', enrichedFlight);
     
+    // ✅ 왕복편과 편도편에 따른 처리 분기
+    const isRoundTrip = enrichedFlight.itineraries.length > 1;
+    
     if (isMultiple) {
-      // 다중 선택 모드: 기존 항공편 목록에 추가
-      setSelectedFlights(prev => {
-        // 중복 방지: 같은 ID의 항공편이 이미 있으면 교체
-        const existingIndex = prev.findIndex(f => f.id === enrichedFlight.id);
-        if (existingIndex >= 0) {
-          const newFlights = [...prev];
-          newFlights[existingIndex] = enrichedFlight;
-          return newFlights;
-        } else {
-          return [...prev, enrichedFlight];
-        }
-      });
+      // 다중 선택 모드
+      if (isRoundTrip) {
+        // 왕복편인 경우: 기존 모든 항공편을 교체 (왕복편은 1개만 허용)
+        setSelectedFlights([enrichedFlight]);
+      } else {
+        // ✅ 편도편인 경우: 고유 식별자로 중복 확인
+        setSelectedFlights(prev => {
+          const newFlightUniqueId = createFlightUniqueId(enrichedFlight);
+          const existingIndex = prev.findIndex(f => createFlightUniqueId(f) === newFlightUniqueId);
+          
+          if (existingIndex >= 0) {
+            // 같은 항공편을 다시 선택한 경우는 무시 (추가하지 않음)
+            console.log('[HomePage] 같은 항공편이 이미 선택되어 있어 무시합니다:', newFlightUniqueId);
+            return prev;
+          } else {
+            // 새로운 편도 항공편 추가
+            return [...prev, enrichedFlight];
+          }
+        });
+      }
     } else {
       // 단일 선택 모드: 기존 항공편 교체
       setSelectedFlights([enrichedFlight]);
@@ -143,7 +176,7 @@ export const HomePage = () => {
     
     setSelectedFlightDictionaries(prev => ({...prev, ...dictionaries}));
     setIsFlightDialogOpen(false);
-  }, [enrichFlightWithAirportInfo]);
+  }, [enrichFlightWithAirportInfo, createFlightUniqueId]);
 
   // 항공편 제거 함수
   const removeFlight = useCallback((flightId) => {
@@ -1219,6 +1252,7 @@ export const HomePage = () => {
           defaultEndDate={endDate}
           isMultipleMode={selectedFlights.length > 0} // 이미 항공편이 선택되어 있으면 다중 모드
           selectedFlights={selectedFlights}
+          selectedFlightUniqueIds={selectedFlightUniqueIds} // ✅ 고유 ID 목록 전달
           key={isFlightDialogOpen ? 'open' : 'closed'} // 다이얼로그 열릴 때마다 컴포넌트 재생성
         />
 
