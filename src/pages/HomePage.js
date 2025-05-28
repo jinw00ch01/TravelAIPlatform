@@ -19,7 +19,7 @@ import { useAuth } from "../components/auth/AuthContext";
 
 export const HomePage = () => {
   const navigate = useNavigate();
-  const { getJwtToken } = useAuth();
+  const { user, getJwtToken } = useAuth();
   const fileInputRef = useRef(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState(""); // WebSocket 상태 메시지용
@@ -725,7 +725,40 @@ export const HomePage = () => {
   };
 
   const handleInfantCountChange = (increment) => {
-    setInfantCount(prev => Math.max(0, prev + increment));
+    setInfantCount(Math.max(0, infantCount + increment));
+  };
+
+  // 항공편 검색 버튼 클릭 핸들러
+  const handleFlightSearchClick = () => {
+    if (!user) {
+      // 로그인되지 않은 경우 로그인 페이지로 이동
+      navigate('/signin');
+      return;
+    }
+    // 로그인된 경우 바로 다이얼로그 열기
+    setIsFlightDialogOpen(true);
+  };
+
+  // 숙박 검색 버튼 클릭 핸들러
+  const handleAccommodationSearchClick = () => {
+    if (!user) {
+      // 로그인되지 않은 경우 로그인 페이지로 이동
+      navigate('/signin');
+      return;
+    }
+    // 로그인된 경우 바로 다이얼로그 열기
+    setIsAccommodationDialogOpen(true);
+  };
+
+  // AI 계획 생성 버튼 클릭 핸들러 (handleSearch 함수 수정)
+  const handleAIPlanClick = async () => {
+    if (!user) {
+      // 로그인되지 않은 경우 로그인 페이지로 이동
+      navigate('/signin');
+      return;
+    }
+    // 로그인된 경우 기존 handleSearch 로직 실행
+    await handleSearch();
   };
 
   // 숙소 선택 핸들러 (다중 선택 지원)
@@ -867,7 +900,7 @@ export const HomePage = () => {
                       />
                       <Button
                         className="absolute w-[25px] h-[25px] top-[30px] left-[8px] bg-gray-50 rounded-full border border-primary/90 flex items-center justify-center z-10 p-0 min-w-0 hover:bg-gray-100"
-                        onClick={() => fileInputRef.current?.click()}
+                        onClick={() => user && fileInputRef.current?.click()}
                         disabled={isProcessing}
                       >
                         <svg
@@ -889,13 +922,13 @@ export const HomePage = () => {
                         placeholder="+버튼을 눌러 이미지나 텍스트파일을 추가할 수 있습니다."
                         value={searchText}
                         onChange={(e) => setSearchText(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                        onKeyPress={(e) => e.key === 'Enter' && handleAIPlanClick()}
                         disabled={isProcessing}
                       />
                       <Button
                         className="absolute right-0 w-[25px] h-[25px] top-[30px] right-[10px] bg-primary/90 rounded-full p-0 min-w-0 flex items-center justify-center hover:bg-primary-dark/90"
                         size="icon"
-                        onClick={handleSearch}
+                        onClick={handleAIPlanClick}
                         disabled={isProcessing}
                       >
                         {isProcessing ? (
@@ -940,6 +973,30 @@ export const HomePage = () => {
                           </li>
                         ))}
                       </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 로그인 안내 메시지 */}
+              {!user && (
+                <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <svg className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <div className="flex-1">
+                      <p className="text-yellow-700 text-sm font-medium mb-1">로그인이 필요합니다</p>
+                      <p className="text-yellow-600 text-sm">
+                        AI 계획 생성, 항공편 검색, 숙박 검색 기능을 이용하려면 
+                        <button 
+                          onClick={() => navigate('/signin')}
+                          className="text-yellow-800 underline hover:text-yellow-900 ml-1"
+                        >
+                          로그인
+                        </button>
+                        해주세요.
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -1027,7 +1084,7 @@ export const HomePage = () => {
                     <Button 
                       variant="outline" 
                       className="bg-blue-500 hover:bg-blue-600 text-white" 
-                      onClick={() => setIsFlightDialogOpen(true)}
+                      onClick={handleFlightSearchClick}
                     >
                       항공편 검색
                     </Button>
@@ -1036,7 +1093,7 @@ export const HomePage = () => {
                         variant="outline" 
                         size="sm"
                         className="bg-blue-400 hover:bg-blue-500 text-white text-xs" 
-                        onClick={() => setIsFlightDialogOpen(true)}
+                        onClick={handleFlightSearchClick}
                       >
                         + 항공편 추가
                       </Button>
@@ -1046,7 +1103,7 @@ export const HomePage = () => {
                     <Button 
                       variant="outline" 
                       className="bg-green-500 hover:bg-green-600 text-white" 
-                      onClick={() => setIsAccommodationDialogOpen(true)}
+                      onClick={handleAccommodationSearchClick}
                     >
                       숙박 검색
                     </Button>
@@ -1055,7 +1112,7 @@ export const HomePage = () => {
                         variant="outline" 
                         size="sm"
                         className="bg-green-400 hover:bg-green-500 text-white text-xs" 
-                        onClick={() => setIsAccommodationDialogOpen(true)}
+                        onClick={handleAccommodationSearchClick}
                       >
                         + 숙박 추가
                       </Button>
