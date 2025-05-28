@@ -159,7 +159,6 @@ const useFlightHandlers = () => {
 
     const isRoundTrip = flightOffer.itineraries.length > 1;
     const outboundItinerary = flightOffer.itineraries[0];
-    const outboundFirstSegment = outboundItinerary.segments[0];
     const outboundLastSegment = outboundItinerary.segments[outboundItinerary.segments.length - 1];
     
     // 가는날 도착시간 계산

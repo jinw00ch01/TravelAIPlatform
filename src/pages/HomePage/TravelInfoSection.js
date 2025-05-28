@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { Card, CardContent } from "../../components/ui/card";
-import { format, differenceInDays } from "date-fns";
-import { Loader2, MapPin, Plane, Hotel, Star, ExternalLink } from "lucide-react";
+import { Loader2, MapPin, Hotel, ExternalLink } from "lucide-react";
 import { travelApi } from "../../services/api";
 import { Modal, Box, Typography, Rating, Button, IconButton, Grid, Divider, CircularProgress, Paper } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
@@ -21,21 +20,6 @@ const cityCodeToKorean = {
   LAX: '로스앤젤레스'
 };
 
-// 도시코드 → 국가명 매핑
-const cityCodeToCountry = {
-  CJU: '대한민국',
-  OSA: '일본',
-  TYO: '일본',
-  ULN: '몽골',
-  BKK: '태국',
-  PAR: '프랑스',
-  BCN: '스페인',
-  DPS: '인도네시아',
-  SPK: '일본',
-  FUK: '일본',
-  LAX: '미국'
-};
-
 // 주요 도시 좌표 정보
 const CITIES = [
   { name: "서울", latitude: "37.5662952", longitude: "126.9779692", currency: "KRW" },
@@ -50,7 +34,7 @@ const CITIES = [
 // 인기 여행지 데이터를 가져오는 함수
 const fetchPopularDestinations = async () => {
   try {
-    console.log('인기 여행지 데이터 요청 시작');
+    //console.log('인기 여행지 데이터 요청 시작');
     const response = await fetch('https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/amadeus/Flight_Most_Traveled_Destinations', {
       method: 'POST',
       headers: {
@@ -68,36 +52,13 @@ const fetchPopularDestinations = async () => {
     }
 
     const data = await response.json();
-    console.log('API 응답 데이터:', data);
+    //console.log('API 응답 데이터:', data);
     return data;
   } catch (error) {
-    console.error('인기 여행지 데이터 조회 실패:', error);
+    //console.error('인기 여행지 데이터 조회 실패:', error);
     return [];
   }
 };
-
-// 여행지 추천 데이터를 가져오는 함수
-const fetchFlightInspiration = async (params) => {
-  try {
-    const response = await fetch('https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/amadeus/Flight_Inspiration_Search', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(params)
-    });
-
-    if (!response.ok) {
-      throw new Error('여행지 추천 데이터를 가져오는데 실패했습니다.');
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('여행지 추천 데이터 조회 실패:', error);
-    throw error;
-  }
-};
-
 
 // Travel information section containing popular destinations, airlines and hotels
 const TravelInfoSection = () => {
@@ -108,11 +69,8 @@ const TravelInfoSection = () => {
 
   // API 데이터 관련 상태
   const [popularDestinations, setPopularDestinations] = useState([]);
-  const [airlines, setAirlines] = useState([]);
   const [hotels, setHotels] = useState([]);
   const [allHotels, setAllHotels] = useState([]); // 모든 호텔 데이터 저장
-  const [flightInspiration, setFlightInspiration] = useState([]);
-  const [isLoadingInspiration, setIsLoadingInspiration] = useState(false);
 
   const scrollRef = useRef(); // 스크롤 컨테이너 참조 추가
 
@@ -123,7 +81,7 @@ const TravelInfoSection = () => {
       try {
         // 인기 여행지 데이터 가져오기
         const destinationsData = await fetchPopularDestinations();
-        console.log('받아온 여행지 데이터:', destinationsData);
+        //console.log('받아온 여행지 데이터:', destinationsData);
         
         const dataArray = destinationsData.data;
 
@@ -139,14 +97,14 @@ const TravelInfoSection = () => {
               description: `${index + 1}위`
             };
           });
-          console.log('매핑된 여행지 데이터:', mappedDestinations);
+          //console.log('매핑된 여행지 데이터:', mappedDestinations);
           setPopularDestinations(mappedDestinations);
         } else {
-          console.log('유효한 여행지 데이터가 없습니다');
+          //console.log('유효한 여행지 데이터가 없습니다');
           setPopularDestinations([]);
         }
       } catch (error) {
-        console.error('데이터 로딩 중 오류 발생:', error);
+        //console.error('데이터 로딩 중 오류 발생:', error);
         setPopularDestinations([]);
       } finally {
         setIsLoadingData(false);
@@ -156,44 +114,6 @@ const TravelInfoSection = () => {
     loadData();
   }, []);
 
-  // 여행지 추천 데이터 로드
-  useEffect(() => {
-    const loadInspiration = async () => {
-      setIsLoadingInspiration(true);
-      try {
-        console.log('여행지 추천 API 호출 시작');
-        const params = {
-          origin: 'SEL',
-          //departureDate: '2025-05-08,2025-05-12',
-          // duration: '7',
-          // maxPrice: 1000000,
-          // oneWay: false,  
-          // currencyCode: 'KRW',
-          // viewBy: 'DESTINATION'
-        };
-        console.log('API 요청 파라미터:', params);
-        
-        const data = await fetchFlightInspiration(params);
-        console.log('API 응답 데이터:', data);
-        
-        if (data && data.data) {
-          console.log('처리된 여행지 추천 데이터:', data.data);
-          setFlightInspiration(data.data || []);
-        } else {
-          console.warn('API 응답에 data 필드가 없습니다:', data);
-          setFlightInspiration([]);
-        }
-      } catch (error) {
-        console.error('여행지 추천 API 호출 중 오류 발생:', error);
-        setFlightInspiration([]);
-      } finally {
-        setIsLoadingInspiration(false);
-        console.log('여행지 추천 데이터 로딩 완료');
-      }
-    };
-
-    loadInspiration();
-  }, []);
   // 호텔 상세 정보 관련 상태
   const [selectedHotel, setSelectedHotel] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -215,14 +135,14 @@ const TravelInfoSection = () => {
         adults_number: '2'
       };
 
-      console.log('객실 조회 요청:', roomListParams);
+      //console.log('객실 조회 요청:', roomListParams);
 
       const roomListResponse = await travelApi.searchHotels(roomListParams);
-      console.log('객실 조회 응답:', roomListResponse);
+      //console.log('객실 조회 응답:', roomListResponse);
       
       setRoomData(processRoomData(roomListResponse));
     } catch (error) {
-      console.error('객실 정보 조회 실패:', error);
+      //console.error('객실 정보 조회 실패:', error);
     } finally {
       setLoading(false);
     }
@@ -255,7 +175,7 @@ const TravelInfoSection = () => {
               }
             });
 
-            console.log(`[${city.name}] 호텔 응답:`, preferredResponse);
+            //console.log(`[${city.name}] 호텔 응답:`, preferredResponse);
 
             if (preferredResponse && preferredResponse.result) {
               return preferredResponse.result
@@ -287,7 +207,7 @@ const TravelInfoSection = () => {
             }
             return [];
           } catch (error) {
-            console.error(`${city.name} 호텔 데이터 가져오기 실패:`, error);
+            //console.error(`${city.name} 호텔 데이터 가져오기 실패:`, error);
             return [];
           }
         });
@@ -301,7 +221,7 @@ const TravelInfoSection = () => {
         }
       }
       
-      console.log('처리된 호텔 데이터:', allHotelsData);
+      //console.log('처리된 호텔 데이터:', allHotelsData);
       
       if (allHotelsData.length === 0) {
         throw new Error('호텔 데이터를 가져올 수 없습니다.');
@@ -310,7 +230,7 @@ const TravelInfoSection = () => {
       setAllHotels(allHotelsData);
       setHotels(allHotelsData);
     } catch (error) {
-      console.error('선호 호텔 데이터 가져오기 실패:', error);
+      //console.error('선호 호텔 데이터 가져오기 실패:', error);
       setHotels([
         { id: 1, name: "데이터를 불러올 수 없습니다", location: "오류", rating: "-", price: "-", image: "https://via.placeholder.com/500x300" }
       ]);

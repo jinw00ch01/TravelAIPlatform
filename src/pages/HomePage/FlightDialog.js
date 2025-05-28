@@ -192,10 +192,10 @@ const FlightDialog = ({
       clearTimeout(debounceTimerRef.current);
     }
 
-    // 새로운 타이머 설정 (500ms 후 실행)
+    // 새로운 타이머 설정 (900ms 후 실행)
     debounceTimerRef.current = setTimeout(() => {
       debouncedCitySearch(value, type);
-    }, 700);
+    }, 800);
   }, [debouncedCitySearch]);
 
   // 컴포넌트 언마운트 시 타이머 정리

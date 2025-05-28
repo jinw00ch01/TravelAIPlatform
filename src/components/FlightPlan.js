@@ -96,9 +96,6 @@ const FlightPlan = ({
     }
   }, [isOneWay, searchParams.returnDate]);
 
-  const formatDate = (date) => {
-    return date ? date.toISOString().split('T')[0] : null;
-  };
 
   const renderSearchForm = () => (
     <Box className="p-4">

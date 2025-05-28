@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
 // import { travelApi } from "../../services/api"; // API 호출 제거
-import { format } from "date-fns";
 import { CITY_ACTIVITIES } from "../../data/cityActivitiesData";
 
 const EUR_TO_KRW = 1480; 
@@ -26,20 +25,12 @@ const euroToKrw = (euroStr) => {
   return `${(euro * EUR_TO_KRW).toLocaleString()}원`;
 };
 
-const today = format(new Date(), "yyyy-MM-dd");
-const tomorrow = format(new Date(Date.now() + 24 * 60 * 60 * 1000), "yyyy-MM-dd");
-
 const ToursAndActivity = () => {
   // 서울을 기본값으로 설정
   const [selectedCity, setSelectedCity] = useState("서울");
-  const [latitude, setLatitude] = useState(CITIES[0].latitude);
-  const [longitude, setLongitude] = useState(CITIES[0].longitude);
-  const [startDate, setStartDate] = useState(today);
-  const [endDate, setEndDate] = useState(tomorrow);
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [radius, setRadius] = useState(2);
   const [liked, setLiked] = useState({}); // 각 액티비티별 찜 상태
 
   const scrollRef = useRef();
@@ -56,8 +47,6 @@ const ToursAndActivity = () => {
   // 도시 변경 핸들러
   const handleCityChange = (city) => {
     setSelectedCity(city.name);
-    setLatitude(city.latitude);
-    setLongitude(city.longitude);
   };
 
   // 하드코딩된 데이터에서 액티비티 가져오기
@@ -65,16 +54,16 @@ const ToursAndActivity = () => {
     setLoading(true);
     setError("");
     
-    console.log('🔥 선택된 도시:', selectedCity);
+    //console.log('🔥 선택된 도시:', selectedCity);
     
     // 선택된 도시의 액티비티 데이터 가져오기
     const cityActivities = CITY_ACTIVITIES[selectedCity] || [];
     
-    console.log('🔥 하드코딩된 데이터:', cityActivities);
-    console.log('🔥 데이터 개수:', cityActivities.length);
+    //console.log('🔥 하드코딩된 데이터:', cityActivities);
+    //console.log('🔥 데이터 개수:', cityActivities.length);
     
     if (cityActivities.length > 0) {
-      console.log('🔥 첫 번째 액티비티:', cityActivities[0]);
+      //console.log('🔥 첫 번째 액티비티:', cityActivities[0]);
     }
     
     setActivities(cityActivities);

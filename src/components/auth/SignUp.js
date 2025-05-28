@@ -173,184 +173,199 @@ const SignUp = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            {showConfirmation ? '이메일 인증' : '회원가입'}
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            {showConfirmation ? (
-              '이메일로 전송된 인증 코드를 입력해주세요.'
-            ) : (
-              <>
-                이미 계정이 있으신가요?{' '}
-                <Link to="/signin" className="font-medium text-indigo-600 hover:text-indigo-500">
-                  로그인
-                </Link>
-              </>
-            )}
-          </p>
-        </div>
-        
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-            <span className="block sm:inline">{error}</span>
+    <div className="min-h-screen bg-gray-50 flex justify-center">
+      <div className="w-full max-w-[2160px] min-h-screen">
+        <div className="relative h-full min-h-screen">
+          {/* Hero background section */}
+          <div 
+            className="absolute w-full h-full top-0 left-0 bg-gradient-to-b from-sky-300 via-sky-200 to-white"
+            style={{
+              position: 'relative'
+            }}
+          >
+            {/* 배경 이미지 제거 - 그라데이션 배경만 유지 */}
           </div>
-        )}
-        
-        {successMessage && (
-          <div className="text-green-600 mt-2">
-            {successMessage}
-          </div>
-        )}
-        
-        {showConfirmation ? (
-          <div className="mt-4">
-            <h3 className="text-lg font-semibold mb-2">이메일 확인</h3>
-            <p className="mb-4 text-sm text-gray-600">
-              {email}로 전송된 확인 코드를 입력하세요.
-            </p>
-            <div className="mb-4">
-              <label htmlFor="confirmationCode" className="block text-sm font-medium text-gray-700">
-                확인 코드
-              </label>
-              <input
-                type="text"
-                id="confirmationCode"
-                value={confirmationCode}
-                onChange={(e) => setConfirmationCode(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                required
-              />
-            </div>
-            <div className="flex space-x-2">
-              <button
-                type="button"
-                onClick={handleConfirmSignUp}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                disabled={loading}
-              >
-                {loading ? <LoadingSpinner /> : '확인 완료'}
-              </button>
-              <button
-                type="button"
-                onClick={handleResendConfirmationCode}
-                className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                disabled={loading}
-              >
-                코드 재전송
-              </button>
-            </div>
-          </div>
-        ) : (
-          <form className="mt-8 space-y-6" onSubmit={handleSignUp}>
-            <div className="rounded-md shadow-sm -space-y-px">
-              <div>
-                <label htmlFor="name" className="sr-only">이름</label>
-                <input
-                  id="name"
-                  name="name"
-                  type="text"
-                  autoComplete="name"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                  placeholder="이름"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </div>
-              <div>
-                <label htmlFor="email-address" className="sr-only">이메일 주소</label>
-                <input
-                  id="email-address"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                  placeholder="이메일 주소"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-              <div>
-                <label htmlFor="phone-number" className="sr-only">전화번호</label>
-                <input
-                  id="phone-number"
-                  name="phone-number"
-                  type="tel"
-                  autoComplete="tel"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                  placeholder="전화번호 (예: +821012345678)"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                />
-              </div>
-              <div>
-                <label htmlFor="birthdate" className="sr-only">생년월일</label>
-                <input
-                  id="birthdate"
-                  name="birthdate"
-                  type="date"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                  value={birthdate}
-                  onChange={(e) => setBirthdate(e.target.value)}
-                />
-              </div>
-              <div>
-                <label htmlFor="password" className="sr-only">비밀번호</label>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete="new-password"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                  placeholder="비밀번호 (8자 이상, 대소문자, 숫자 포함)"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-              <div>
-                <label htmlFor="confirm-password" className="sr-only">비밀번호 확인</label>
-                <input
-                  id="confirm-password"
-                  name="confirm-password"
-                  type="password"
-                  autoComplete="new-password"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                  placeholder="비밀번호 확인"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                />
-              </div>
-            </div>
 
+          {/* 회원가입 폼 컨테이너 - 위치 조정 */}
+          <div className="absolute w-full max-w-md top-[100px] left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm rounded-xl p-8 shadow-lg border border-gray-200">
             <div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              >
-                {loading ? (
-                  <span className="flex items-center">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    처리 중...
-                  </span>
+              <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                {showConfirmation ? '이메일 인증' : '회원가입'}
+              </h2>
+              <p className="mt-2 text-center text-sm text-gray-600">
+                {showConfirmation ? (
+                  '이메일로 전송된 인증 코드를 입력해주세요.'
                 ) : (
-                  '회원가입'
+                  <>
+                    이미 계정이 있으신가요?{' '}
+                    <Link to="/signin" className="font-medium text-indigo-600 hover:text-indigo-500">
+                      로그인
+                    </Link>
+                  </>
                 )}
-              </button>
+              </p>
             </div>
-          </form>
-        )}
+            
+            {error && (
+              <div className="mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                <span className="block sm:inline">{error}</span>
+              </div>
+            )}
+            
+            {successMessage && (
+              <div className="mt-4 text-green-600">
+                {successMessage}
+              </div>
+            )}
+            
+            {showConfirmation ? (
+              <div className="mt-4">
+                <h3 className="text-lg font-semibold mb-2">이메일 확인</h3>
+                <p className="mb-4 text-sm text-gray-600">
+                  {email}로 전송된 확인 코드를 입력하세요.
+                </p>
+                <div className="mb-4">
+                  <label htmlFor="confirmationCode" className="block text-sm font-medium text-gray-700">
+                    확인 코드
+                  </label>
+                  <input
+                    type="text"
+                    id="confirmationCode"
+                    value={confirmationCode}
+                    onChange={(e) => setConfirmationCode(e.target.value)}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    required
+                  />
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    type="button"
+                    onClick={handleConfirmSignUp}
+                    className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    disabled={loading}
+                  >
+                    {loading ? <LoadingSpinner /> : '확인 완료'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResendConfirmationCode}
+                    className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    disabled={loading}
+                  >
+                    코드 재전송
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form className="mt-8 space-y-6" onSubmit={handleSignUp}>
+                <div className="rounded-md shadow-sm -space-y-px">
+                  <div>
+                    <label htmlFor="name" className="sr-only">이름</label>
+                    <input
+                      id="name"
+                      name="name"
+                      type="text"
+                      autoComplete="name"
+                      required
+                      className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                      placeholder="이름"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="email-address" className="sr-only">이메일 주소</label>
+                    <input
+                      id="email-address"
+                      name="email"
+                      type="email"
+                      autoComplete="email"
+                      required
+                      className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                      placeholder="이메일 주소"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="phone-number" className="sr-only">전화번호</label>
+                    <input
+                      id="phone-number"
+                      name="phone-number"
+                      type="tel"
+                      autoComplete="tel"
+                      required
+                      className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                      placeholder="전화번호 (예: +821012345678)"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="birthdate" className="sr-only">생년월일</label>
+                    <input
+                      id="birthdate"
+                      name="birthdate"
+                      type="date"
+                      required
+                      className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                      value={birthdate}
+                      onChange={(e) => setBirthdate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="password" className="sr-only">비밀번호</label>
+                    <input
+                      id="password"
+                      name="password"
+                      type="password"
+                      autoComplete="new-password"
+                      required
+                      className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                      placeholder="비밀번호 (8자 이상, 대소문자, 숫자 포함)"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="confirm-password" className="sr-only">비밀번호 확인</label>
+                    <input
+                      id="confirm-password"
+                      name="confirm-password"
+                      type="password"
+                      autoComplete="new-password"
+                      required
+                      className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                      placeholder="비밀번호 확인"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    {loading ? (
+                      <span className="flex items-center">
+                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        처리 중...
+                      </span>
+                    ) : (
+                      '회원가입'
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

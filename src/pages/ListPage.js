@@ -131,7 +131,43 @@ function ListPage() {
         <div className="w-full max-w-[2160px] min-h-screen">
           <div className="relative h-full">
             {/* Hero background section */}
-            <div className="absolute w-full h-full top-0 left-0 bg-gradient-to-b from-sky-300 via-sky-200 to-white"></div>
+            <div className="absolute w-full h-full top-0 left-0 bg-gradient-to-b from-sky-300 via-sky-200 to-white">
+              {/* 구름 배경 이미지 */}
+              <div className="absolute inset-0 grid grid-cols-2 grid-rows-2">
+                {/* 왼쪽 위 */}
+                <div className="w-full h-full">
+                  <img 
+                    src="/images/travel_list.png" 
+                    alt="구름 배경" 
+                    className="w-full h-full object-contain object-left" 
+                  />
+                </div>
+                {/* 오른쪽 위 */}
+                <div className="w-full h-full">
+                  <img 
+                    src="/images/travel_list.png" 
+                    alt="구름 배경" 
+                    className="w-full h-full object-contain object-right" 
+                  />
+                </div>
+                {/* 왼쪽 아래 */}
+                <div className="w-full h-full">
+                  <img 
+                    src="/images/travel_list.png" 
+                    alt="구름 배경" 
+                    className="w-full h-full object-contain object-left" 
+                  />
+                </div>
+                {/* 오른쪽 아래 */}
+                <div className="w-full h-full">
+                  <img 
+                    src="/images/travel_list.png" 
+                    alt="구름 배경" 
+                    className="w-full h-full object-contain object-right" 
+                  />
+                </div>
+              </div>
+            </div>
             
             {/* Main container with gray overlay */}
             <div className="absolute w-full max-w-[1200px] top-[50px] left-1/2 -translate-x-1/2 bg-gray-800/80 backdrop-blur-sm rounded-xl p-8 shadow-lg border border-gray-700">
@@ -154,7 +190,43 @@ function ListPage() {
       <div className="w-full max-w-[2160px] min-h-screen">
         <div className="relative h-full">
           {/* Hero background section */}
-          <div className="absolute w-full h-full top-0 left-0 bg-gradient-to-b from-sky-300 via-sky-200 to-white"></div>
+          <div className="absolute w-full h-full top-0 left-0 bg-gradient-to-b from-sky-300 via-sky-200 to-white">
+            {/* 구름 배경 이미지 */}
+            <div className="absolute inset-0 grid grid-cols-2 grid-rows-2">
+              {/* 왼쪽 위 */}
+              <div className="w-full h-full">
+                <img 
+                  src="/images/travel_list.png" 
+                  alt="구름 배경" 
+                  className="w-full h-full object-contain object-left" 
+                />
+              </div>
+              {/* 오른쪽 위 */}
+              <div className="w-full h-full">
+                <img 
+                  src="/images/travel_list.png" 
+                  alt="구름 배경" 
+                  className="w-full h-full object-contain object-right" 
+                />
+              </div>
+              {/* 왼쪽 아래 */}
+              <div className="w-full h-full">
+                <img 
+                  src="/images/travel_list.png" 
+                  alt="구름 배경" 
+                  className="w-full h-full object-contain object-left" 
+                />
+              </div>
+              {/* 오른쪽 아래 */}
+              <div className="w-full h-full">
+                <img 
+                  src="/images/travel_list.png" 
+                  alt="구름 배경" 
+                  className="w-full h-full object-contain object-right" 
+                />
+              </div>
+            </div>
+          </div>
           
           {/* Main container with gray overlay */}
           <div className="absolute w-full max-w-[1200px] top-[50px] left-1/2 -translate-x-1/2 bg-gray-800/80 backdrop-blur-sm rounded-xl p-8 shadow-lg border border-gray-700">

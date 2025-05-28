@@ -24,6 +24,7 @@ export const HomePage = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState(""); // WebSocket 상태 메시지용
   const [validationErrors, setValidationErrors] = useState([]); // 검증 오류 메시지용
+  const [showGif, setShowGif] = useState(false); // GIF 표시 상태 (WebSocket 완료 후에도 유지)
   const [searchText, setSearchText] = useState("");
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
@@ -558,6 +559,7 @@ export const HomePage = () => {
 
     setIsProcessing(true); // 로딩 시작
     setProcessingStatus("연결을 준비 중입니다...");
+    setShowGif(true); // GIF 표시 시작
     let planSuccessfullyCreated = false; // 성공 플래그
     let generatedPlanId = null;
 
@@ -648,6 +650,11 @@ export const HomePage = () => {
       // 핸들러 정리
       websocketService.removeMessageHandler('request_received');
       websocketService.removeMessageHandler('status_update');
+      
+      // GIF를 3초 더 표시한 후 숨김
+      setTimeout(() => {
+        setShowGif(false);
+      }, 5000);
       
       if (planSuccessfullyCreated && generatedPlanId) {
         console.log('[HomePage] 페이지 이동 준비 중. generatedPlanId:', generatedPlanId, '타입:', typeof generatedPlanId);
@@ -762,7 +769,7 @@ export const HomePage = () => {
             {/* 오른쪽 AI 생성 이미지 */}
             <div className="absolute right-[0%] top-[5px] w-[694px] h-[815px] rounded-lg overflow-hidden">
               <img 
-                src={isProcessing ? "/images/travel_right.gif" : "/images/travel_right.png"} 
+                src={showGif ? "/images/travel_right.gif" : "/images/travel_right.png"} 
                 alt="여행 명소" 
                 className="w-full h-full object-cover transition-opacity duration-500" 
               />
@@ -771,7 +778,7 @@ export const HomePage = () => {
             {/* 왼쪽 AI 생성 이미지 */}
             <div className="absolute left-[0%] top-[5px] w-[694px] h-[815px] rounded-lg overflow-hidden">
               <img 
-                src={isProcessing ? "/images/travel_left.gif" : "/images/travel_left.png"} 
+                src={showGif ? "/images/travel_left.gif" : "/images/travel_left.png"} 
                 alt="여행 명소" 
                 className="w-full h-full object-cover transition-opacity duration-500" 
               />
