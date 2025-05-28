@@ -52,6 +52,8 @@ const FlightDialog = ({
   defaultEndDate = null,
   isMultipleMode = false, // 다중 선택 모드 여부
   selectedFlights = [], // 이미 선택된 항공편들 (다중 모드에서 사용)
+  savedSearchResults = null, // 저장된 검색 결과
+  onSaveSearchResults = null, // 검색 결과 저장 콜백
 }) => {
   // --------------------- state ---------------------
   // 검색 입력 및 도시 결과 상태
@@ -125,8 +127,33 @@ const FlightDialog = ({
     if (isOpen) {
       // 다이얼로그를 열 때마다 로컬 선택 상태 완전 초기화
       setSelectedFlightIdLocal(null);
-      setFlightResults([]); // 이전 검색 결과도 초기화
       setFlightError(null);
+      
+      // 저장된 검색 결과가 있으면 불러오기
+      if (savedSearchResults) {
+        console.log('[FlightDialog] 저장된 검색 결과를 불러옵니다:', savedSearchResults);
+        setFlightResults(savedSearchResults.results || []);
+        setDictionaries(savedSearchResults.dictionaries || {});
+        setAirportInfoCache(savedSearchResults.airportInfoCache || {});
+        
+        // 검색 조건도 복원
+        if (savedSearchResults.searchParams) {
+          const params = savedSearchResults.searchParams;
+          setSelectedOrigin(params.selectedOrigin);
+          setSelectedDestination(params.selectedDestination);
+          setOriginSearch(params.selectedOrigin?.name || "");
+          setDestinationSearch(params.selectedDestination?.name || "");
+          setIsOneWay(params.isOneWay || false);
+          setTravelClass(params.travelClass || "");
+          setMaxPrice(params.maxPrice || "");
+          setNonStop(params.nonStop || false);
+        }
+      } else {
+        // 저장된 결과가 없으면 초기화
+        setFlightResults([]);
+        setDictionaries({});
+        setAirportInfoCache({});
+      }
       
       // 다이얼로그를 열 때 부모에서 전달된 날짜를 우선 사용
       if (defaultStartDate) {
@@ -150,7 +177,7 @@ const FlightDialog = ({
       setInfantCount(initialInfantCount);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, defaultStartDate, defaultEndDate, initialAdultCount, initialChildCount, initialInfantCount]);
+  }, [isOpen, defaultStartDate, defaultEndDate, initialAdultCount, initialChildCount, initialInfantCount, savedSearchResults]);
 
   /* ----------------------------- API 호출 ----------------------------- */
   // debounced city search function
@@ -264,6 +291,31 @@ const FlightDialog = ({
 
           if (response.data.length === 0) {
             setFlightError("검색 조건에 맞는 항공편이 없습니다.");
+          } else {
+            // 검색 성공 시 결과 저장
+            if (onSaveSearchResults) {
+              const searchResultsToSave = {
+                results: response.data,
+                dictionaries: response.dictionaries || {},
+                airportInfoCache: airportInfoCache,
+                searchParams: {
+                  selectedOrigin,
+                  selectedDestination,
+                  isOneWay,
+                  travelClass,
+                  maxPrice,
+                  nonStop,
+                  startDate,
+                  endDate,
+                  adultCount,
+                  childCount,
+                  infantCount
+                },
+                timestamp: Date.now()
+              };
+              console.log('[FlightDialog] 검색 결과를 저장합니다:', searchResultsToSave);
+              onSaveSearchResults(searchResultsToSave);
+            }
           }
         } else {
           setFlightError("항공편 검색 결과가 없거나 형식이 올바르지 않습니다.");

@@ -36,6 +36,10 @@ export const HomePage = () => {
   // 이미지 상태 추가
   const [uploadedImages, setUploadedImages] = useState([]); // Base64 이미지 배열
   
+  // 검색 결과 저장 상태 추가
+  const [savedFlightSearchResults, setSavedFlightSearchResults] = useState(null); // 항공편 검색 결과 저장
+  const [savedHotelSearchResults, setSavedHotelSearchResults] = useState(null); // 호텔 검색 결과 저장
+  
   // -------------------- 다이얼로그/선택 상태 --------------------
   const [isFlightDialogOpen, setIsFlightDialogOpen] = useState(false);
   const [isAccommodationDialogOpen, setIsAccommodationDialogOpen] = useState(false);
@@ -1347,6 +1351,8 @@ export const HomePage = () => {
           isMultipleMode={selectedFlights.length > 0} // 이미 항공편이 선택되어 있으면 다중 모드
           selectedFlights={selectedFlights}
           selectedFlightUniqueIds={selectedFlightUniqueIds} // ✅ 고유 ID 목록 전달
+          savedSearchResults={savedFlightSearchResults} // 저장된 검색 결과
+          onSaveSearchResults={setSavedFlightSearchResults} // 검색 결과 저장 콜백
           key={isFlightDialogOpen ? 'open' : 'closed'} // 다이얼로그 열릴 때마다 컴포넌트 재생성
         />
 
@@ -1362,6 +1368,8 @@ export const HomePage = () => {
           selectedAccommodation={selectedAccommodation}
           isMultipleMode={selectedAccommodations.length > 0} // 이미 숙박편이 선택되어 있으면 다중 모드
           selectedAccommodations={selectedAccommodations}
+          savedSearchResults={savedHotelSearchResults} // 저장된 검색 결과
+          onSaveSearchResults={setSavedHotelSearchResults} // 검색 결과 저장 콜백
         />
       </div>
     </div>

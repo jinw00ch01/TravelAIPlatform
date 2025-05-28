@@ -55,6 +55,8 @@ const AccomodationDialog = ({
   selectedAccommodation,
   isMultipleMode = false, // 다중 선택 모드 여부
   selectedAccommodations = [], // 이미 선택된 숙박편들 (다중 모드에서 사용)
+  savedSearchResults = null, // 저장된 검색 결과
+  onSaveSearchResults = null, // 검색 결과 저장 콜백
 }) => {
   /* --------------------- 검색조건 State --------------------- */
   const [selectedPlace, setSelectedPlace] = useState(null); // { name, lat, lng }
@@ -128,7 +130,26 @@ const AccomodationDialog = ({
           return h._parsedDistance <= 5;
         });
 
-        setHotelResults(filtered.length > 0 ? filtered : processed); // 5km 결과 없으면 전체 표시
+        const finalResults = filtered.length > 0 ? filtered : processed;
+        setHotelResults(finalResults); // 5km 결과 없으면 전체 표시
+        
+        // 검색 성공 시 결과 저장
+        if (onSaveSearchResults && finalResults.length > 0) {
+          const searchResultsToSave = {
+            results: finalResults,
+            roomDataByHotel: roomDataByHotel,
+            searchParams: {
+              selectedPlace,
+              checkIn,
+              checkOut,
+              adults,
+              children
+            },
+            timestamp: Date.now()
+          };
+          console.log('[AccommodationDialog] 검색 결과를 저장합니다:', searchResultsToSave);
+          onSaveSearchResults(searchResultsToSave);
+        }
       } else {
         setSearchError("검색 결과를 찾을 수 없습니다.");
       }
@@ -222,16 +243,36 @@ const AccomodationDialog = ({
     onClose();
   };
 
-  // 다이얼로그가 열릴 때 최신 기본값으로 초기화
+  // 다이얼로그가 열릴 때 저장된 검색 결과 불러오기
   useEffect(() => {
     if (isOpen) {
-      setCheckIn(defaultCheckIn);
-      setCheckOut(defaultCheckOut);
-      setAdults(initialAdults);
-      setChildren(initialChildren);
+      // 저장된 검색 결과가 있으면 불러오기
+      if (savedSearchResults) {
+        console.log('[AccommodationDialog] 저장된 검색 결과를 불러옵니다:', savedSearchResults);
+        setHotelResults(savedSearchResults.results || []);
+        setRoomDataByHotel(savedSearchResults.roomDataByHotel || {});
+        
+        // 검색 조건도 복원
+        if (savedSearchResults.searchParams) {
+          const params = savedSearchResults.searchParams;
+          setSelectedPlace(params.selectedPlace);
+          setCheckIn(params.checkIn ? new Date(params.checkIn) : null);
+          setCheckOut(params.checkOut ? new Date(params.checkOut) : null);
+          setAdults(params.adults || initialAdults);
+          setChildren(params.children || initialChildren);
+        }
+      } else {
+        // 저장된 결과가 없으면 초기화
+        setHotelResults([]);
+        setRoomDataByHotel({});
+        setExpandedHotelId(null);
+        setSelectedRoomKey(selectedAccommodation?.room?.id || null);
+        setExpandedRoomId(null);
+      }
+      
+      setSearchError(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, defaultCheckIn, defaultCheckOut, initialAdults, initialChildren]);
+  }, [isOpen, savedSearchResults, selectedAccommodation, initialAdults, initialChildren]);
 
   // isOpen이 false일 때 렌더링 중단
   if (!isOpen) return null;
