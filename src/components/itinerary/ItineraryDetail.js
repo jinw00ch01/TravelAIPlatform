@@ -209,19 +209,41 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
     .sort((a, b) => parseInt(a) - parseInt(b))
     .map(dayNumber => {
       const dayData = itineraryData[dayNumber];
-      // console.log(`[ItineraryDetail] availableDates map - dayNumber: ${dayNumber}, dayData title: ${dayData.title}`);
       
+      // 실제 날짜 계산
       let displayDateStr = `${dayNumber}일차`;
-      if (dayData.title && typeof dayData.title === 'string') {
-        const dateMatch = dayData.title.match(/(\d+\/\d+)/); // "5/24" 형식 찾기
+      let actualDate = null;
+      
+      // 방법 1: start_date가 있으면 사용
+      if (itinerary?.start_date) {
+        const startDate = new Date(itinerary.start_date);
+        actualDate = new Date(startDate);
+        actualDate.setDate(startDate.getDate() + parseInt(dayNumber) - 1);
+        displayDateStr = `${actualDate.getMonth() + 1}/${actualDate.getDate()}`;
+      }
+      // 방법 2: 숙소 체크인 날짜에서 추출
+      else if (itinerary?.accommodationInfos?.length > 0) {
+        const firstAccommodation = itinerary.accommodationInfos.find(acc => acc.checkIn);
+        if (firstAccommodation) {
+          const checkInDate = new Date(firstAccommodation.checkIn);
+          actualDate = new Date(checkInDate);
+          actualDate.setDate(checkInDate.getDate() + parseInt(dayNumber) - 1);
+          displayDateStr = `${actualDate.getMonth() + 1}/${actualDate.getDate()}`;
+        }
+      }
+      // 방법 3: 제목에서 날짜 패턴 찾기 (기존 방식)
+      else if (dayData.title && typeof dayData.title === 'string') {
+        const dateMatch = dayData.title.match(/(\d+\/\d+)/);
         if (dateMatch && dateMatch[1]) {
           displayDateStr = dateMatch[1];
         }
       }
+      
       return {
         date: dayNumber, 
         displayDate: displayDateStr,
-        day: `${dayNumber}일차`
+        day: `${dayNumber}일차`,
+        actualDate: actualDate
       };
     });
   // console.log('[ItineraryDetail] Computed availableDates:', JSON.parse(JSON.stringify(availableDates)));
@@ -353,191 +375,394 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
               )}
             </div>
             {/* 여행 기간 표시 */}
-            {itinerary?.accommodationInfo?.checkIn && itinerary?.accommodationInfo?.checkOut && (
-              <div className="text-right">
-                <div className="text-sm text-gray-600">여행 기간</div>
-                <div className="text-lg font-semibold text-blue-600">
-                  {new Date(itinerary.accommodationInfo.checkIn).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
-                  {' - '}
-                  {new Date(itinerary.accommodationInfo.checkOut).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
-                </div>
-              </div>
-            )}
+            {(() => {
+              // 전체 숙소 정보에서 여행 기간 계산
+              const allAccommodations = itinerary?.accommodationInfos || [];
+              
+              if (allAccommodations.length > 0) {
+                const checkInDates = allAccommodations
+                  .filter(acc => acc.checkIn)
+                  .map(acc => new Date(acc.checkIn));
+                const checkOutDates = allAccommodations
+                  .filter(acc => acc.checkOut)
+                  .map(acc => new Date(acc.checkOut));
+                
+                if (checkInDates.length > 0 && checkOutDates.length > 0) {
+                  const earliestCheckIn = new Date(Math.min(...checkInDates));
+                  const latestCheckOut = new Date(Math.max(...checkOutDates));
+                  
+                  return (
+                    <div className="text-right">
+                      <div className="text-sm text-gray-600">여행 기간</div>
+                      <div className="text-lg font-semibold text-blue-600">
+                        {earliestCheckIn.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
+                        {' - '}
+                        {latestCheckOut.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
+                      </div>
+                    </div>
+                  );
+                }
+              }
+              
+              // 대체: start_date가 있으면 사용
+              if (itinerary?.start_date) {
+                return (
+                  <div className="text-right">
+                    <div className="text-sm text-gray-600">여행 시작일</div>
+                    <div className="text-lg font-semibold text-blue-600">
+                      {new Date(itinerary.start_date).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
+                    </div>
+                  </div>
+                );
+              }
+              
+              return null;
+            })()}
           </div>
         </div>
 
         {/* 숙소 및 항공권 요약 섹션 */}
         <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* 숙소 요약 */}
-          {itinerary?.accommodationInfo?.hotel && (
-            <div className="bg-green-50 rounded-lg p-4">
-              <h3 className="text-lg font-semibold text-green-800 mb-2 flex items-center">
-                <span className="mr-2">🏨</span>
-                숙소 정보
-              </h3>
-              <div className="space-y-2">
-                <div className="font-medium">{itinerary.accommodationInfo.hotel.hotel_name}</div>
-                <div className="text-sm text-gray-600">{itinerary.accommodationInfo.hotel.address}</div>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-gray-500">체크인:</span>
-                    <div className="font-medium">{new Date(itinerary.accommodationInfo.checkIn).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' })}</div>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">체크아웃:</span>
-                    <div className="font-medium">{new Date(itinerary.accommodationInfo.checkOut).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' })}</div>
-                  </div>
-                </div>
-                {itinerary.accommodationInfo.hotel.price && (
-                  <div className="text-green-600 font-medium">
-                    가격: {itinerary.accommodationInfo.hotel.price}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* 항공권 요약 */}
-          {itinerary?.flightInfo && itinerary.flightInfo.length > 0 && (
-            <div className="bg-blue-50 rounded-lg p-4">
-              <h3 className="text-lg font-semibold text-blue-800 mb-2 flex items-center">
-                <span className="mr-2">✈️</span>
-                항공권 정보
-              </h3>
-              <div className="space-y-3">
-                {itinerary.flightInfo.map((flight, flightIndex) => {
-                  console.log(`[ItineraryDetail] 항공편 ${flightIndex} 데이터:`, flight);
+          {/* 숙소 요약 - 선택된 날짜의 숙박 정보 표시 */}
+          {(() => {
+            // 방법 1: 선택된 날짜의 스케줄에서 숙박 정보 찾기
+            const currentSchedules = currentDateData?.schedules || [];
+            let currentAccommodations = currentSchedules.filter(item => 
+              item.type === 'accommodation'
+            );
+            
+            // 방법 2: 전체 숙소 정보에서 해당 날짜에 맞는 숙소들 찾기
+            if (currentAccommodations.length === 0 && selectedDateKey && itinerary?.accommodationInfos) {
+              const dayNumber = parseInt(selectedDateKey);
+              if (!isNaN(dayNumber)) {
+                // 해당 날짜 계산
+                let targetDate = null;
+                if (itinerary.start_date) {
+                  const startDate = new Date(itinerary.start_date);
+                  targetDate = new Date(startDate);
+                  targetDate.setDate(startDate.getDate() + dayNumber - 1);
+                } else if (itinerary.accommodationInfos[0]?.checkIn) {
+                  const firstCheckIn = new Date(itinerary.accommodationInfos[0].checkIn);
+                  targetDate = new Date(firstCheckIn);
+                  targetDate.setDate(firstCheckIn.getDate() + dayNumber - 1);
+                }
+                
+                if (targetDate) {
+                  // 해당 날짜에 관련된 모든 숙소 찾기 (체크인, 체크아웃, 숙박 중)
+                  const matchingAccommodations = itinerary.accommodationInfos.filter(acc => {
+                    if (!acc.checkIn || !acc.checkOut) return false;
+                    
+                    const checkInDate = new Date(acc.checkIn);
+                    const checkOutDate = new Date(acc.checkOut);
+                    
+                    // 체크인 날짜 <= 대상 날짜 <= 체크아웃 날짜
+                    return targetDate >= checkInDate && targetDate <= checkOutDate;
+                  });
                   
-                  // 모든 여정(가는편, 오는편 등) 처리
-                  let allItineraries = [];
-                  let basePrice = null;
-                  
-                  // 구조 1: flightOfferDetails.flightOfferData.itineraries
-                  if (flight.flightOfferDetails?.flightOfferData?.itineraries) {
-                    allItineraries = flight.flightOfferDetails.flightOfferData.itineraries;
-                    basePrice = flight.flightOfferDetails.flightOfferData.price?.total;
-                  }
-                  // 구조 2: itineraries 직접 접근
-                  else if (flight.itineraries) {
-                    allItineraries = flight.itineraries;
-                    basePrice = flight.price?.total;
-                  }
-                  // 구조 3: 단순화된 형태 (단일 여정)
-                  else if (flight.departure || flight.origin) {
-                    allItineraries = [{
-                      segments: [{
-                        departure: flight.departure || { iataCode: flight.origin, at: flight.departureTime },
-                        arrival: flight.arrival || { iataCode: flight.destination, at: flight.arrivalTime }
-                      }],
-                      duration: flight.duration
-                    }];
-                    basePrice = flight.price;
-                  }
-                  
-                  console.log(`[ItineraryDetail] 항공편 ${flightIndex} - 총 ${allItineraries.length}개 여정:`, allItineraries);
-                  
-                  return (
-                    <div key={flightIndex} className="border border-blue-200 rounded-lg p-3 mb-3 last:mb-0">
-                      <div className="font-medium text-blue-800 mb-2">항공편 {flightIndex + 1}</div>
-                      
-                      {allItineraries.map((itinerary, itineraryIndex) => {
-                        const segments = itinerary.segments || [];
-                        const firstSegment = segments[0];
-                        const lastSegment = segments[segments.length - 1];
-                        
-                        let departureTime = null;
-                        let arrivalTime = null;
-                        
-                        // 출발 시간 처리
-                        if (firstSegment?.departure?.at) {
-                          try {
-                            departureTime = new Date(firstSegment.departure.at);
-                            if (isNaN(departureTime.getTime())) {
-                              console.warn(`[ItineraryDetail] 잘못된 출발 날짜 형식: ${firstSegment.departure.at}`);
-                              departureTime = null;
-                            }
-                          } catch (error) {
-                            console.error(`[ItineraryDetail] 출발 날짜 파싱 오류:`, error);
-                            departureTime = null;
-                          }
-                        }
-                        
-                        // 도착 시간 처리
-                        if (lastSegment?.arrival?.at) {
-                          try {
-                            arrivalTime = new Date(lastSegment.arrival.at);
-                            if (isNaN(arrivalTime.getTime())) {
-                              console.warn(`[ItineraryDetail] 잘못된 도착 날짜 형식: ${lastSegment.arrival.at}`);
-                              arrivalTime = null;
-                            }
-                          } catch (error) {
-                            console.error(`[ItineraryDetail] 도착 날짜 파싱 오류:`, error);
-                            arrivalTime = null;
-                          }
-                        }
-                        
-                        const isRoundTrip = allItineraries.length > 1;
-                        const tripDirection = isRoundTrip ? (itineraryIndex === 0 ? '가는편' : '오는편') : '';
-                        
-                        return (
-                          <div key={itineraryIndex} className="border-b border-blue-100 pb-2 last:border-0 mb-2 last:mb-0">
-                            <div className="font-medium flex items-center">
-                              <span>{firstSegment?.departure?.iataCode || '출발지'} → {lastSegment?.arrival?.iataCode || '도착지'}</span>
-                              {tripDirection && (
-                                <span className="ml-2 text-xs bg-blue-200 text-blue-800 px-2 py-1 rounded-full">
-                                  {tripDirection}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-sm text-gray-600 mt-1">
-                              <div>
-                                출발: {departureTime ? 
-                                  departureTime.toLocaleString('ko-KR', {
-                                    month: 'numeric',
-                                    day: 'numeric',
-                                    hour: 'numeric',
-                                    minute: 'numeric'
-                                  }) : 
-                                  '시간 정보 없음'
-                                }
-                              </div>
-                              <div>
-                                도착: {arrivalTime ? 
-                                  arrivalTime.toLocaleString('ko-KR', {
-                                    month: 'numeric',
-                                    day: 'numeric',
-                                    hour: 'numeric',
-                                    minute: 'numeric'
-                                  }) : 
-                                  '시간 정보 없음'
-                                }
-                              </div>
-                              {itinerary.duration && (
-                                <div>소요시간: {itinerary.duration}</div>
-                              )}
-                              {segments.length > 1 && (
-                                <div className="text-orange-600">경유 {segments.length - 1}회</div>
-                              )}
+                  currentAccommodations = matchingAccommodations.map(acc => ({
+                    hotelDetails: acc
+                  }));
+                }
+                
+                // 위 방법으로도 안 되면 인덱스로 시도
+                if (currentAccommodations.length === 0 && itinerary.accommodationInfos[dayNumber - 1]) {
+                  const accommodationInfo = itinerary.accommodationInfos[dayNumber - 1];
+                  currentAccommodations = [{
+                    hotelDetails: accommodationInfo
+                  }];
+                }
+              }
+            }
+            
+            console.log(`[ItineraryDetail] ${selectedDateKey}일차 숙소 정보:`, {
+              currentSchedules: currentSchedules.length,
+              accommodationsFromSchedule: currentSchedules.filter(item => item.type === 'accommodation'),
+              foundAccommodations: currentAccommodations.length,
+              allAccommodations: itinerary?.accommodationInfos?.length || 0
+            });
+            
+            return currentAccommodations.length > 0 ? (
+              <div className="bg-green-50 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-green-800 mb-2 flex items-center">
+                  <span className="mr-2">🏨</span>
+                  숙소 정보 ({(() => {
+                    const selectedDate = availableDates.find(d => d.date === selectedDateKey);
+                    return selectedDate ? selectedDate.displayDate : `${selectedDateKey}일차`;
+                  })()})
+                </h3>
+                <div className="space-y-4">
+                  {currentAccommodations.map((accommodation, index) => {
+                    const accommodationDetails = accommodation.hotelDetails;
+                    
+                    return (
+                      <div key={index} className={`space-y-2 ${index > 0 ? 'pt-4 border-t border-green-200' : ''}`}>
+                        <div className="font-medium">{accommodationDetails.hotel.hotel_name || accommodationDetails.hotel.name}</div>
+                        <div className="text-sm text-gray-600">{accommodationDetails.hotel.address || accommodationDetails.hotel.address_trans}</div>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div>
+                            <span className="text-gray-500">체크인:</span>
+                            <div className="font-medium">
+                              {accommodationDetails.checkIn ? 
+                                new Date(accommodationDetails.checkIn).toLocaleString('ko-KR', { 
+                                  month: 'numeric', 
+                                  day: 'numeric', 
+                                  hour: 'numeric', 
+                                  minute: 'numeric' 
+                                }) : 
+                                '정보 없음'
+                              }
                             </div>
                           </div>
-                        );
-                      })}
-                      
-                      {basePrice && (
-                        <div className="text-blue-600 text-sm font-medium mt-2 pt-2 border-t border-blue-100">
-                          총 가격: {new Intl.NumberFormat('ko-KR', {
-                            style: 'currency',
-                            currency: 'KRW',
-                            maximumFractionDigits: 0
-                          }).format(parseFloat(basePrice))}
+                          <div>
+                            <span className="text-gray-500">체크아웃:</span>
+                            <div className="font-medium">
+                              {accommodationDetails.checkOut ? 
+                                new Date(accommodationDetails.checkOut).toLocaleString('ko-KR', { 
+                                  month: 'numeric', 
+                                  day: 'numeric', 
+                                  hour: 'numeric', 
+                                  minute: 'numeric' 
+                                }) : 
+                                '정보 없음'
+                              }
+                            </div>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
+                        {accommodationDetails.hotel.price && (
+                          <div className="text-green-600 font-medium">
+                            가격: {(() => {
+                              const price = accommodationDetails.hotel.price;
+                              let numericPrice = null;
+                              
+                              if (typeof price === 'number') {
+                                numericPrice = price;
+                              } else if (typeof price === 'string') {
+                                // 숫자가 아닌 문자 제거 후 파싱
+                                const cleanedPrice = price.replace(/[^0-9.]/g, '');
+                                numericPrice = parseFloat(cleanedPrice);
+                              }
+                              
+                              if (numericPrice && !isNaN(numericPrice)) {
+                                return new Intl.NumberFormat('ko-KR', {
+                                  style: 'currency',
+                                  currency: 'KRW',
+                                  maximumFractionDigits: 0
+                                }).format(numericPrice);
+                              } else {
+                                return price; // 원본 가격 그대로 표시
+                              }
+                            })()}
+                          </div>
+                        )}
+                        {accommodationDetails.room && (
+                          <div className="text-sm text-gray-600">
+                            객실: {accommodationDetails.room.name || accommodationDetails.room.room_type || '선택된 객실'}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            ) : null;
+          })()}
+
+          {/* 항공권 요약 */}
+          {(() => {
+            // 선택된 날짜에 해당하는 항공편 찾기
+            if (!itinerary?.flightInfo || itinerary.flightInfo.length === 0) return null;
+            
+            const dayNumber = parseInt(selectedDateKey);
+            let targetDate = null;
+            
+            // 해당 날짜 계산
+            if (itinerary.start_date) {
+              const startDate = new Date(itinerary.start_date);
+              targetDate = new Date(startDate);
+              targetDate.setDate(startDate.getDate() + dayNumber - 1);
+            } else if (itinerary.accommodationInfos?.[0]?.checkIn) {
+              const firstCheckIn = new Date(itinerary.accommodationInfos[0].checkIn);
+              targetDate = new Date(firstCheckIn);
+              targetDate.setDate(firstCheckIn.getDate() + dayNumber - 1);
+            }
+            
+            if (!targetDate) return null;
+            
+            // 해당 날짜의 항공편들 찾기
+            const relevantFlights = [];
+            
+            itinerary.flightInfo.forEach((flight, flightIndex) => {
+              let allItineraries = [];
+              
+              // 구조 1: flightOfferDetails.flightOfferData.itineraries
+              if (flight.flightOfferDetails?.flightOfferData?.itineraries) {
+                allItineraries = flight.flightOfferDetails.flightOfferData.itineraries;
+              }
+              // 구조 2: itineraries 직접 접근
+              else if (flight.itineraries) {
+                allItineraries = flight.itineraries;
+              }
+              // 구조 3: 단순화된 형태
+              else if (flight.departure || flight.origin) {
+                allItineraries = [{
+                  segments: [{
+                    departure: flight.departure || { iataCode: flight.origin, at: flight.departureTime },
+                    arrival: flight.arrival || { iataCode: flight.destination, at: flight.arrivalTime }
+                  }],
+                  duration: flight.duration
+                }];
+              }
+              
+              // 해당 날짜의 여정들 필터링
+              const relevantItineraries = allItineraries.filter((itinerary, itineraryIndex) => {
+                const segments = itinerary.segments || [];
+                const firstSegment = segments[0];
+                const lastSegment = segments[segments.length - 1];
+                
+                if (!firstSegment?.departure?.at && !lastSegment?.arrival?.at) return false;
+                
+                // 출발 날짜 또는 도착 날짜가 선택된 날짜와 일치하는지 확인
+                let matchesDate = false;
+                
+                if (firstSegment?.departure?.at) {
+                  const departureDate = new Date(firstSegment.departure.at);
+                  if (departureDate.toDateString() === targetDate.toDateString()) {
+                    matchesDate = true;
+                  }
+                }
+                
+                if (lastSegment?.arrival?.at) {
+                  const arrivalDate = new Date(lastSegment.arrival.at);
+                  if (arrivalDate.toDateString() === targetDate.toDateString()) {
+                    matchesDate = true;
+                  }
+                }
+                
+                return matchesDate;
+              });
+              
+              if (relevantItineraries.length > 0) {
+                relevantFlights.push({
+                  ...flight,
+                  relevantItineraries,
+                  flightIndex
+                });
+              }
+            });
+            
+            return relevantFlights.length > 0 ? (
+              <div className="bg-blue-50 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-blue-800 mb-2 flex items-center">
+                  <span className="mr-2">✈️</span>
+                  항공권 정보 ({(() => {
+                    const selectedDate = availableDates.find(d => d.date === selectedDateKey);
+                    return selectedDate ? selectedDate.displayDate : `${selectedDateKey}일차`;
+                  })()})
+                </h3>
+                <div className="space-y-3">
+                  {relevantFlights.map((flight, index) => {
+                    const basePrice = flight.flightOfferDetails?.flightOfferData?.price?.total || 
+                                    flight.price?.total;
+                    
+                    return (
+                      <div key={index} className="border border-blue-200 rounded-lg p-3 mb-3 last:mb-0">
+                        <div className="font-medium text-blue-800 mb-2">항공편 {flight.flightIndex + 1}</div>
+                        
+                        {flight.relevantItineraries.map((itinerary, itineraryIndex) => {
+                          const segments = itinerary.segments || [];
+                          const firstSegment = segments[0];
+                          const lastSegment = segments[segments.length - 1];
+                          
+                          let departureTime = null;
+                          let arrivalTime = null;
+                          
+                          // 출발 시간 처리
+                          if (firstSegment?.departure?.at) {
+                            try {
+                              departureTime = new Date(firstSegment.departure.at);
+                              if (isNaN(departureTime.getTime())) {
+                                departureTime = null;
+                              }
+                            } catch (error) {
+                              departureTime = null;
+                            }
+                          }
+                          
+                          // 도착 시간 처리
+                          if (lastSegment?.arrival?.at) {
+                            try {
+                              arrivalTime = new Date(lastSegment.arrival.at);
+                              if (isNaN(arrivalTime.getTime())) {
+                                arrivalTime = null;
+                              }
+                            } catch (error) {
+                              arrivalTime = null;
+                            }
+                          }
+                          
+                          const isRoundTrip = flight.relevantItineraries.length > 1;
+                          const tripDirection = isRoundTrip ? (itineraryIndex === 0 ? '가는편' : '오는편') : '';
+                          
+                          return (
+                            <div key={itineraryIndex} className="border-b border-blue-100 pb-2 last:border-0 mb-2 last:mb-0">
+                              <div className="font-medium flex items-center">
+                                <span>{firstSegment?.departure?.iataCode || '출발지'} → {lastSegment?.arrival?.iataCode || '도착지'}</span>
+                                {tripDirection && (
+                                  <span className="ml-2 text-xs bg-blue-200 text-blue-800 px-2 py-1 rounded-full">
+                                    {tripDirection}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-sm text-gray-600 mt-1">
+                                <div>
+                                  출발: {departureTime ? 
+                                    departureTime.toLocaleString('ko-KR', {
+                                      month: 'numeric',
+                                      day: 'numeric',
+                                      hour: 'numeric',
+                                      minute: 'numeric'
+                                    }) : 
+                                    '시간 정보 없음'
+                                  }
+                                </div>
+                                <div>
+                                  도착: {arrivalTime ? 
+                                    arrivalTime.toLocaleString('ko-KR', {
+                                      month: 'numeric',
+                                      day: 'numeric',
+                                      hour: 'numeric',
+                                      minute: 'numeric'
+                                    }) : 
+                                    '시간 정보 없음'
+                                  }
+                                </div>
+                                {itinerary.duration && (
+                                  <div>소요시간: {itinerary.duration}</div>
+                                )}
+                                {segments.length > 1 && (
+                                  <div className="text-orange-600">경유 {segments.length - 1}회</div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        
+                        {basePrice && (
+                          <div className="text-blue-600 text-sm font-medium mt-2 pt-2 border-t border-blue-100">
+                            총 가격: {new Intl.NumberFormat('ko-KR', {
+                              style: 'currency',
+                              currency: 'KRW',
+                              maximumFractionDigits: 0
+                            }).format(parseFloat(basePrice))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null;
+          })()}
         </div>
 
         {/* 캘린더 네비게이션 */}
@@ -554,7 +779,7 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
                 }`}
               >
                 <span className="font-medium">{dateInfo.displayDate}</span>
-                <span className="ml-1 text-xs">{dateInfo.day}</span>
+                <span className="ml-1 text-xs opacity-75">{dateInfo.day}</span>
               </button>
             ))}
           </div>
@@ -615,7 +840,30 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
                               <div>{item.time === '체크인' ? '체크인' : '체크아웃'} 시간: {item.time}</div>
                               {item.address && <div>주소: {item.address}</div>}
                               {item.hotelDetails?.hotel?.price && (
-                                <div className="text-green-600">가격: {item.hotelDetails.hotel.price}</div>
+                                <div className="text-green-600">
+                                  가격: {(() => {
+                                    const price = item.hotelDetails.hotel.price;
+                                    let numericPrice = null;
+                                    
+                                    if (typeof price === 'number') {
+                                      numericPrice = price;
+                                    } else if (typeof price === 'string') {
+                                      // 숫자가 아닌 문자 제거 후 파싱
+                                      const cleanedPrice = price.replace(/[^0-9.]/g, '');
+                                      numericPrice = parseFloat(cleanedPrice);
+                                    }
+                                    
+                                    if (numericPrice && !isNaN(numericPrice)) {
+                                      return new Intl.NumberFormat('ko-KR', {
+                                        style: 'currency',
+                                        currency: 'KRW',
+                                        maximumFractionDigits: 0
+                                      }).format(numericPrice);
+                                    } else {
+                                      return price; // 원본 가격 그대로 표시
+                                    }
+                                  })()}
+                                </div>
                               )}
                             </div>
                           </div>
