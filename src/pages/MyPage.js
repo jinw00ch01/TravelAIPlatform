@@ -70,7 +70,7 @@ const DUMMY_BOOKINGS = [
     ];
 
 const MyPage = () => {
-  const { user, signOut, getJwtToken } = useAuth();
+  const { user, signOut, getJwtToken, forgotPassword, forgotPasswordSubmit } = useAuth();
   const navigate = useNavigate();
   const [userInfo, setUserInfo] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -93,6 +93,11 @@ const MyPage = () => {
     sharedPlansCount: 0
   });
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showWithdrawalCodeInput, setShowWithdrawalCodeInput] = useState(false);
+  const [withdrawalCode, setWithdrawalCode] = useState('');
+  const [withdrawalNewPassword, setWithdrawalNewPassword] = useState('');
+  const [withdrawalLoading, setWithdrawalLoading] = useState(false);
+  const [withdrawalError, setWithdrawalError] = useState('');
 
   // 개발 환경에서 skipAuth 확인 - 정확히 문자열 비교
   const isSkipAuth = process.env.REACT_APP_SKIP_AUTH === 'true';
@@ -429,6 +434,54 @@ const MyPage = () => {
         await signOut();
         window.location.replace('/login');
       }, 1500);
+    }
+  };
+
+  // 계정 삭제 버튼 클릭 시 경고 모달만 띄움
+  const handleDeleteButtonClick = () => {
+    setShowDeleteModal(true);
+  };
+
+  // 경고 모달에서 확인 시 인증코드 전송 및 입력 모달 표시
+  const handleDeleteModalConfirm = async () => {
+    setShowDeleteModal(false);
+    setWithdrawalLoading(true);
+    setWithdrawalError('');
+    try {
+      const result = await forgotPassword(userInfo?.email || user?.email);
+      if (result.success) {
+        setShowWithdrawalCodeInput(true);
+        showNotification('이메일로 인증코드를 전송했습니다.', 'info');
+      } else {
+        setWithdrawalError('인증코드 전송 실패: ' + (result.error || ''));
+      }
+    } catch (e) {
+      setWithdrawalError('인증코드 전송 중 오류');
+    } finally {
+      setWithdrawalLoading(false);
+    }
+  };
+
+  // 인증코드 + 임시 비밀번호로 검증 후 탈퇴
+  const handleConfirmWithdrawal = async () => {
+    setWithdrawalLoading(true);
+    setWithdrawalError('');
+    try {
+      const result = await forgotPasswordSubmit(
+        userInfo?.email || user?.email,
+        withdrawalCode,
+        withdrawalNewPassword
+      );
+      if (result.success) {
+        setShowWithdrawalCodeInput(false);
+        await handleDeleteAccount();
+      } else {
+        setWithdrawalError('인증코드 또는 비밀번호가 올바르지 않습니다.');
+      }
+    } catch (e) {
+      setWithdrawalError('회원탈퇴 중 오류');
+    } finally {
+      setWithdrawalLoading(false);
     }
   };
 
@@ -991,14 +1044,54 @@ const MyPage = () => {
                 <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
                   <h3 className="text-lg font-medium text-gray-900 mb-4">계정 관리</h3>
                   <div className="space-y-4">
+                    {/* 계정 삭제 버튼 클릭 시 인증코드 전송 */}
                     <button
                       type="button"
-                      onClick={() => setShowDeleteModal(true)}
+                      onClick={handleDeleteButtonClick}
                       className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                     >
                       계정 삭제
                     </button>
-                    <p className="text-sm text-gray-500">계정을 삭제하면 모든 데이터가 영구적으로 삭제됩니다</p>
+                    {/* 인증코드 + 임시 비밀번호 입력 모달 */}
+                    {showWithdrawalCodeInput && (
+                      <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-30">
+                        <div className="bg-white p-6 rounded shadow-lg w-80">
+                          <h2 className="text-lg font-bold mb-4">이메일 인증 및 탈퇴 확인</h2>
+                          <label className="block text-sm font-medium text-gray-700">이메일로 받은 인증코드</label>
+                          <input
+                            type="text"
+                            value={withdrawalCode}
+                            onChange={e => setWithdrawalCode(e.target.value)}
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                            placeholder="인증코드 입력"
+                          />
+                          <label className="block text-sm font-medium text-gray-700 mt-2">임시 비밀번호</label>
+                          <input
+                            type="password"
+                            value={withdrawalNewPassword}
+                            onChange={e => setWithdrawalNewPassword(e.target.value)}
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+                            placeholder="새 비밀번호 입력"
+                          />
+                          <div className="flex justify-end space-x-2 mt-4">
+                            <button
+                              onClick={() => setShowWithdrawalCodeInput(false)}
+                              className="px-4 py-2 bg-gray-200 rounded"
+                            >
+                              취소
+                            </button>
+                            <button
+                              onClick={handleConfirmWithdrawal}
+                              disabled={withdrawalLoading}
+                              className="px-4 py-2 bg-red-600 text-white rounded"
+                            >
+                              {withdrawalLoading ? '확인 중...' : '탈퇴 확인'}
+                            </button>
+                          </div>
+                          {withdrawalError && <div className="text-red-600 mt-2">{withdrawalError}</div>}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1030,7 +1123,7 @@ const MyPage = () => {
                 취소
               </button>
               <button
-                onClick={handleDeleteAccount}
+                onClick={handleDeleteModalConfirm}
                 className="px-4 py-2 bg-red-600 text-white rounded"
               >
                 확인
