@@ -6,6 +6,7 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import SwapVertIcon from '@mui/icons-material/SwapVert';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -73,6 +74,21 @@ const FlightPlan = ({
     }
   };
 
+  // 출발지와 도착지 순서 바꾸기 핸들러
+  const handleSwapLocations = () => {
+    // 선택된 위치 교환
+    const tempOrigin = searchParams.selectedOrigin;
+    const tempDestination = searchParams.selectedDestination;
+    handleParamChange('selectedOrigin', tempDestination);
+    handleParamChange('selectedDestination', tempOrigin);
+
+    // 검색 텍스트도 교환
+    const tempOriginSearch = originSearchQuery;
+    const tempDestinationSearch = destinationSearchQuery;
+    setOriginSearchQuery(tempDestinationSearch);
+    setDestinationSearchQuery(tempOriginSearch);
+  };
+
   // 검색 매개변수 동기화
   useEffect(() => {
     if (isOneWay && searchParams.returnDate) {
@@ -120,6 +136,24 @@ const FlightPlan = ({
             />
           )}
         />
+
+        {/* 출발지/도착지 순서 바꾸기 버튼 */}
+        <Box sx={{ display: 'flex', justifyContent: 'center', my: 1 }}>
+          <IconButton
+            onClick={handleSwapLocations}
+            sx={{ 
+              border: '1px solid #e0e0e0',
+              borderRadius: '50%',
+              p: 1,
+              '&:hover': {
+                backgroundColor: '#f5f5f5'
+              }
+            }}
+            title="출발지와 도착지 바꾸기"
+          >
+            <SwapVertIcon sx={{ color: '#666' }} />
+          </IconButton>
+        </Box>
 
         <Autocomplete
           options={destinationCities || []}

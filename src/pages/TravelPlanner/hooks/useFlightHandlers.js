@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import amadeusApi from '../../../utils/amadeusApi';
 import { formatPrice, formatDuration } from '../../../utils/flightFormatters'; 
 import { format as formatDateFns } from 'date-fns';
@@ -33,7 +33,11 @@ const useFlightHandlers = () => {
   const [originSearchQuery, setOriginSearchQuery] = useState('');
   const [destinationSearchQuery, setDestinationSearchQuery] = useState('');
 
-  const handleCitySearch = useCallback(async (value, type) => {
+  // debouncing을 위한 ref
+  const debounceTimerRef = useRef(null);
+
+  // debounced city search function
+  const debouncedCitySearch = useCallback(async (value, type) => {
     if (!value || value.length < 2) {
       if (type === 'origin') setOriginCities([]);
       else setDestinationCities([]);
@@ -60,6 +64,27 @@ const useFlightHandlers = () => {
       setIsLoadingCities(false);
     }
   }, [setFlightError]);
+
+  const handleCitySearch = useCallback((value, type) => {
+    // 이전 타이머가 있다면 취소
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    // 새로운 타이머 설정 (700ms 후 실행)
+    debounceTimerRef.current = setTimeout(() => {
+      debouncedCitySearch(value, type);
+    }, 700);
+  }, [debouncedCitySearch]);
+
+  // 컴포넌트 언마운트 시 타이머 정리
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleFlightSearch = useCallback(async () => {
     const {

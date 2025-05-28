@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { Loader2, Plane, X } from "lucide-react";
+import { Loader2, Plane, X, ArrowUpDown } from "lucide-react";
 import amadeusApi from "../../utils/amadeusApi";
 import { cn } from "../../lib/utils";
 
@@ -89,6 +89,9 @@ const FlightDialog = ({
   // 다중 선택 모드에서 이미 선택된 항공편 ID들
   const selectedFlightIds = selectedFlights.map(f => f.id);
 
+  // debouncing을 위한 ref
+  const debounceTimerRef = useRef(null);
+
   // 편도/왕복 선택 핸들러
   const handleTripTypeChange = (oneWay) => {
     setIsOneWay(oneWay);
@@ -96,6 +99,25 @@ const FlightDialog = ({
       // 편도 선택 시 오는날 초기화
       setEndDate(null);
     }
+  };
+
+  // 출발지와 도착지 순서 바꾸기 핸들러
+  const handleSwapLocations = () => {
+    // 선택된 위치 교환
+    const tempOrigin = selectedOrigin;
+    const tempDestination = selectedDestination;
+    setSelectedOrigin(tempDestination);
+    setSelectedDestination(tempOrigin);
+
+    // 검색 텍스트도 교환
+    const tempOriginSearch = originSearch;
+    const tempDestinationSearch = destinationSearch;
+    setOriginSearch(tempDestinationSearch);
+    setDestinationSearch(tempOriginSearch);
+
+    // 검색 결과 목록 초기화
+    setOriginCities([]);
+    setDestinationCities([]);
   };
 
   // 초기값 세팅 (대략 30일 후 기본 출발일 등)
@@ -131,7 +153,8 @@ const FlightDialog = ({
   }, [isOpen, defaultStartDate, defaultEndDate, initialAdultCount, initialChildCount, initialInfantCount]);
 
   /* ----------------------------- API 호출 ----------------------------- */
-  const handleCitySearch = async (value, type) => {
+  // debounced city search function
+  const debouncedCitySearch = useCallback(async (value, type) => {
     if (!value || value.length < 2) {
       if (type === "origin") setOriginCities([]);
       else setDestinationCities([]);
@@ -161,7 +184,28 @@ const FlightDialog = ({
     } finally {
       setIsLoadingCities(false);
     }
-  };
+  }, []);
+
+  const handleCitySearch = useCallback((value, type) => {
+    // 이전 타이머가 있다면 취소
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    // 새로운 타이머 설정 (500ms 후 실행)
+    debounceTimerRef.current = setTimeout(() => {
+      debouncedCitySearch(value, type);
+    }, 700);
+  }, [debouncedCitySearch]);
+
+  // 컴포넌트 언마운트 시 타이머 정리
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
   /* ----------------------------- 항공권 검색 ----------------------------- */
   const searchFlights = () => {
@@ -347,6 +391,20 @@ const FlightDialog = ({
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* 출발지/도착지 순서 바꾸기 버튼 */}
+            <div className="flex justify-center mb-4">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleSwapLocations}
+                className="rounded-full p-2 hover:bg-gray-100 border-gray-300"
+                title="출발지와 도착지 바꾸기"
+              >
+                <ArrowUpDown className="h-4 w-4 text-gray-600" />
+              </Button>
             </div>
 
             {/* 도착지 */}
