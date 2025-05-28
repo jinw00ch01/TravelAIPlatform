@@ -475,6 +475,8 @@ const MyPage = () => {
       if (result.success) {
         setShowWithdrawalCodeInput(false);
         await handleDeleteAccount();
+        alert('회원탈퇴가 완료되었습니다.');
+        console.log('회원탈퇴가 완료되었습니다.');
       } else {
         setWithdrawalError('인증코드 또는 비밀번호가 올바르지 않습니다.');
       }
@@ -1057,6 +1059,9 @@ const MyPage = () => {
                       <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-30">
                         <div className="bg-white p-6 rounded shadow-lg w-80">
                           <h2 className="text-lg font-bold mb-4">이메일 인증 및 탈퇴 확인</h2>
+                          <p className="text-sm text-gray-600 mb-4">
+                            회원탈퇴를 위해 이메일로 받은 인증코드와 비밀번호를 입력하세요.
+                          </p>
                           <label className="block text-sm font-medium text-gray-700">이메일로 받은 인증코드</label>
                           <input
                             type="text"
@@ -1065,13 +1070,13 @@ const MyPage = () => {
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
                             placeholder="인증코드 입력"
                           />
-                          <label className="block text-sm font-medium text-gray-700 mt-2">임시 비밀번호</label>
+                          <label className="block text-sm font-medium text-gray-700 mt-2">비밀번호</label>
                           <input
                             type="password"
                             value={withdrawalNewPassword}
                             onChange={e => setWithdrawalNewPassword(e.target.value)}
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
-                            placeholder="새 비밀번호 입력"
+                            placeholder="비밀번호 입력"
                           />
                           <div className="flex justify-end space-x-2 mt-4">
                             <button
