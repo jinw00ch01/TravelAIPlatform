@@ -33,6 +33,9 @@ export const HomePage = () => {
   const [infantCount, setInfantCount] = useState(0);
   const [showPeopleSelector, setShowPeopleSelector] = useState(false);
   
+  // 이미지 상태 추가
+  const [uploadedImages, setUploadedImages] = useState([]); // Base64 이미지 배열
+  
   // -------------------- 다이얼로그/선택 상태 --------------------
   const [isFlightDialogOpen, setIsFlightDialogOpen] = useState(false);
   const [isAccommodationDialogOpen, setIsAccommodationDialogOpen] = useState(false);
@@ -517,61 +520,48 @@ export const HomePage = () => {
     });
   };
 
-  const sendToGemini = async (content, type) => {
-    try {
-      // TODO: Gemini API 엔드포인트로 실제 요청을 보내는 로직 구현
-      const response = await fetch('YOUR_GEMINI_API_ENDPOINT', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          content,
-          type, // 'text' or 'image'
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Gemini API request failed');
-      }
-
-      const result = await response.json();
-      console.log('Gemini API response:', result);
-      return result;
-    } catch (error) {
-      console.error('Error sending to Gemini:', error);
-      throw error;
-    }
-  };
-
   const handleFileUpload = async (event) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
     setIsProcessing(true);
     try {
+      const newImages = [];
+      
       for (const file of files) {
         const fileType = file.type;
-        let content;
 
         if (fileType.startsWith('text/')) {
-          // 텍스트 파일 처리
-          content = await processTextFile(file);
-          await sendToGemini(content, 'text');
+          // 텍스트 파일 처리 - 검색 텍스트에 추가
+          const content = await processTextFile(file);
+          setSearchText(prev => prev ? `${prev}\n${content}` : content);
         } else if (fileType.startsWith('image/')) {
-          // 이미지 파일 처리
-          content = await processImageFile(file);
-          await sendToGemini(content, 'image');
+          // 이미지 파일 처리 - Base64로 변환하여 저장
+          const base64Content = await processImageFile(file);
+          newImages.push(base64Content);
+          console.log(`이미지 파일 처리됨: ${file.name}, 크기: ${Math.round(base64Content.length / 1024)}KB`);
         } else {
-          console.warn('Unsupported file type:', fileType);
+          console.warn('지원하지 않는 파일 형식:', fileType);
         }
       }
+      
+      // 새로운 이미지들을 기존 이미지 배열에 추가
+      if (newImages.length > 0) {
+        setUploadedImages(prev => [...prev, ...newImages]);
+        console.log(`총 ${newImages.length}개의 이미지가 추가되었습니다.`);
+      }
+      
     } catch (error) {
-      console.error('Error processing files:', error);
+      console.error('파일 처리 중 오류:', error);
     } finally {
       setIsProcessing(false);
     }
   };
+
+  // 이미지 제거 함수
+  const removeImage = useCallback((index) => {
+    setUploadedImages(prev => prev.filter((_, i) => i !== index));
+  }, []);
 
   const handleSearch = async () => {
     // 전체 검증 실행
@@ -634,6 +624,12 @@ export const HomePage = () => {
         adults: adultCount,
         children: childCount,
       };
+      
+      // 이미지가 있으면 추가
+      if (uploadedImages.length > 0) {
+        planDetails.images = uploadedImages;
+        console.log(`[HomePage] ${uploadedImages.length}개의 이미지를 백엔드로 전송합니다.`);
+      }
       
       // 다중 항공편 정보 추가
       if (selectedFlights.length > 0) {
@@ -919,7 +915,10 @@ export const HomePage = () => {
                       </Button>
                       <Input
                         className="min-h-[60px] pl-10 text-gray-400 text-base tracking-normal leading-normal border-none bg-white placeholder:text-gray-400"
-                        placeholder="+버튼을 눌러 이미지나 텍스트파일을 추가할 수 있습니다."
+                        placeholder={uploadedImages.length > 0 
+                          ? `${uploadedImages.length}개의 이미지가 업로드됨. 여행 계획을 입력하세요.`
+                          : "+버튼을 눌러 이미지나 텍스트파일을 추가할 수 있습니다."
+                        }
                         value={searchText}
                         onChange={(e) => setSearchText(e.target.value)}
                         onKeyPress={(e) => e.key === 'Enter' && handleAIPlanClick()}
@@ -1002,6 +1001,46 @@ export const HomePage = () => {
                 </div>
               )}
             </div>
+
+            {/* 업로드된 이미지 미리보기 */}
+            {uploadedImages.length > 0 && (
+              <div className="mb-6">
+                <div className="bg-white/90 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-medium text-gray-700">
+                      업로드된 이미지 ({uploadedImages.length}개)
+                    </h3>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setUploadedImages([])}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      모두 삭제
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                    {uploadedImages.map((image, index) => (
+                      <div key={index} className="relative group">
+                        <img
+                          src={image}
+                          alt={`업로드된 이미지 ${index + 1}`}
+                          className="w-full h-20 object-cover rounded border"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeImage(index)}
+                          className="absolute top-1 right-1 w-6 h-6 p-0 bg-red-500 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Date selection section */}
             <div className="mb-6">
@@ -1330,3 +1369,5 @@ export const HomePage = () => {
 };
 
 export default HomePage;
+
+

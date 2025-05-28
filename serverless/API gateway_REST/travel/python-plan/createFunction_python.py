@@ -53,7 +53,7 @@ def lambda_handler(event, context):
         except Exception as e:
             print('요청 본문 파싱 오류:', str(e))
             return {
-                'statusCode': 400,
+                'statusCode': 400,  
                 'headers': {
                     'Content-Type': 'application/json',
                     'Access-Control-Allow-Origin': '*',
@@ -92,6 +92,11 @@ def lambda_handler(event, context):
         children = body.get('children', 0) 
         flight_info = body.get('flightInfo', None)
         accommodation_info = body.get('accommodationInfo', None)
+        
+        # Base64 이미지 처리 추가
+        images = body.get('images', [])  # Base64 이미지 배열
+        has_images = len(images) > 0
+        print(f"수신된 이미지 개수: {len(images)}")
 
         # Geo 정보 기본값 초기화
         out_arrival_geo_lat = None
@@ -291,7 +296,19 @@ def lambda_handler(event, context):
 {1} ~ {2}, 이 날짜에 맞게 계획하세요.
 
 <인원수>
-어른 : {3}, 유아 {4}
+어른 : {3}, 유아 {4}""".format(query_text, start_date, end_date, adults, children)
+
+        # 이미지가 있는 경우 추가 안내
+        if has_images:
+            prompt_text += f"""
+
+<첨부된 이미지>
+사용자가 {len(images)}개의 이미지를 첨부했습니다. 이 이미지들을 분석하여 여행 계획에 반영해주세요.
+- 이미지에 나타난 장소, 음식, 활동 등을 파악하여 유사한 경험을 할 수 있는 일정을 포함하세요.
+- 이미지의 분위기나 테마를 고려하여 여행 스타일을 맞춰주세요.
+- 이미지에서 특정 관심사를 발견하면 관련된 장소나 활동을 추천해주세요."""
+
+        prompt_text += """
 <규칙>
 모든 장소는 실제로 있는 장소여야 해. 호텔, 장소, 식당을 너가 검색해서 잡아줘.
 "무조건 이름이 지도에 있는 이름이어야 해."
@@ -311,6 +328,7 @@ def lambda_handler(event, context):
 
 JSON 예시
 {5}
+저 구조로만 반환하세요.
 """.format(
             query_text, 
             start_date, 
@@ -319,7 +337,6 @@ JSON 예시
             children,
             """
 {{\\"title\\":\\"ㅁㅁ ㅁ박 ㅁ일 여행\\",\\"days\\":[{{\\"day\\":1,\\"date\\":\\"2025-05-12\\",\\"title\\":\\"1일차: 공항 도착 및 ㅁㅁ 방문\\",\\"schedules\\":[{{\\"id\\":\\"1-0\\",\\"name\\":\\"도착 공항 이름 (예: 인천 국제공항)\\",\\"time\\":\\"14:00\\",\\"lat\\":37.45584,\\"lng\\":126.4453,\\"category\\":\\"장소\\",\\"duration\\":\\"0.5시간\\",\\"notes\\":\\"공항 도착 및 입국 수속\\",\\"cost\\":\\"0\\",\\"address\\":\\"공항 주소\\"}},{{\\"id\\":\\"1-1\\",\\"name\\":\\"장소이름\\",\\"time\\":\\"15:30\\",\\"lat\\":123.1234,\\"lng\\":123.1234,\\"category\\":\\"장소\\",\\"duration\\":\\"1시간\\",\\"notes\\":\\"ㅁㅁ\\",\\"cost\\":\\"50000\\",\\"address\\":\\"ㅁㅁ 주소\\"}},{{\\"id\\":\\"1-2\\",\\"name\\":\\"ㅁㅁ\\",\\"time\\":\\"17:00\\",\\"lat\\":35.6936,\\"lng\\":139.7071,\\"category\\":\\"식당\\",\\"duration\\":\\"1시간\\",\\"notes\\":\\"현지 이자카야에서 다양한 음식 즐기기\\",\\"cost\\":\\"3000\\",\\"address\\":\\"ㅁㅁ 주소\\"}}]}},{{\\"day\\":2,\\"date\\":\\"2025-05-13\\",\\"title\\":\\"2일차: ㅁㅁ 여행\\",\\"schedules\\":[{{\\"id\\":\\"2-1\\",\\"name\\":\\"ㅁㅁ 타워\\",\\"time\\":\\"10:00\\",\\"lat\\":35.6585805,\\"lng\\":139.7454329,\\"category\\":\\"장소\\",\\"duration\\":\\"1시간\\",\\"notes\\":\\"ㅁㅁ 시내 전경을 감상할 수 있는 명소\\",\\"cost\\":\\"1200\\",\\"address\\":\\"ㅁㅁ 주소\\"}},{{\\"id\\":\\"2-2\\",\\"name\\":\\"ㅁㅁ 멘치\\",\\"time\\":\\"13:00\\",\\"lat\\":35.714765,\\"lng\\":139.79669,\\"category\\":\\"식당\\",\\"duration\\":\\"1시간\\",\\"notes\\":\\"유명한 ㅁㅁ 멘치카츠 맛보기\\",\\"cost\\":\\"800\\",\\"address\\":\\"ㅁㅁ 주소\\"}}]}},{{\\"day\\":3,\\"date\\":\\"2025-05-14\\",\\"title\\":\\"3일차: ㅁㅁ 온천 여행 및 출국\\",\\"schedules\\":[{{\\"id\\":\\"3-1\\",\\"name\\":\\"ㅁㅁ 역\\",\\"time\\":\\"09:00\\",\\"lat\\":35.6896342,\\"lng\\":139.700627,\\"category\\":\\"장소\\",\\"duration\\":\\"2시간\\",\\"notes\\":\\"ㅁㅁ에서 ㅁㅁ 온천 지역으로 이동\\",\\"cost\\":\\"2500\\",\\"address\\":\\"ㅁㅁ 주소\\"}},{{\\"id\\":\\"3-2\\",\\"name\\":\\"ㅁㅁ 유모토\\",\\"time\\":\\"11:00\\",\\"lat\\":35.232916,\\"lng\\":139.105582,\\"category\\":\\"장소\\",\\"duration\\":\\"1시간\\",\\"notes\\":\\"온천 마을 ㅁㅁ 유모토 도착 후 휴식\\",\\"cost\\":\\"0\\",\\"address\\":\\"ㅁㅁ 주소\\"}},{{\\"id\\":\\"3-3\\",\\"name\\":\\"ㅁㅁ 소바집\\",\\"time\\":\\"12:00\\",\\"lat\\":35.235083,\\"lng\\":139.108167,\\"category\\":\\"식당\\",\\"duration\\":\\"1시간\\",\\"notes\\":\\"ㅁㅁ 지역의 유명한 소바 맛집\\",\\"cost\\":\\"1500\\",\\"address\\":\\"ㅁㅁ 주소\\"}},{{\\"id\\":\\"3-4\\",\\"name\\":\\"출발 공항 이름 (예: 나리타 국제공항)\\",\\"time\\":\\"16:00\\",\\"lat\\":35.771987,\\"lng\\":140.392903,\\"category\\":\\"장소\\",\\"duration\\":\\"2시간\\",\\"notes\\":\\"출국 수속\\",\\"cost\\":\\"0\\",\\"address\\":\\"공항 주소\\"}}]}}]\n}}
-저 구조로만 반환하세요.
 """
         )
 
@@ -331,14 +348,46 @@ JSON 예시
             
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
 
-        payload = {
-            "contents": [{
-                "parts": [{"text": prompt_text}]
-            }],
-            "generationConfig": {
-                "temperature": 0.3
+        # 이미지가 있는 경우와 없는 경우 페이로드 구성
+        if has_images:
+            # 이미지가 있는 경우: 텍스트와 이미지를 함께 전송
+            parts = [{"text": prompt_text}]
+            
+            # Base64 이미지들을 parts에 추가
+            for i, image_data in enumerate(images):
+                # "data:image/jpeg;base64," 접두사 제거
+                if image_data.startswith('data:image/'):
+                    mime_type = image_data.split(';')[0].split(':')[1]  # "image/jpeg" 추출
+                    base64_data = image_data.split(',')[1]  # Base64 데이터만 추출
+                else:
+                    # 접두사가 없는 경우 기본값 사용
+                    mime_type = "image/jpeg"
+                    base64_data = image_data
+                
+                parts.append({
+                    "inline_data": {
+                        "mime_type": mime_type,
+                        "data": base64_data
+                    }
+                })
+                print(f"이미지 {i+1} 추가됨: {mime_type}, 데이터 길이: {len(base64_data)}")
+            
+            payload = {
+                "contents": [{"parts": parts}],
+                "generationConfig": {
+                    "temperature": 0.3
+                }
             }
-        }
+        else:
+            # 이미지가 없는 경우: 기존 방식 (텍스트만)
+            payload = {
+                "contents": [{
+                    "parts": [{"text": prompt_text}]
+                }],
+                "generationConfig": {
+                    "temperature": 0.3
+                }
+            }
 
         headers = {
             "Content-Type": "application/json"
@@ -427,7 +476,8 @@ JSON 예시
         # 클라이언트에게 반환할 최종 응답 본문
         client_response_body = {
             'message': '여행 계획이 성공적으로 생성되었으며, ID로 조회 가능합니다.',
-            'planId': plan_id
+            'planId': plan_id,
+            'plan': gemini_result
         }
 
         # (선택 사항) Gemini 결과 파싱 시도 및 경고 추가
