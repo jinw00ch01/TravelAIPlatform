@@ -244,11 +244,6 @@ const AccomodationDialog = ({
         <div className="p-4 border-b flex justify-between items-center">
           <div>
             <h2 className="text-xl font-bold">숙박 검색</h2>
-            {isMultipleMode && (
-              <p className="text-sm text-gray-600 mt-1">
-                다중 선택 모드 - 이미 선택된 숙박편: {selectedAccommodations.length}개
-              </p>
-            )}
           </div>
           <Button variant="ghost" className="rounded-full p-1 hover:bg-gray-100" onClick={onClose}>
             <X className="h-6 w-6" />
