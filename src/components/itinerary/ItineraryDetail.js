@@ -405,76 +405,131 @@ const ItineraryDetail = ({ itinerary, onTitleUpdate }) => {
                 항공권 정보
               </h3>
               <div className="space-y-3">
-                {itinerary.flightInfo.map((flight, index) => {
-                  console.log(`[ItineraryDetail] 항공편 ${index} 데이터:`, flight);
+                {itinerary.flightInfo.map((flight, flightIndex) => {
+                  console.log(`[ItineraryDetail] 항공편 ${flightIndex} 데이터:`, flight);
                   
-                  // 다양한 데이터 구조에 대응
-                  let departure = null;
-                  let arrival = null;
-                  let departureTime = null;
-                  let price = null;
+                  // 모든 여정(가는편, 오는편 등) 처리
+                  let allItineraries = [];
+                  let basePrice = null;
                   
                   // 구조 1: flightOfferDetails.flightOfferData.itineraries
-                  if (flight.flightOfferDetails?.flightOfferData?.itineraries?.[0]?.segments?.[0]) {
-                    const segment = flight.flightOfferDetails.flightOfferData.itineraries[0].segments[0];
-                    departure = segment.departure;
-                    arrival = segment.arrival;
-                    price = flight.flightOfferDetails.flightOfferData.price?.total;
+                  if (flight.flightOfferDetails?.flightOfferData?.itineraries) {
+                    allItineraries = flight.flightOfferDetails.flightOfferData.itineraries;
+                    basePrice = flight.flightOfferDetails.flightOfferData.price?.total;
                   }
                   // 구조 2: itineraries 직접 접근
-                  else if (flight.itineraries?.[0]?.segments?.[0]) {
-                    const segment = flight.itineraries[0].segments[0];
-                    departure = segment.departure;
-                    arrival = segment.arrival;
-                    price = flight.price?.total;
+                  else if (flight.itineraries) {
+                    allItineraries = flight.itineraries;
+                    basePrice = flight.price?.total;
                   }
-                  // 구조 3: 단순화된 형태
+                  // 구조 3: 단순화된 형태 (단일 여정)
                   else if (flight.departure || flight.origin) {
-                    departure = flight.departure || { iataCode: flight.origin, at: flight.departureTime };
-                    arrival = flight.arrival || { iataCode: flight.destination, at: flight.arrivalTime };
-                    price = flight.price;
+                    allItineraries = [{
+                      segments: [{
+                        departure: flight.departure || { iataCode: flight.origin, at: flight.departureTime },
+                        arrival: flight.arrival || { iataCode: flight.destination, at: flight.arrivalTime }
+                      }],
+                      duration: flight.duration
+                    }];
+                    basePrice = flight.price;
                   }
                   
-                  // 날짜 처리
-                  if (departure?.at) {
-                    try {
-                      departureTime = new Date(departure.at);
-                      if (isNaN(departureTime.getTime())) {
-                        console.warn(`[ItineraryDetail] 잘못된 날짜 형식: ${departure.at}`);
-                        departureTime = null;
-                      }
-                    } catch (error) {
-                      console.error(`[ItineraryDetail] 날짜 파싱 오류:`, error);
-                      departureTime = null;
-                    }
-                  }
-                  
-                  console.log(`[ItineraryDetail] 항공편 ${index} 파싱 결과:`, {
-                    departure: departure?.iataCode,
-                    arrival: arrival?.iataCode,
-                    departureTime: departureTime?.toISOString(),
-                    price
-                  });
+                  console.log(`[ItineraryDetail] 항공편 ${flightIndex} - 총 ${allItineraries.length}개 여정:`, allItineraries);
                   
                   return (
-                    <div key={index} className="border-b border-blue-100 pb-2 last:border-0">
-                      <div className="font-medium">
-                        {departure?.iataCode || '출발지'} → {arrival?.iataCode || '도착지'}
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        {departureTime ? 
-                          departureTime.toLocaleString('ko-KR', {
-                            month: 'numeric',
-                            day: 'numeric',
-                            hour: 'numeric',
-                            minute: 'numeric'
-                          }) : 
-                          '출발시간 정보 없음'
+                    <div key={flightIndex} className="border border-blue-200 rounded-lg p-3 mb-3 last:mb-0">
+                      <div className="font-medium text-blue-800 mb-2">항공편 {flightIndex + 1}</div>
+                      
+                      {allItineraries.map((itinerary, itineraryIndex) => {
+                        const segments = itinerary.segments || [];
+                        const firstSegment = segments[0];
+                        const lastSegment = segments[segments.length - 1];
+                        
+                        let departureTime = null;
+                        let arrivalTime = null;
+                        
+                        // 출발 시간 처리
+                        if (firstSegment?.departure?.at) {
+                          try {
+                            departureTime = new Date(firstSegment.departure.at);
+                            if (isNaN(departureTime.getTime())) {
+                              console.warn(`[ItineraryDetail] 잘못된 출발 날짜 형식: ${firstSegment.departure.at}`);
+                              departureTime = null;
+                            }
+                          } catch (error) {
+                            console.error(`[ItineraryDetail] 출발 날짜 파싱 오류:`, error);
+                            departureTime = null;
+                          }
                         }
-                      </div>
-                      {price && (
-                        <div className="text-blue-600 text-sm">
-                          가격: {price}
+                        
+                        // 도착 시간 처리
+                        if (lastSegment?.arrival?.at) {
+                          try {
+                            arrivalTime = new Date(lastSegment.arrival.at);
+                            if (isNaN(arrivalTime.getTime())) {
+                              console.warn(`[ItineraryDetail] 잘못된 도착 날짜 형식: ${lastSegment.arrival.at}`);
+                              arrivalTime = null;
+                            }
+                          } catch (error) {
+                            console.error(`[ItineraryDetail] 도착 날짜 파싱 오류:`, error);
+                            arrivalTime = null;
+                          }
+                        }
+                        
+                        const isRoundTrip = allItineraries.length > 1;
+                        const tripDirection = isRoundTrip ? (itineraryIndex === 0 ? '가는편' : '오는편') : '';
+                        
+                        return (
+                          <div key={itineraryIndex} className="border-b border-blue-100 pb-2 last:border-0 mb-2 last:mb-0">
+                            <div className="font-medium flex items-center">
+                              <span>{firstSegment?.departure?.iataCode || '출발지'} → {lastSegment?.arrival?.iataCode || '도착지'}</span>
+                              {tripDirection && (
+                                <span className="ml-2 text-xs bg-blue-200 text-blue-800 px-2 py-1 rounded-full">
+                                  {tripDirection}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-sm text-gray-600 mt-1">
+                              <div>
+                                출발: {departureTime ? 
+                                  departureTime.toLocaleString('ko-KR', {
+                                    month: 'numeric',
+                                    day: 'numeric',
+                                    hour: 'numeric',
+                                    minute: 'numeric'
+                                  }) : 
+                                  '시간 정보 없음'
+                                }
+                              </div>
+                              <div>
+                                도착: {arrivalTime ? 
+                                  arrivalTime.toLocaleString('ko-KR', {
+                                    month: 'numeric',
+                                    day: 'numeric',
+                                    hour: 'numeric',
+                                    minute: 'numeric'
+                                  }) : 
+                                  '시간 정보 없음'
+                                }
+                              </div>
+                              {itinerary.duration && (
+                                <div>소요시간: {itinerary.duration}</div>
+                              )}
+                              {segments.length > 1 && (
+                                <div className="text-orange-600">경유 {segments.length - 1}회</div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      
+                      {basePrice && (
+                        <div className="text-blue-600 text-sm font-medium mt-2 pt-2 border-t border-blue-100">
+                          총 가격: {new Intl.NumberFormat('ko-KR', {
+                            style: 'currency',
+                            currency: 'KRW',
+                            maximumFractionDigits: 0
+                          }).format(parseFloat(basePrice))}
                         </div>
                       )}
                     </div>

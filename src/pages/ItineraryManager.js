@@ -141,7 +141,14 @@ const ItineraryManager = () => {
                         type: 'Flight_Departure',
                         category: '항공편',
                         duration: itinerary.duration,
-                        notes: `가격: ${flightInfo.flightOfferDetails?.flightOfferData?.price?.total || '정보 없음'}`,
+                        notes: `가격: ${flightInfo.flightOfferDetails?.flightOfferData?.price?.total ? 
+                          new Intl.NumberFormat('ko-KR', {
+                            style: 'currency',
+                            currency: 'KRW',
+                            maximumFractionDigits: 0
+                          }).format(parseFloat(flightInfo.flightOfferDetails.flightOfferData.price.total)) : 
+                          '정보 없음'
+                        }`,
                         lat: null, // 항공편은 위치 정보 없음
                         lng: null
                       }));
