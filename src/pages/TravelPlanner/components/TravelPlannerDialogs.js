@@ -72,7 +72,9 @@ const TravelPlannerDialogs = ({
   // 로더에서 받은 실제 공유 이메일 목록
   sharedEmailsFromLoader,
   // 원래 소유자 정보
-  originalOwner
+  originalOwner,
+  // 네비게이션
+  navigate
 }) => {
   return (
     <>
@@ -234,6 +236,9 @@ const TravelPlannerDialogs = ({
           <Button
             onClick={async () => {
               const success = await plannerHandleSaveConfirm(planTitleForSave);
+              if (success) {
+                navigate('/list');
+              }
             }}
             variant="contained"
             disabled={isSaving || !planTitleForSave?.trim()}

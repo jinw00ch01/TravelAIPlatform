@@ -21,12 +21,13 @@ import TravelPlannerHeader from './components/TravelPlannerHeader';
 import TravelPlannerMainContent from './components/TravelPlannerMainContent';
 import TravelPlannerDialogs from './components/TravelPlannerDialogs';
 import AIChatWidget from './components/AIChatWidget';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 
 
 const TravelPlanner = ({ loadMode }) => {
   const { user } = useAuth();
   const { planId: planIdFromUrl } = useParams();
+  const navigate = useNavigate();
 
   const {
     travelPlans, setTravelPlans,
@@ -787,12 +788,13 @@ const TravelPlanner = ({ loadMode }) => {
         // 성공 메시지 표시
         alert('여행 계획이 성공적으로 수정되었습니다!');
         console.log('[TravelPlanner] 여행 계획이 성공적으로 수정되었습니다.');
+        navigate('/list');
       }
     } else {
       // 새로 저장 모드: 다이얼로그 열기
       openSaveDialog();
     }
-  }, [planId, plannerHandleImmediateUpdate, openSaveDialog]);
+  }, [planId, plannerHandleImmediateUpdate, openSaveDialog, navigate]);
 
   // 숙박편 삭제 핸들러
   const handleDeleteAccommodation = useCallback((accommodation) => {
@@ -1182,6 +1184,8 @@ const TravelPlanner = ({ loadMode }) => {
           isSharedPlan={isSharedPlanFromLoader}
           sharedEmailsFromLoader={sharedEmailsFromLoader}
           originalOwner={originalOwner}
+          // 네비게이션
+          navigate={navigate}
         />
 
         <AIChatWidget onSendMessage={handleAISendMessage} />
