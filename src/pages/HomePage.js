@@ -1125,7 +1125,6 @@ export const HomePage = () => {
                   {/* 다중 항공편 표시 */}
                   {selectedFlights.length > 0 && (
                     <div className="w-full">
-                      <h4 className="text-sm font-medium text-gray-700 mb-2">선택된 항공편 ({selectedFlights.length}개)</h4>
                       <div className="space-y-2">
                         {selectedFlights.map((flight, index) => (
                           <Card key={flight.id} className="relative p-3 shadow bg-white">
@@ -1212,7 +1211,6 @@ export const HomePage = () => {
                   {/* 다중 숙박편 표시 */}
                   {selectedAccommodations.length > 0 && (
                     <div className="w-full">
-                      <h4 className="text-sm font-medium text-gray-700 mb-2">선택된 숙박편 ({selectedAccommodations.length}개)</h4>
                       <div className="space-y-2">
                         {selectedAccommodations.map((accommodation, index) => (
                           <Card key={`${accommodation.hotel.hotel_id}-${index}`} className="relative p-3 shadow bg-white">
