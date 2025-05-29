@@ -2,10 +2,10 @@ import axios from 'axios';
 import { fetchAuthSession } from 'aws-amplify/auth';
 
 // API_URL 환경 변수에서 가져오기
-const API_URL = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage';
+const API_URL = 'https://9b5hbw9u25.execute-api.ap-northeast-2.amazonaws.com/Stage';
 
 // Booking.com 호텔 검색 Lambda 함수를 위한 API Gateway 엔드포인트 URL
-const SEARCH_HOTELS_URL = `${API_URL}/api/Booking-com/SearchHotelsByCoordinates`;
+const SEARCH_HOTELS_URL = `${API_URL}/booking-com/SearchHotelsByCoordinates`;
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1초
@@ -106,7 +106,7 @@ export const travelApi = {
   // 여행 계획 생성 요청
   createTravelPlan: async (planDetails) => {
     try {
-      const response = await apiClient.post('/api/travel/python-plan', planDetails, {
+      const response = await apiClient.post('/travel/python-plan', planDetails, {
         timeout: 150000,
       });
       return response.data;
@@ -128,11 +128,11 @@ export const travelApi = {
       let requestParams = { ...params };
 
       // API 엔드포인트 결정 (planId가 숫자면 checkplan, 그 외에는 LoadPlanFunction_NEW)
-      let endpoint = 'api/travel/LoadPlanFunction_NEW';
+      let endpoint = 'travel/load_web';
       
       // planId가 숫자인 경우 checkplan API 사용 (키 이름도 plan_id로 변환)
       if (isNumericId) {
-        endpoint = 'api/travel/checkplan';
+        endpoint = 'travel/checkplan';
         // planId를 plan_id로 변환 (스네이크 케이스로 변경)
         requestParams = {
           ...requestParams,
@@ -175,10 +175,169 @@ export const travelApi = {
     }
   },
   
-  // 여행 계획 저장 (SavePlanFunction)
+  // 여행 계획 저장 (SavePlanFunction_NEW - 새로운 저장 전용)
   savePlan: async (planData) => {
     try {
-      console.log('[API] 여행 계획 저장 요청 시도 - URL:', `${API_URL}/api/travel/save`);
+      console.log('[API] 여행 계획 저장 요청 시도 - URL:', `${API_URL}/travel/save`);
+      console.log('[API] 저장할 데이터:', planData);
+      
+      // 서버에 맞는 형식으로 데이터 변환
+      let serverData = {
+        title: planData.title,
+        // planData.data가 이미 올바른 형식이므로 그대로 사용
+        data: planData.data
+      };
+
+      // 다중 숙박편 정보가 있으면 추가
+      if (planData.accommodationInfos && planData.accommodationInfos.length > 0) {
+        serverData.accommodationInfos = planData.accommodationInfos;
+        console.log('[API] 다중 숙박편 정보 포함:', serverData.accommodationInfos);
+      }
+
+      // 다중 항공편 정보가 있으면 추가
+      if (planData.flightInfos && planData.flightInfos.length > 0) {
+        serverData.flightInfos = planData.flightInfos;
+        console.log('[API] 다중 항공편 정보 포함:', serverData.flightInfos);
+      }
+
+      // 총 개수 정보가 있으면 추가
+      if (planData.totalAccommodations !== undefined) {
+        serverData.totalAccommodations = planData.totalAccommodations;
+      }
+
+      if (planData.totalFlights !== undefined) {
+        serverData.totalFlights = planData.totalFlights;
+      }
+
+      // 공유 이메일 정보가 있으면 추가
+      if (planData.shared_email !== undefined) {
+        serverData.shared_email = planData.shared_email;
+      }
+
+      // 하위 호환성: 단일 숙소 정보가 있으면 추가 (기존 코드 지원)
+      if (planData.accommodationInfo) {
+        serverData.accommodationInfo = planData.accommodationInfo;
+        console.log('[API] 단일 숙소 정보 포함:', serverData.accommodationInfo);
+      }
+      
+      console.log('[API] 변환된 서버 데이터:', serverData);
+      
+      // apiClient를 사용하여 새로운 저장 전용 엔드포인트로 요청
+      const response = await apiClient.post('/travel/save', serverData, {
+        timeout: 10000, // 타임아웃 설정 (10초)
+        retry: 2,       // 재시도 설정
+        retryDelay: 1000
+      });
+      
+      console.log('[API] 여행 계획 저장 성공:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('여행 계획 저장 실패:', error);
+      throw error;
+    }
+  },
+
+  // 여행 계획 수정 (ChangePlanFunction_NEW - 수정 전용)
+  updateTravelPlan: async (planId, updateData, updateType = null) => {
+    try {
+      console.log('[API] 여행 계획 수정 요청 시도 - URL:', `${API_URL}/travel/change`);
+      console.log('[API] 수정할 데이터:', { planId, updateData, updateType });
+      
+      // 기본 수정 데이터 구조
+      let serverData = {
+        plan_id: planId
+      };
+
+      // 수정 타입이 지정된 경우
+      if (updateType) {
+        serverData.update_type = updateType;
+      }
+
+      // 수정 데이터에 따라 적절한 필드 설정
+      if (updateData.title) {
+        serverData.title = updateData.title;
+      }
+
+      if (updateData.data || updateData.itinerary) {
+        // 일정 데이터 처리
+        const itineraryData = updateData.data || updateData.itinerary;
+        
+        if (Array.isArray(itineraryData)) {
+          // days 배열 형식인 경우 객체로 변환
+          serverData.data = itineraryData.reduce((obj, day) => {
+            obj[day.day] = {
+              title: day.title,
+              schedules: day.schedules || []
+            };
+            return obj;
+          }, {});
+        } else {
+          // 이미 객체 형식인 경우
+          serverData.data = itineraryData;
+        }
+      }
+
+      // 다중 항공편 정보 처리
+      if (updateData.flightInfos && updateData.flightInfos.length > 0) {
+        serverData.flightInfos = updateData.flightInfos;
+        console.log('[API] 다중 항공편 정보 포함:', serverData.flightInfos);
+      } else if (updateData.flightInfo) {
+        // 하위 호환성: 단일 항공편 정보
+        serverData.flightInfo = updateData.flightInfo;
+      }
+
+      // 다중 숙박편 정보 처리
+      if (updateData.accommodationInfos && updateData.accommodationInfos.length > 0) {
+        serverData.accommodationInfos = updateData.accommodationInfos;
+        console.log('[API] 다중 숙박편 정보 포함:', serverData.accommodationInfos);
+      } else if (updateData.accommodationInfo) {
+        // 하위 호환성: 단일 숙박편 정보
+        serverData.accommodationInfo = updateData.accommodationInfo;
+      }
+
+      // 총 개수 정보 처리
+      if (updateData.totalFlights !== undefined) {
+        serverData.totalFlights = updateData.totalFlights;
+      }
+
+      if (updateData.totalAccommodations !== undefined) {
+        serverData.totalAccommodations = updateData.totalAccommodations;
+      }
+
+      if (updateData.shared_email !== undefined) {
+        serverData.shared_email = updateData.shared_email;
+      }
+
+      if (updateData.paid_plan !== undefined) {
+        serverData.paid_plan = updateData.paid_plan;
+      }
+
+      if (updateData.status) {
+        // status는 특별히 처리하지 않고 로그만 남김
+        console.log('[API] status 필드는 현재 지원되지 않음:', updateData.status);
+      }
+      
+      console.log('[API] 최종 수정 요청 데이터:', serverData);
+      
+      // apiClient를 사용하여 새로운 수정 전용 엔드포인트로 요청
+      const response = await apiClient.post('/travel/change', serverData, {
+        timeout: 15000, // 타임아웃 설정 (15초)
+        retry: 2,       // 재시도 설정
+        retryDelay: 1000
+      });
+      
+      console.log('[API] 여행 계획 수정 성공:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('여행 계획 수정 실패:', error);
+      throw error;
+    }
+  },
+
+  // 기존 통합 API (하위 호환성 유지) - 기존 SavePlanFunction 사용
+  savePlanLegacy: async (planData) => {
+    try {
+      console.log('[API] 여행 계획 저장 요청 시도 (레거시) - URL:', `${API_URL}/travel/save`);
       console.log('[API] 저장할 데이터:', planData);
       
       // 서버에 맞는 형식으로 데이터 변환
@@ -223,24 +382,24 @@ export const travelApi = {
       console.log('[API] 변환된 서버 데이터:', serverData);
       
       // apiClient를 사용하여 요청 (인터셉터에서 인증 헤더 자동 추가)
-      const response = await apiClient.post('/api/travel/save', serverData, {
+      const response = await apiClient.post('/travel/save', serverData, {
         timeout: 10000, // 타임아웃 설정 (10초)
         retry: 2,       // 재시도 설정
         retryDelay: 1000
       });
       
-      console.log('[API] 여행 계획 저장 성공:', response.data);
+      console.log('[API] 여행 계획 저장 성공 (레거시):', response.data);
       return response.data;
     } catch (error) {
-      console.error('여행 계획 저장 실패:', error);
+      console.error('여행 계획 저장 실패 (레거시):', error);
       throw error;
     }
   },
 
-  // 여행 계획 수정 (UpdateTravelPlan - SavePlanFunction 사용)
-  updateTravelPlan: async (planId, updateData, updateType = null) => {
+  // 기존 통합 수정 API (하위 호환성 유지) - 기존 SavePlanFunction 사용
+  updateTravelPlanLegacy: async (planId, updateData, updateType = null) => {
     try {
-      console.log('[API] 여행 계획 수정 요청 시도 - URL:', `${API_URL}/api/travel/save`);
+      console.log('[API] 여행 계획 수정 요청 시도 (레거시) - URL:', `${API_URL}/travel/save`);
       console.log('[API] 수정할 데이터:', { planId, updateData, updateType });
       
       // 기본 수정 데이터 구조
@@ -320,16 +479,16 @@ export const travelApi = {
       console.log('[API] 최종 수정 요청 데이터:', serverData);
       
       // apiClient를 사용하여 요청 (인터셉터에서 인증 헤더 자동 추가)
-      const response = await apiClient.post('/api/travel/save', serverData, {
+      const response = await apiClient.post('/travel/save', serverData, {
         timeout: 15000, // 타임아웃 설정 (15초)
         retry: 2,       // 재시도 설정
         retryDelay: 1000
       });
       
-      console.log('[API] 여행 계획 수정 성공:', response.data);
+      console.log('[API] 여행 계획 수정 성공 (레거시):', response.data);
       return response.data;
     } catch (error) {
-      console.error('여행 계획 수정 실패:', error);
+      console.error('여행 계획 수정 실패 (레거시):', error);
       throw error;
     }
   },
@@ -337,7 +496,7 @@ export const travelApi = {
   // 투어/액티비티 조회 함수 추가
   getToursAndActivities: async (params) => {
     try {
-      const response = await apiClient.post('api/amadeus/Tours_and_Activities', params, {
+      const response = await apiClient.post('amadeus/Tours_and_Activities', params, {
         timeout: 50000,
         retry: 2,
         retryDelay: 1000
@@ -397,7 +556,7 @@ export const travelApi = {
   // 전체 여행 계획 목록 불러오기
   getTravelPlans: async () => {
     try {
-      const response = await apiClient.post('/api/travel/LoadPlanFunction_NEW', {}, {
+      const response = await apiClient.post('/travel/load_web', {}, {
         timeout: 10000,
         retry: 2,
         retryDelay: 1000,
@@ -434,7 +593,7 @@ export const travelApi = {
       const token = await getTokenForAPI();
       
       // fetch를 사용하여 API 호출
-      const response = await fetch(`${API_URL}/api/travel/checklist`, {
+      const response = await fetch(`${API_URL}/travel/checklist`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -471,7 +630,7 @@ export const travelApi = {
       const token = await getTokenForAPI();
       
       // fetch를 사용하여 API 호출
-      const response = await fetch(`${API_URL}/api/travel/checkplan`, {
+      const response = await fetch(`${API_URL}/travel/checkplan`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -512,7 +671,7 @@ export const travelApi = {
       const normalizedPlanIds = planIds.map(id => id.toString());
       
       // fetch를 사용하여 API 호출
-      const response = await fetch(`${API_URL}/api/travel/checkplan`, {
+      const response = await fetch(`${API_URL}/travel/checkplan`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -548,7 +707,7 @@ export const travelApi = {
         throw new Error('인증 토큰을 가져올 수 없습니다.');
       }
       
-      const DELETE_PLAN_URL = `${API_URL}/api/travel/deleteplan`;
+      const DELETE_PLAN_URL = `${API_URL}/travel/deleteplan`;
       
       const requestData = {
         plan_id: planId
@@ -598,7 +757,7 @@ export const weatherApi = {
       console.log(`[API] 날씨 데이터 요청 시작 - 위도: ${lat}, 경도: ${lng}`);
       
       // AWS Lambda 함수 엔드포인트
-      const WEATHER_API_URL = `https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/weatherAPI`;
+      const WEATHER_API_URL = `${API_URL}/weatherAPI`;
       
       // 요청 데이터 구성
       const requestData = {

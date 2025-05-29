@@ -865,10 +865,57 @@ const TravelPlanner = ({ loadMode }) => {
   const handleDeleteFlight = useCallback((flightSchedule) => {
     console.log('[TravelPlanner] 항공편 삭제:', flightSchedule);
     
-    // 해당 항공편 일정을 삭제
-    handleDeleteSchedule(flightSchedule.id);
-    console.log('[TravelPlanner] 항공편 삭제 완료');
-  }, [handleDeleteSchedule]);
+    // 왕복 항공편인지 확인
+    const isRoundTripDeparture = flightSchedule.type === 'Flight_Departure';
+    const isRoundTripReturn = flightSchedule.type === 'Flight_Return';
+    
+    if (isRoundTripDeparture || isRoundTripReturn) {
+      // 왕복 항공편의 경우 연관된 다른 항공편도 찾아서 함께 삭제
+      console.log('[TravelPlanner] 왕복 항공편 삭제 - 연관 항공편도 함께 삭제');
+      
+      // 모든 날짜의 일정을 검색하여 연관된 왕복 항공편 찾기
+      const updatedTravelPlans = { ...travelPlans };
+      let deletedFlights = [];
+      
+      dayOrder.forEach(dayKey => {
+        if (updatedTravelPlans[dayKey] && updatedTravelPlans[dayKey].schedules) {
+          const schedulesToKeep = [];
+          const schedulesToDelete = [];
+          
+          updatedTravelPlans[dayKey].schedules.forEach(schedule => {
+            // 현재 삭제하려는 항공편이거나 연관된 왕복 항공편인 경우 삭제 대상으로 분류
+            if (schedule.id === flightSchedule.id || 
+                (schedule.type === 'Flight_Departure' || schedule.type === 'Flight_Return')) {
+              
+              // 같은 항공편 데이터를 참조하는지 확인 (항공편 ID나 상세 정보 비교)
+              const isSameFlightGroup = schedule.id === flightSchedule.id || 
+                (schedule.flightOfferDetails?.flightOfferData?.id === 
+                 flightSchedule.flightOfferDetails?.flightOfferData?.id);
+              
+              if (isSameFlightGroup) {
+                schedulesToDelete.push(schedule);
+                deletedFlights.push(schedule);
+              } else {
+                schedulesToKeep.push(schedule);
+              }
+            } else {
+              schedulesToKeep.push(schedule);
+            }
+          });
+          
+          updatedTravelPlans[dayKey].schedules = schedulesToKeep;
+        }
+      });
+      
+      setTravelPlans(updatedTravelPlans);
+      console.log(`[TravelPlanner] 왕복 항공편 삭제 완료 - 총 ${deletedFlights.length}개 항공편 삭제됨`);
+      
+    } else {
+      // 편도 항공편인 경우 기존 로직대로 해당 항공편만 삭제
+      handleDeleteSchedule(flightSchedule.id);
+      console.log('[TravelPlanner] 편도 항공편 삭제 완료');
+    }
+  }, [travelPlans, dayOrder, setTravelPlans, handleDeleteSchedule]);
 
   // 개인 숙소 저장 핸들러
   const handleSaveCustomAccommodation = useCallback(() => {

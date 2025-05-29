@@ -1,11 +1,11 @@
 import axios from 'axios';
 
 // API Gateway 엔드포인트 URL
-const AIRPORT_CITY_SEARCH_URL = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/amadeus/Airport_CitySearch';
-const FLIGHT_OFFERS_SEARCH_URL = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/amadeus/FlightOffersSearch';
+const AIRPORT_CITY_SEARCH_URL = 'https://9b5hbw9u25.execute-api.ap-northeast-2.amazonaws.com/Stage/amadeus/Airport_CitySearch';
+const FLIGHT_OFFERS_SEARCH_URL = 'https://9b5hbw9u25.execute-api.ap-northeast-2.amazonaws.com/Stage/amadeus/FlightOffersSearch';
 // GetAirportInfo Lambda의 URL (Lambda 함수 이름은 GetAirportInfo이지만, API Gateway 경로는 유지하거나 변경 가능)
 // 여기서는 기존 AeroDataBox용으로 사용하던 경로를 그대로 사용한다고 가정합니다. (필요시 변경)
-const GET_AIRPORT_DETAILS_URL = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/AeroDataBox/GetAirportInfo'; 
+const GET_AIRPORT_DETAILS_URL = 'https://9b5hbw9u25.execute-api.ap-northeast-2.amazonaws.com/Stage/AeroDataBox'; 
 
 /**
  * Amadeus 관련 API Gateway 엔드포인트를 호출하는 클래스
@@ -153,14 +153,42 @@ class AmadeusApi {
     }
 
     try {
-      console.log(`[AmadeusApi] Getting airport details via Gateway for ${iataCode}...`);
-      const response = await axios.get(GET_AIRPORT_DETAILS_URL, { // URL은 GetAirportInfo Lambda를 가리킴
+      console.log(`[AmadeusApi] Getting airport details via Airport_CitySearch for ${iataCode}...`);
+      
+      // GetAirportInfo 엔드포인트가 없으므로 Airport_CitySearch를 사용
+      const response = await axios.get(AIRPORT_CITY_SEARCH_URL, {
         params: {
-          iataCode: iataCode.toUpperCase()
+          keyword: iataCode.toUpperCase(),
+          subType: 'AIRPORT' // 공항만 검색
         }
       });
-      console.log(`[AmadeusApi] Airport details response for ${iataCode}:`, response.data);
-      return response.data; // Lambda가 반환하는 객체 (Amadeus 정보 + 번역 정보)
+      
+      console.log(`[AmadeusApi] Airport search response for ${iataCode}:`, response.data);
+      
+      // Airport_CitySearch는 배열을 반환하므로 첫 번째 결과를 사용
+      if (response.data && response.data.data && response.data.data.length > 0) {
+        const airportData = response.data.data[0];
+        
+        // GetAirportInfo와 유사한 형식으로 변환
+        return {
+          iataCode: airportData.iataCode,
+          name: airportData.name,
+          detailedName: airportData.detailedName,
+          cityName: airportData.address?.cityName,
+          countryName: airportData.address?.countryName,
+          countryCode: airportData.address?.countryCode,
+          geoCode: airportData.geoCode,
+          timeZoneOffset: airportData.timeZoneOffset,
+          // 한국어 번역 정보는 Airport_CitySearch에서 제공하지 않으므로 null
+          translations: {
+            name_ko: null,
+            cityName_ko: null,
+            countryName_ko: null
+          }
+        };
+      }
+      
+      return null;
 
     } catch (error) {
       console.error(`[AmadeusApi] Failed to get airport details for ${iataCode}:`, error.response?.data || error.message);

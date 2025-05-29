@@ -2,7 +2,6 @@ import React from 'react';
 import {
   Box, Button, Typography, TextField, IconButton
 } from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
 import EditIcon from '@mui/icons-material/Edit';
 import AccommodationPlan from '../../../components/AccommodationPlan';
 import FlightPlanComponent from '../../../components/FlightPlan';

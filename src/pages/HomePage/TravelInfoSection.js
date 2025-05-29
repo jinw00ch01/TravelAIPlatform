@@ -35,7 +35,7 @@ const CITIES = [
 const fetchPopularDestinations = async () => {
   try {
     //console.log('인기 여행지 데이터 요청 시작');
-    const response = await fetch('https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/amadeus/Flight_Most_Traveled_Destinations', {
+    const response = await fetch('https://9b5hbw9u25.execute-api.ap-northeast-2.amazonaws.com/Stage/amadeus/Flight_Most_Traveled_Destinations', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

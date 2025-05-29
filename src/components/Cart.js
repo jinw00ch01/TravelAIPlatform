@@ -94,7 +94,7 @@ const Cart = () => {
       }
       
       const response = await axios.post(
-        'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/travel/checklist', 
+        'https://9b5hbw9u25.execute-api.ap-northeast-2.amazonaws.com/Stage/travel/checklist', 
         { email },
         {
           headers: {
@@ -133,7 +133,7 @@ const Cart = () => {
       setLoading(true);
       
       const response = await axios.post(
-        'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/travel/checkplan',
+        'https://9b5hbw9u25.execute-api.ap-northeast-2.amazonaws.com/Stage/travel/checkplan',
         { plan_id: planId, email },
         {
           headers: {
@@ -403,7 +403,7 @@ const Cart = () => {
 
         
         const updateResponse = await axios.post(
-          'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/travel/save',
+          'https://9b5hbw9u25.execute-api.ap-northeast-2.amazonaws.com/Stage/travel/change',
           {
             plan_id: planId,
             update_type: 'paid_plan',

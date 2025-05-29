@@ -1,16 +1,15 @@
 /**
- * SavePlan Lambda 함수
- * JWT 토큰에서 사용자 이메일을 추출하고 DynamoDB의 saved_plans 테이블에 새로운 여행 계획을 저장하거나 기존 계획을 수정합니다.
+ * ChangePlanFunction_NEW Lambda 함수
+ * JWT 토큰에서 사용자 이메일을 추출하고 DynamoDB의 saved_plans 테이블에서 기존 여행 계획만 수정합니다.
  * 
  * 기능:
- * 1. 새로운 여행 계획 저장 (기존 기능)
- * 2. 기존 여행 계획 수정 (plan_id 제공시)
- * 3. shared_email 공유 기능
- * 4. 부분 업데이트 (plan_data, shared_email, paid_plan 개별 수정)
+ * 1. 기존 여행 계획 수정만 담당 (저장 기능 제거)
+ * 2. shared_email 공유 기능 포함
+ * 3. 부분 업데이트 (plan_data, shared_email, paid_plan 개별 수정)
  */
 
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, PutCommand, UpdateCommand, QueryCommand, GetCommand, DeleteCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, UpdateCommand, GetCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import jwt from "jsonwebtoken";
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || "ap-northeast-2" });
@@ -30,7 +29,7 @@ const docClient = DynamoDBDocumentClient.from(client, {
 const headers = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-  "Access-Control-Allow-Methods": "POST,OPTIONS",
+  "Access-Control-Allow-Methods": "POST,PUT,OPTIONS",
   "Content-Type": "application/json"
 };
 
@@ -85,53 +84,8 @@ function optimizeAccommodationData(accommodationData) {
   return optimized;
 }
 
-// DynamoDB 형식의 객체를 일반 JavaScript 객체로 변환하는 함수
-function convertDynamoDBToJS(item) {
-  if (!item) return null;
-  
-  // 객체가 아닌 경우 그대로 반환
-  if (typeof item !== 'object') return item;
-  
-  // 배열인 경우 각 요소를 재귀적으로 변환
-  if (Array.isArray(item)) {
-    return item.map(element => convertDynamoDBToJS(element));
-  }
-  
-  // DynamoDB 형식인지 확인 (S, N, BOOL, M, L 키가 있는지)
-  const keys = Object.keys(item);
-  if (keys.length === 1 && ['S', 'N', 'BOOL', 'M', 'L', 'NULL'].includes(keys[0])) {
-    const type = keys[0];
-    const value = item[type];
-    
-    switch (type) {
-      case 'S': return value;  // 문자열
-      case 'N': return Number(value);  // 숫자
-      case 'BOOL': return value;  // 불리언
-      case 'NULL': return null;  // null
-      case 'M': // 객체(맵)
-        const result = {};
-        for (const key in value) {
-          result[key] = convertDynamoDBToJS(value[key]);
-        }
-        return result;
-      case 'L': // 배열(리스트)
-        return value.map(element => convertDynamoDBToJS(element));
-      default:
-        return value;
-    }
-  }
-  
-  // 이미 일반 JavaScript 객체인 경우 각 속성을 재귀적으로 변환
-  const result = {};
-  for (const key in item) {
-    result[key] = convertDynamoDBToJS(item[key]);
-  }
-  
-  return result;
-}
-
 export const handler = async (event) => {
-  console.log("SavePlan Lambda 시작 v7 (수정 기능 추가)"); // 버전 표시용 로그
+  console.log("ChangePlanFunction_NEW Lambda 시작 v1.0 (수정 전용)"); // 버전 표시용 로그
   console.log("event:", JSON.stringify(event));
   console.log("SAVED_PLANS_TABLE:", SAVED_PLANS_TABLE);
   console.log("개발 모드:", DEV_MODE ? "활성화" : "비활성화");
@@ -177,7 +131,7 @@ export const handler = async (event) => {
     let body = {};
     try {
       // 다양한 입력 형식 처리
-      if (event.title && event.data) {
+      if (event.plan_id) {
         // event 자체가 body인 경우 (테스트 이벤트나 특정 API 호출 형식)
         body = event;
         console.log("event 자체가 body인 케이스");
@@ -218,24 +172,21 @@ export const handler = async (event) => {
 
     console.log("body의 키들:", Object.keys(body));
 
-    // 3. 요청 타입 확인 (새로 저장 vs 수정)
-    const isUpdateRequest = body.plan_id && !isNaN(Number(body.plan_id));
-    const isPartialUpdate = body.update_type && ['plan_data', 'shared_email', 'paid_plan'].includes(body.update_type);
-    
-    console.log("요청 타입:", {
-      isUpdateRequest,
-      isPartialUpdate,
-      planId: body.plan_id,
-      updateType: body.update_type
-    });
-
-    if (isUpdateRequest) {
-      // 기존 계획 수정 로직
-      return await handleUpdatePlan(userEmail, body);
-    } else {
-      // 새로운 계획 저장 로직 (기존 코드 유지)
-      return await handleCreatePlan(userEmail, body);
+    // 3. plan_id 필수 확인 (수정 전용 함수)
+    if (!body.plan_id || isNaN(Number(body.plan_id))) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          success: false,
+          message: "이 함수는 기존 계획 수정만 지원합니다. plan_id가 필요합니다. 새로운 계획 저장은 Save_NEW API를 사용해주세요.",
+          redirect_api: "/api/travel/Save_NEW"
+        })
+      };
     }
+
+    // 4. 기존 계획 수정 처리
+    return await handleUpdatePlan(userEmail, body);
 
   } catch (error) {
     console.error("일반 오류:", error);
@@ -250,316 +201,6 @@ export const handler = async (event) => {
     };
   }
 };
-
-// 새로운 계획 생성 함수 (기존 로직)
-async function handleCreatePlan(userEmail, body) {
-  console.log("새로운 계획 저장 처리 시작");
-  
-    // paid_plan 숫자 처리
-    let paidPlan = 0;
-    if (typeof body.paid_plan === 'number') {
-      paidPlan = body.paid_plan;
-      console.log("받은 paid_plan:", paidPlan);
-    } else {
-      console.log("paid_plan이 숫자가 아니거나 없음. 기본값 0 사용");
-    }
-
-  // 데이터 구조 확인 - title과 data가 있는지 체크
-    let title = "기본 여행 계획", data = {};
-    
-    if (body.title && body.data) {
-      title = body.title;
-      data = body.data;
-      console.log("정상 구조 - title, data 필드 발견");
-    } else if (body.plans && body.name) {
-      // 이전 코드 호환성 유지
-      title = body.name;
-      data = body.plans;
-      console.log("이전 구조 - plans, name 필드 발견. 변환 완료");
-    } else {
-      console.error("경고: 필수 필드(title/data 또는 name/plans)가 없습니다");
-      console.log("사용 가능한 필드:", Object.keys(body));
-      
-      // 테스트 데이터 생성 (개발 모드에서만)
-      if (DEV_MODE) {
-        title = "테스트 여행 계획";
-        data = { 1: { title: "1일차", schedules: [] } };
-        console.log("개발 모드: 테스트 데이터 사용");
-      } else {
-        return {
-          statusCode: 400,
-          headers,
-          body: JSON.stringify({ 
-            success: false, 
-            message: "필수 필드가 누락되었습니다. title과 data(또는 name과 plans)가 필요합니다." 
-          })
-        };
-      }
-    }
-    
-    console.log("처리할 데이터:", { title, dataLength: data ? Object.keys(data).length : 0 });
-
-    const now = new Date().toISOString();
-
-  // 현재 사용자의 plan 개수를 조회
-    const queryCmd = new QueryCommand({
-      TableName: SAVED_PLANS_TABLE,
-      KeyConditionExpression: "user_id = :uid",
-      ExpressionAttributeValues: {
-        ":uid": userEmail
-      }
-    });
-
-    console.log("쿼리 명령 생성됨:", JSON.stringify(queryCmd));
-    
-    try {
-      const queryResult = await docClient.send(queryCmd);
-      console.log("쿼리 결과:", JSON.stringify(queryResult));      
-      
-      function generateTimeBased8DigitId() {
-        const now = Date.now(); // 예: 1715947533457
-        const timePart = now % 10000000; // 마지막 7자리 (시간 순서)
-        const randomDigit = Math.floor(Math.random() * 10); // 0~9 하나 추가
-        return Number(`${timePart}${randomDigit}`); // 8자리 숫자
-      }
-      
-      const planId = generateTimeBased8DigitId();
-      console.log("생성할 planId:", planId);
-
-    // 데이터 준비 - 항공편과 일정 분리하기
-      // NaN, Infinity 등 직렬화 불가능한 값 처리
-      const cleanData = (obj) => {
-        if (obj === null || obj === undefined) return obj;
-        try {
-          return JSON.parse(JSON.stringify(obj, (key, value) => {
-            if (typeof value === 'number' && !Number.isFinite(value)) {
-              return null;
-            }
-            return value;
-          }));
-        } catch (e) {
-          console.warn("데이터 정리 중 오류:", e.message);
-          return obj;
-        }
-      };
-
-      // body.data에서 숙박편과 항공편 정보 추출
-      const extractedFlights = [];
-      const extractedAccommodations = [];
-      const cleanedScheduleData = {};
-      
-      console.log("데이터에서 숙박편과 항공편 정보 추출 시작");
-      
-      // 일정 데이터에서 숙박편과 항공편 정보 추출
-      if (typeof data === 'object' && !Array.isArray(data)) {
-        Object.keys(data).forEach(day => {
-          if (data[day].schedules && Array.isArray(data[day].schedules)) {
-            const cleanedSchedules = [];
-            
-            data[day].schedules.forEach(schedule => {
-              // 항공편 정보 추출
-              if (schedule.type === 'Flight_Departure' || schedule.type === 'Flight_Return' || schedule.type === 'Flight_OneWay') {
-                if (schedule.flightOfferDetails?.flightOfferData) {
-                  // 중복 방지를 위한 체크
-                  const isDuplicate = extractedFlights.some(flight => 
-                    flight.id === schedule.flightOfferDetails.flightOfferData.id
-                  );
-                  
-                  if (!isDuplicate) {
-                    extractedFlights.push(schedule.flightOfferDetails.flightOfferData);
-                    console.log(`${day}일차에서 항공편 추출:`, schedule.flightOfferDetails.flightOfferData.id);
-                  }
-                }
-              }
-              // 숙박편 정보 추출
-              else if (schedule.type === 'accommodation' && schedule.time === '체크인' && schedule.hotelDetails) {
-                // 중복 방지를 위한 체크
-                const isDuplicate = extractedAccommodations.some(acc => 
-                  acc.hotel?.hotel_id === schedule.hotelDetails.hotel?.hotel_id &&
-                  acc.checkIn === schedule.hotelDetails.checkIn
-                );
-                
-                if (!isDuplicate) {
-                  extractedAccommodations.push(schedule.hotelDetails);
-                  console.log(`${day}일차에서 숙박편 추출:`, schedule.hotelDetails.hotel?.hotel_name);
-                }
-              }
-              // 일반 일정은 그대로 유지 (숙박편과 항공편 제외)
-              else if (schedule.type !== 'accommodation' && 
-                       schedule.type !== 'Flight_Departure' && 
-                       schedule.type !== 'Flight_Return' && 
-                       schedule.type !== 'Flight_OneWay') {
-                // hotelDetails, flightOfferDetails 제거하고 저장
-                const { hotelDetails, flightOfferDetails, ...cleanSchedule } = schedule;
-                cleanedSchedules.push(cleanSchedule);
-              }
-            });
-            
-            // 일반 일정만 포함된 데이터 구성
-            cleanedScheduleData[day] = {
-              ...data[day],
-              schedules: cleanedSchedules
-            };
-          } else {
-            // schedules가 없는 경우 그대로 복사
-            cleanedScheduleData[day] = data[day];
-          }
-        });
-      }
-      
-      // 항공편 정보를 날짜 순으로 정렬
-      extractedFlights.sort((a, b) => {
-        const dateA = new Date(a.itineraries?.[0]?.segments?.[0]?.departure?.at || '1970-01-01');
-        const dateB = new Date(b.itineraries?.[0]?.segments?.[0]?.departure?.at || '1970-01-01');
-        return dateA.getTime() - dateB.getTime();
-      });
-      
-      // 숙박편 정보를 체크인 날짜 순으로 정렬
-      extractedAccommodations.sort((a, b) => {
-        const dateA = new Date(a.checkIn || '1970-01-01');
-        const dateB = new Date(b.checkIn || '1970-01-01');
-        return dateA.getTime() - dateB.getTime();
-      });
-      
-      console.log("추출된 항공편 개수:", extractedFlights.length);
-      console.log("추출된 숙박편 개수:", extractedAccommodations.length);
-      
-      // 기존에는
-// let finalFlights = extractedFlights;
-// let finalAccommodations = extractedAccommodations;
-
-      // 프론트엔드에서 직접 전달된 정보와 추출된 정보 병합
-      let finalFlights = [];
-      let finalAccommodations = [];
-      
-      // 기존 형식 처리
-      if (body.flightInfos && body.flightInfos.length > 0) {
-        finalFlights = body.flightInfos;
-        console.log("기존 형식 항공편 정보 사용");
-      } 
-      // 새로운 형식 처리
-      else if (body.flightInfo) {
-        finalFlights = Array.isArray(body.flightInfo) ? body.flightInfo : [body.flightInfo];
-        console.log("새로운 형식 항공편 정보 사용");
-      } 
-      // 추출된 정보 사용
-      else {
-        finalFlights = extractedFlights;
-        console.log("추출된 항공편 정보 사용");
-      }
-      
-      // 기존 형식 처리
-      if (body.accommodationInfos && body.accommodationInfos.length > 0) {
-        finalAccommodations = body.accommodationInfos;
-        console.log("기존 형식 숙박 정보 사용");
-      } 
-      // 새로운 형식 처리
-      else if (body.accmo_info) {
-        finalAccommodations = Array.isArray(body.accmo_info) ? body.accmo_info : [body.accmo_info];
-        console.log("새로운 형식 숙박 정보 사용");
-      } 
-      // 추출된 정보 사용
-      else {
-        finalAccommodations = extractedAccommodations;
-        console.log("추출된 숙박 정보 사용");
-      }
-      
-      console.log("최종 사용할 항공편 정보:", finalFlights.length, "개");
-      console.log("최종 사용할 숙박편 정보:", finalAccommodations.length, "개");
-
-      // 다중 항공편 정보를 개별 컬럼으로 저장
-      const flightColumns = {};
-      finalFlights.forEach((flightInfo, index) => {
-        flightColumns[`flight_info_${index + 1}`] = JSON.stringify(cleanData(flightInfo));
-      });
-
-      // 다중 숙박편 정보를 개별 컬럼으로 저장 (최적화 적용)
-      const accommodationColumns = {};
-      finalAccommodations.forEach((accommodationInfo, index) => {
-        const optimizedAccommodation = optimizeAccommodationData(accommodationInfo);
-        accommodationColumns[`accmo_info_${index + 1}`] = JSON.stringify(cleanData(optimizedAccommodation));
-      });
-
-      const itemToSave = {
-        user_id: userEmail,
-        plan_id: planId,
-        name: title,
-        paid_plan: paidPlan,
-        // 일반 일정 데이터 (항공편, 숙박편 제외)
-        itinerary_schedules: JSON.stringify(cleanData(cleanedScheduleData)),
-        // 다중 항공편 정보 (flight_info_1, flight_info_2, ...)
-        ...flightColumns,
-        // 다중 숙박편 정보 (accmo_info_1, accmo_info_2, ...)
-        ...accommodationColumns,
-        // 총 개수 정보
-        total_flights: finalFlights.length,
-        total_accommodations: finalAccommodations.length,
-        // shared_email 필드 추가
-        shared_email: body.shared_email || null,
-        last_updated: now
-      };
-
-      console.log("DynamoDB에 저장할 최종 아이템 구조:", Object.keys(itemToSave));
-      console.log("저장될 shared_email 값:", itemToSave.shared_email);
-      
-      // 데이터 크기 체크
-      const itemSizeInBytes = Buffer.byteLength(JSON.stringify(itemToSave), 'utf8');
-      const itemSizeInKB = (itemSizeInBytes / 1024).toFixed(2);
-      console.log(`아이템 크기: ${itemSizeInKB} KB (최대 400KB)`);
-      
-      if (itemSizeInBytes > 400 * 1024) {
-        console.error(`⚠️ 아이템 크기가 DynamoDB 제한(400KB)을 초과했습니다: ${itemSizeInKB} KB`);
-        return {
-          statusCode: 400,
-          headers,
-          body: JSON.stringify({
-            success: false,
-            message: `데이터 크기가 너무 큽니다 (${itemSizeInKB} KB). 일부 데이터를 줄여주세요.`,
-            currentSize: itemSizeInKB,
-            maxSize: "400 KB"
-          })
-        };
-      }
-      
-      const putCmd = new PutCommand({
-        TableName: SAVED_PLANS_TABLE,
-        Item: itemToSave
-      });
-      
-      await docClient.send(putCmd);
-      console.log("DynamoDB 저장 완료.");
-
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          success: true,
-          message: "여행 계획이 성공적으로 저장되었습니다.",
-          plan_id: planId
-        })
-      };
-    } catch (putError) {
-      console.error("데이터 저장 중 오류:", putError);
-      console.error("오류 세부 정보:", JSON.stringify({
-        code: putError.code,
-        name: putError.name,
-        message: putError.message,
-        requestId: putError.$metadata?.requestId,
-        cfId: putError.$metadata?.cfId
-      }));
-      
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({ 
-          success: false,
-          message: "데이터 저장 중 오류가 발생했습니다.",
-          error: putError.message,
-          errorCode: putError.code || putError.name
-        })
-      };
-    }
-}
 
 // 기존 계획 수정 함수
 async function handleUpdatePlan(userEmail, body) {
@@ -713,11 +354,6 @@ async function performUpdate(userId, planId, body, updateType, now, isSharedUser
           return null;
         }
         // 불필요한 필드 제거로 크기 최적화
-        /*
-        if (key === 'photos' && Array.isArray(value) && value.length > 3) {
-          return value.slice(0, 3); // 사진은 최대 3개만 저장
-        }
-        */
         if (key === 'facilities' && Array.isArray(value) && value.length > 10) {
           return value.slice(0, 10); // 시설은 최대 10개만 저장
         }
@@ -903,4 +539,4 @@ async function performUpdate(userId, planId, body, updateType, now, isSharedUser
       updated_item: result.Attributes
     })
   };
-} 
+}

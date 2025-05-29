@@ -104,16 +104,6 @@ const usePlannerActions = ({
     
     console.log('[validatePlanBeforeSave] 최종 커버리지:', Array.from(accommodationCoverage).sort());
     
-    // 모든 날짜가 숙박편으로 커버되는지 확인
-    for (const dayKey of dayKeys) {
-      if (!accommodationCoverage.has(dayKey)) {
-        return { 
-          isValid: false, 
-          message: `${dayKey}일차에 숙박편이 없습니다. 모든 일차는 숙박편으로 커버되어야 합니다.` 
-        };
-      }
-    }
-
     // 2. 항공편 검증 로직 제거 (선택 사항으로 변경)
 
     return { isValid: true, message: '검증 통과' };

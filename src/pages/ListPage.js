@@ -34,7 +34,7 @@ function ListPage() {
         // 체크리스트 API 호출 (모드 필드 추가)
         console.log('[ListPage] 체크리스트 API 호출 시작');
         
-        const apiUrl = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/travel/checklist';
+        const apiUrl = 'https://9b5hbw9u25.execute-api.ap-northeast-2.amazonaws.com/Stage/travel/checklist';
         
         const response = await fetch(apiUrl, {
           method: 'POST',

@@ -242,7 +242,16 @@ const ScheduleList = ({
               size="small"
               onClick={(e) => {
                 e.stopPropagation();
-                if (handleDeleteFlight && window.confirm('이 항공편을 삭제하시겠습니까?')) {
+                
+                // 왕복 항공편인지 확인하여 적절한 메시지 표시
+                let confirmMessage = '이 항공편을 삭제하시겠습니까?';
+                if (flightSchedule.type === 'Flight_Departure') {
+                  confirmMessage = '왕복-출국 항공편을 삭제하시겠습니까?\n연관된 왕복-귀국 항공편도 함께 삭제됩니다.';
+                } else if (flightSchedule.type === 'Flight_Return') {
+                  confirmMessage = '왕복-귀국 항공편을 삭제하시겠습니까?\n연관된 왕복-출국 항공편도 함께 삭제됩니다.';
+                }
+                
+                if (handleDeleteFlight && window.confirm(confirmMessage)) {
                   handleDeleteFlight(flightSchedule);
                 }
               }}

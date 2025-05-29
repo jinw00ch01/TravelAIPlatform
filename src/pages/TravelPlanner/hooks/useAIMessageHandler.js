@@ -3,7 +3,7 @@ import axios from 'axios';
 import { fetchAuthSession } from 'aws-amplify/auth';
 
 // API_URL - API 엔드포인트 기본 URL
-const API_URL = 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage';
+const API_URL = 'https://9b5hbw9u25.execute-api.ap-northeast-2.amazonaws.com/Stage';
 
 /**
  * AI 메시지 처리를 위한 커스텀 훅
@@ -30,7 +30,7 @@ const useAIMessageHandler = (planData, updatePlanData) => {
       message: message
     };
     
-    const apiUrl = `${API_URL}/api/travel/modify_python`;
+    const apiUrl = `${API_URL}/travel/modify`;
 
     // Authorization 헤더를 위한 토큰 가져오기
     let authToken = 'Bearer test-token'; // 기본값 또는 개발용 토큰
@@ -47,7 +47,9 @@ const useAIMessageHandler = (planData, updatePlanData) => {
     }
     
     console.log('AI 계획 수정: 사용 중인 planId (from state):', currentPlanData.plan_id);
-    console.log('AI 계획 수정: 사용 중인 flightInfo (from state):', planData.loadedFlightInfo); 
+    console.log('AI 계획 수정: 사용 중인 단일 flightInfo (from state):', planData.loadedFlightInfo); 
+    console.log('AI 계획 수정: 사용 중인 다중 flightInfos (from state):', planData.loadedFlightInfos);
+    console.log('AI 계획 수정: 사용 중인 다중 accommodationInfos (from state):', planData.loadedAccommodationInfos);
     console.log('AI 계획 수정: 사용 중인 isRoundTrip (from state):', planData.isRoundTrip);   
     console.log('AI 계획 수정 요청 URL:', apiUrl);
     console.log('AI 계획 수정 요청을 위한 기본 계획 데이터 (currentPlanData):', currentPlanData);
@@ -60,8 +62,13 @@ const useAIMessageHandler = (planData, updatePlanData) => {
         start_date: currentPlanData.start_date
       },
       need: currentPlanData.message,
-      flightInfo: planData.loadedFlightInfo, // loadedFlightInfo 상태 전달
-      isRoundTrip: planData.isRoundTrip     // isRoundTrip 상태 전달
+      // 단일 항공편 정보 (기존 호환성 유지)
+      flightInfo: planData.loadedFlightInfo, 
+      isRoundTrip: planData.isRoundTrip,
+      // 다중 항공편 정보 추가
+      flightInfos: planData.loadedFlightInfos || [],
+      // 다중 숙박편 정보 추가  
+      accommodationInfos: planData.loadedAccommodationInfos || []
     };
 
     console.log('AI 계획 수정 API에 전송하는 최종 요청 본문:', JSON.stringify(requestBody, null, 2));
@@ -83,54 +90,54 @@ const useAIMessageHandler = (planData, updatePlanData) => {
           updatePlanData.setPlanId(response.data.planId);
         }
 
-        // Gemini 응답에서 계획 추출 (기존 로직과 유사하게)
-        if (response.data.plan && response.data.plan.candidates) {
+        // AI가 수정한 여행 계획(response.data.plan) 처리
+        if (response.data.plan) {
           try {
-            const aiContent = response.data.plan.candidates[0]?.content?.parts[0]?.text;
-            if (aiContent) {
-              const jsonMatch = aiContent.match(/```json\n([\s\S]*?)\n```/) || aiContent.match(/{[\s\S]*?}/);
-              if (jsonMatch) {
-                const planJson = JSON.parse(jsonMatch[1] || jsonMatch[0]);
-                if (planJson.days && Array.isArray(planJson.days)) {
-                  const newTravelPlans = {};
-                  const newDayOrder = [];
-                  planJson.days.forEach((day) => {
-                    const dayKey = day.day.toString();
-                    newTravelPlans[dayKey] = { title: day.title, schedules: day.schedules || [] };
-                    newDayOrder.push(dayKey);
-                  });
-                  updatePlanData.setTravelPlans(newTravelPlans);
-                  updatePlanData.setDayOrder(newDayOrder);
-                  currentCallback({ type: 'success', content: response.data.message || 'AI가 계획을 성공적으로 수정했습니다.' });
-                } else { 
-                  throw new Error('유효한 일자 계획 데이터가 없습니다.'); 
-                }
-              } else { 
-                throw new Error('AI 응답에서 JSON 데이터를 찾을 수 없습니다.'); 
-              }
+            const planJson = response.data.plan; // 'plan' 필드가 이미 파싱된 JSON 객체라고 가정
+
+            if (planJson.title && planJson.days && Array.isArray(planJson.days)) {
+              const newTravelPlans = {};
+              const newDayOrder = [];
+              
+              planJson.days.forEach((day) => {
+                // day.day, day.date, day.id 등 고유한 키로 사용할 값을 결정해야 합니다.
+                // 예시에서는 day.day를 사용합니다.
+                const dayKey = day.day ? day.day.toString() : (day.date || Math.random().toString(36).substr(2, 9)); 
+                
+                newTravelPlans[dayKey] = { 
+                  title: day.title || `Day ${dayKey}`, // title이 없을 경우 대비
+                  schedules: day.schedules || [] 
+                };
+                newDayOrder.push(dayKey);
+              });
+              
+              updatePlanData.setTravelPlans(newTravelPlans);
+              updatePlanData.setDayOrder(newDayOrder);
+              
+              // 필요하다면 전체 plan title도 업데이트 (planJson.title 사용)
+              // if (planJson.title && updatePlanData.setPlanTitle) { // setPlanTitle 함수가 있다면
+              //   updatePlanData.setPlanTitle(planJson.title);
+              // }
+
+              currentCallback({ type: 'success', content: response.data.message || 'AI가 계획을 성공적으로 수정했습니다.' });
             } else { 
-              throw new Error('AI 응답에 콘텐츠가 없습니다.'); 
+              console.error('AI 응답의 plan 객체에 유효한 title 또는 days 데이터가 없습니다.', planJson);
+              throw new Error('AI 응답의 계획 데이터 형식이 올바르지 않습니다.'); 
             }
           } catch (parseError) {
-            console.error('AI 응답 파싱 오류:', parseError);
+            console.error('AI 응답 plan 객체 처리 오류:', parseError, response.data.plan);
             currentCallback({ type: 'error', content: `AI 응답 처리 중 오류: ${parseError.message}` });
           }
-        } else if (response.data.updatedPlan) { // 기존 API 형식 호환
-          updatePlanData.setTravelPlans(response.data.updatedPlan.travel_plans || {});
-          updatePlanData.setDayOrder(response.data.updatedPlan.day_order || []);
-          currentCallback({ type: 'success', content: response.data.message || 'AI가 계획을 성공적으로 수정했습니다.' });
-        } else if (response.data.plannerData) { // 다른 형식 호환
-          updatePlanData.setTravelPlans(response.data.plannerData || {});
-          updatePlanData.setDayOrder(Object.keys(response.data.plannerData || {}).sort());
-          currentCallback({ type: 'success', content: response.data.message || 'AI가 계획을 성공적으로 수정했습니다.'});
-        } else if (!response.data.plan) { 
-          currentCallback({ type: 'error', content: response.data.message || 'AI 계획 수정 결과를 처리할 수 없습니다. 응답 형식을 확인해주세요.' });
+        } else if (response.data.message) { // plan 데이터 없이 message만 있는 경우 (오류 등)
+          // AI가 계획 수정에 실패했거나, 다른 메시지를 전달하는 경우
+          console.warn('AI 응답에 plan 데이터는 없지만 message는 존재:', response.data.message);
+          // planId가 있고 message가 있다면 성공으로 간주할 수도 있지만, 여기서는 정보성으로 처리
+          currentCallback({ type: response.data.planId ? 'success' : 'info', content: response.data.message });
+        } else {
+          // 예상치 못한 응답 형식
+          console.error('AI로부터 유효한 plan 데이터나 message를 받지 못했습니다.', response.data);
+          currentCallback({ type: 'error', content: 'AI 계획 수정 결과를 처리할 수 없습니다. 응답 형식을 확인해주세요.' });
         }
-
-        // flightInfo와 isRoundTrip도 응답에 따라 업데이트 (필요한 경우)
-        // 이 부분은 실제 상태 관리 구조에 맞게 구현해야 합니다.
-        // 예: if (response.data.flightInfo) updatePlanData.setLoadedFlightInfo(response.data.flightInfo);
-        // 예: if (typeof response.data.isRoundTrip === 'boolean') updatePlanData.setIsRoundTrip(response.data.isRoundTrip);
 
       } else {
         currentCallback({ type: 'error', content: 'AI로부터 유효한 응답을 받지 못했습니다. 다시 시도해주세요.' });
@@ -155,10 +162,13 @@ const useAIMessageHandler = (planData, updatePlanData) => {
     planData.travelPlans, 
     planData.startDate, 
     planData.loadedFlightInfo, 
+    planData.loadedFlightInfos,
+    planData.loadedAccommodationInfos,
     planData.isRoundTrip, 
     updatePlanData.setPlanId, 
     updatePlanData.setTravelPlans, 
     updatePlanData.setDayOrder
+    // updatePlanData.setPlanTitle, // 필요하다면 의존성 배열에 추가
   ]);
 
   return handleAISendMessage;

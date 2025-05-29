@@ -4,9 +4,9 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
 // API 엔드포인트 설정 - 환경변수에서 가져오기
-const API_URL = process.env.REACT_APP_API_URL || 'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/';
-const MY_PAGE_API_URL = `${API_URL}api/user/mypage`;
-const USER_PROFILE_API_URL = `${API_URL}api/user/profile`;
+const API_URL = process.env.REACT_APP_API_URL || 'https://9b5hbw9u25.execute-api.ap-northeast-2.amazonaws.com/Stage';
+const MY_PAGE_API_URL = `${API_URL}/user/mypage`;
+const USER_PROFILE_API_URL = `${API_URL}/user/profile`;
 
 // 개발 환경에서 사용할 더미 데이터
 const DUMMY_USER_DATA = {
@@ -71,7 +71,6 @@ const DUMMY_BOOKINGS = [
 
 const MyPage = () => {
   const { user, signOut, getJwtToken, forgotPassword, forgotPasswordSubmit } = useAuth();
-  const navigate = useNavigate();
   const [userInfo, setUserInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -130,7 +129,7 @@ const MyPage = () => {
       }
 
       const response = await axios.post(
-        'https://lngdadu778.execute-api.ap-northeast-2.amazonaws.com/Stage/api/travel/checklist',
+        `${API_URL}/travel/checklist`,
         { mode: 'list' },
         {
           headers: {
@@ -411,7 +410,7 @@ const MyPage = () => {
       const tokenResult = await getJwtToken();
       if (tokenResult.success) {
         await axios.delete(
-          'https://j0jnhscmhk.execute-api.ap-northeast-2.amazonaws.com/default/deleteUserProfile',
+          `${API_URL}/user/deleteUserProfile`,
           {
             params: {
               email: userInfo?.email || user?.email
