@@ -352,12 +352,6 @@ const TravelInfoSection = () => {
           인기 여행지
         </button>
         <button
-          className={`px-6 py-3 font-medium ${activeTab === "inspiration" ? "text-primary border-b-2 border-primary" : "text-gray-500"}`}
-          onClick={() => setActiveTab("inspiration")}
-        >
-          ✈️ 여행지 추천
-        </button>
-        <button
           className={`px-6 py-3 font-medium ${activeTab === "hotels" ? "text-primary border-b-2 border-primary" : "text-gray-500"}`}
           onClick={() => setActiveTab("hotels")}
         >
@@ -436,54 +430,6 @@ const TravelInfoSection = () => {
           >
             <span className="text-2xl">→</span>
           </button>
-        </div>
-      )}
-
-      {/* 여행지 추천 섹션 */}
-      {activeTab === "inspiration" && (
-        <div className="w-full max-w-2xl mx-auto">
-          {/* 상단 파란 배경 */}
-          <div className="rounded-t-2xl bg-gradient-to-r from-sky-500 to-sky-400 p-8 flex flex-col gap-2 relative overflow-hidden">
-            <div className="text-white font-bold text-lg mb-1">제일 빠른 항공권!</div>
-            <div className="text-white text-2xl font-extrabold mb-1">땡처리 항공권이 곧 마감됩니다.</div>
-            
-            {/* 비행기 날개 이미지 자리 (원하는 경우 public에 이미지 추가 후 src 교체) */}
-            <div className="absolute right-0 bottom-0 w-1/2 h-24 opacity-30 bg-no-repeat bg-right bg-contain pointer-events-none" style={{backgroundImage: "url()"}}></div>
-          </div>
-          {/* 리스트 카드 */}
-          <div className="bg-white rounded-b-2xl shadow-lg px-6 py-4 -mt-2">
-            {/* 더미 데이터 반복 */}
-            {[
-              {
-                from: '인천', to: '방콕', date: '2025.05.13~2025.10.25', type: '왕복 · 직항', price: '209,000원~', logo: '',
-              },
-              {
-                from: '인천', to: '방콕', date: '2025.05.14~2025.10.22', type: '왕복 · 직항', price: '199,000원~', logo: '',
-              },
-              {
-                from: '인천', to: '방콕', date: '2025.07.01~2025.10.22', type: '왕복 · 직항', price: '269,000원~', logo: '',
-              },
-              {
-                from: '인천', to: '괌', date: '2025.05.13~2025.10.21', type: '왕복 · 직항', price: '209,000원~', logo: '',
-              },
-            ].map((item, idx) => (
-              <div key={idx} className="flex items-center justify-between py-4 border-b last:border-b-0">
-                <div className="flex-1">
-                  <div className="font-bold text-lg text-gray-800">{item.from} - {item.to}</div>
-                  <div className="text-gray-500 text-sm mb-1">{item.date} · {item.type}</div>
-                  <div className="font-bold text-xl text-sky-700">{item.price}</div>
-                </div>
-                {/* 항공사 로고 자리 */}
-                <div className="w-16 h-10 flex items-center justify-center">
-                  {/* <img src={item.logo} alt="항공사" className="h-8" /> */}
-                </div>
-              </div>
-            ))}
-            {/* 더보기 버튼 */}
-            <div className="flex justify-center mt-4">
-              <button className="w-full py-3 rounded-lg bg-gray-50 text-lg font-semibold text-gray-700 hover:bg-gray-100 transition">상품 더보기</button>
-            </div>
-          </div>
         </div>
       )}
 
