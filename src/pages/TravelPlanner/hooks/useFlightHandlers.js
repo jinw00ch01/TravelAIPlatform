@@ -86,25 +86,34 @@ const useFlightHandlers = () => {
     };
   }, []);
 
-  const handleFlightSearch = useCallback(async () => {
+  const handleFlightSearch = useCallback(async (paramsFromFlightPlan) => {
     const {
-      selectedOrigin, selectedDestination, departureDate, returnDate,
-      adults, children, infants, travelClass, nonStop, currencyCode,
-      maxPrice, max
-    } = flightSearchParams;
+      originLocationCode,
+      destinationLocationCode,
+      departureDate,
+      returnDate,
+      adults,
+      children,
+      infants,
+      travelClass,
+      nonStop,
+      currencyCode,
+      maxPrice,
+      max
+    } = paramsFromFlightPlan;
 
     const missing = [];
-    if (!selectedOrigin) missing.push('출발지');
-    if (!selectedDestination) missing.push('도착지');
+    if (!originLocationCode) missing.push('출발지');
+    if (!destinationLocationCode) missing.push('도착지');
     if (!departureDate) missing.push('출발일');
-    if (adults < 1) missing.push('성인');
+    if (!adults || adults < 1) missing.push('성인');
 
     if (missing.length) {
       setFlightError(`${missing.join(', ')} 입력 필요`);
       return;
     }
 
-    if (infants > adults) {
+    if (infants && adults && infants > adults) {
       setFlightError('유아 수는 성인보다 많을 수 없습니다.');
       return;
     }
@@ -117,22 +126,24 @@ const useFlightHandlers = () => {
     setFlightError(null);
     setIsLoadingFlights(true);
     try {
-      const params = {
-        originCode: selectedOrigin.iataCode,
-        destinationCode: selectedDestination.iataCode,
-        departureDate: departureDate.toISOString().split('T')[0],
-        returnDate: returnDate ? returnDate.toISOString().split('T')[0] : null,
+      const apiParams = {
+        originCode: originLocationCode,
+        destinationCode: destinationLocationCode,
+        departureDate: departureDate,
+        returnDate: returnDate,
         adults: parseInt(adults),
-        ...(children > 0 && { children }),
-        ...(infants > 0 && { infants }),
+        ...(children > 0 && { children: parseInt(children) }),
+        ...(infants > 0 && { infants: parseInt(infants) }),
         ...(travelClass && { travelClass }),
         ...(nonStop && { nonStop }),
         currencyCode: currencyCode || 'KRW',
         ...(maxPrice && { maxPrice: parseInt(maxPrice, 10) }),
         max: max || 10
       };
+      
+      console.log('[useFlightHandlers] API 요청 파라미터:', apiParams);
 
-      const response = await amadeusApi.searchFlights(params);
+      const response = await amadeusApi.searchFlights(apiParams);
       if (Array.isArray(response.data)) {
         setFlightResults(response.data);
         setFlightDictionaries(response.dictionaries || null);
@@ -149,7 +160,7 @@ const useFlightHandlers = () => {
     } finally {
       setIsLoadingFlights(false);
     }
-  }, [flightSearchParams, setFlightError, setIsLoadingFlights, setFlightResults, setFlightDictionaries]);
+  }, [setFlightError, setIsLoadingFlights, setFlightResults, setFlightDictionaries]);
 
   // 항공편 추가 전 검증 함수
   const validateFlightAddition = useCallback((flightOffer, travelPlans, dayOrder, startDate) => {

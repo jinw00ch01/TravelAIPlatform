@@ -1267,7 +1267,7 @@ const TravelPlanner = ({ loadMode }) => {
           handleRemoveSharedEmail={dialogHandlers.handleRemoveSharedEmail}
           shareMessage={dialogHandlers.shareMessage}
           isSharing={dialogHandlers.isSharing}
-          handleSharePlan={dialogHandlers.handleSharePlan}
+          handleSharePlan={(sharedEmailString) => dialogHandlers.handleSharePlan(plannerHandleSharePlan, planId, sharedEmailString)}
           isSharedPlan={isSharedPlanFromLoader}
           sharedEmailsFromLoader={sharedEmailsFromLoader}
           originalOwner={originalOwner}
