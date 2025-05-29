@@ -30,10 +30,10 @@ const useAccommodationHandlers = () => {
   }, []);
 
   // 숙소를 일정에 추가하는 함수
-  const addAccommodationToSchedule = useCallback((hotelToAdd, getDayTitle, setTravelPlans, startDate, dayOrder, setLoadedAccommodationInfo) => {
+  const addAccommodationToSchedule = useCallback((hotelToAdd, getDayTitle, setTravelPlans, startDate, dayOrder, setLoadedAccommodationInfo, isAutoConversion = false) => {
     if (!hotelToAdd) {
       console.error('[useAccommodationHandlers] 호텔 정보가 없습니다.');
-      alert('호텔 정보가 없습니다.');
+      if (!isAutoConversion) alert('호텔 정보가 없습니다.');
       return false;
     }
 
@@ -55,7 +55,7 @@ const useAccommodationHandlers = () => {
 
     if (isNaN(checkInDate.getTime()) || isNaN(checkOutDate.getTime())) {
       console.error('[useAccommodationHandlers] 잘못된 날짜 형식');
-      alert('체크인 또는 체크아웃 날짜가 올바르지 않습니다.');
+      if (!isAutoConversion) alert('체크인 또는 체크아웃 날짜가 올바르지 않습니다.');
       return false;
     }
 
@@ -78,29 +78,31 @@ const useAccommodationHandlers = () => {
     const checkInDateZero = toZeroTime(checkInDate);
     const checkOutDateZero = toZeroTime(checkOutDate);
 
-    // 1. 모든 날짜에 dayKey가 있는지 먼저 검사
-    let allDaysExist = true;
-    let missingDay = null;
-    let checkDate = new Date(checkInDateZero);
-    while (checkDate < checkOutDateZero) {
-      const diff = Math.round((checkDate - baseStart) / (1000 * 60 * 60 * 24));
-      const dayKey = dayOrder[diff];
-      if (!dayKey) {
-        allDaysExist = false;
-        missingDay = formatDateLocal(checkDate);
-        break;
+    // 1. 모든 날짜에 dayKey가 있는지 먼저 검사 (자동 변환이 아닌 경우에만)
+    if (!isAutoConversion) {
+      let allDaysExist = true;
+      let missingDay = null;
+      let checkDate = new Date(checkInDateZero);
+      while (checkDate < checkOutDateZero) {
+        const diff = Math.round((checkDate - baseStart) / (1000 * 60 * 60 * 24));
+        const dayKey = dayOrder[diff];
+        if (!dayKey) {
+          allDaysExist = false;
+          missingDay = formatDateLocal(checkDate);
+          break;
+        }
+        checkDate.setDate(checkDate.getDate() + 1);
       }
-      checkDate.setDate(checkDate.getDate() + 1);
-    }
-    const diffOut = Math.round((checkOutDateZero - baseStart) / (1000 * 60 * 60 * 24));
-    const dayKeyOut = dayOrder[diffOut];
-    if (!dayKeyOut && allDaysExist) {
-      allDaysExist = false;
-      missingDay = formatDateLocal(checkOutDateZero);
-    }
-    if (!allDaysExist) {
-      alert(`${missingDay} 날짜에 일정을 먼저 추가하세요.`);
-      return false;
+      const diffOut = Math.round((checkOutDateZero - baseStart) / (1000 * 60 * 60 * 24));
+      const dayKeyOut = dayOrder[diffOut];
+      if (!dayKeyOut && allDaysExist) {
+        allDaysExist = false;
+        missingDay = formatDateLocal(checkOutDateZero);
+      }
+      if (!allDaysExist) {
+        alert(`${missingDay} 날짜에 일정을 먼저 추가하세요.`);
+        return false;
+      }
     }
 
     // hotelToAdd에 roomList가 없으면 빈 배열로 보장
@@ -121,6 +123,8 @@ const useAccommodationHandlers = () => {
       longitude: hotelToAdd.hotel?.longitude || hotelToAdd.lng || hotelToAdd.longitude || null
     };
 
+    console.log(`[useAccommodationHandlers] 숙소 추가 ${isAutoConversion ? '(자동 변환)' : '(수동 추가)'}:`, hotelWithRoomList.hotel_name);
+
     // loadedAccommodationInfo 업데이트
     setLoadedAccommodationInfo({
       hotel: hotelWithRoomList,
@@ -134,6 +138,14 @@ const useAccommodationHandlers = () => {
     while (currentDate < checkOutDateZero) { // 체크아웃 전날까지만!
       const diff = Math.round((currentDate - baseStart) / (1000 * 60 * 60 * 24));
       const dayKey = dayOrder[diff];
+      
+      // dayKey가 없으면 스킵 (자동 변환의 경우)
+      if (!dayKey) {
+        console.warn(`[useAccommodationHandlers] Day key not found for date: ${formatDateLocal(currentDate)}`);
+        currentDate.setDate(currentDate.getDate() + 1);
+        continue;
+      }
+      
       let time = '숙박';
       if (currentDate.getTime() === checkInDateZero.getTime()) time = '체크인';
       
@@ -152,18 +164,22 @@ const useAccommodationHandlers = () => {
         lng: hotelWithRoomList.lng || hotelWithRoomList.longitude
       };
       
-      // 일반 일정 (흰색 카드) - Accommodation에서 추가할 때만
-      const generalSchedule = {
-        id: `hotel-general-${hotelWithRoomList.hotel_id}-${dayKey}`,
-        name: hotelWithRoomList.hotel_name_trans || hotelWithRoomList.hotel_name,
-        time: time === '체크인' ? '14:00' : '숙박',
-        address: hotelWithRoomList.address,
-        category: '숙소',
-        duration: time === '체크인' ? '체크인' : '숙박',
-        notes: hotelWithRoomList.price ? `가격: ${hotelWithRoomList.price}` : (hotelWithRoomList.composite_price_breakdown?.gross_amount ? `가격: ${hotelWithRoomList.composite_price_breakdown.gross_amount} ${hotelWithRoomList.composite_price_breakdown.currency}` : ''),
-        lat: hotelWithRoomList.lat || hotelWithRoomList.latitude,
-        lng: hotelWithRoomList.lng || hotelWithRoomList.longitude
-      };
+      // 자동 변환의 경우 일반 일정(흰색 카드)은 추가하지 않음
+      let generalSchedule = null;
+      if (!isAutoConversion) {
+        // 일반 일정 (흰색 카드) - Accommodation에서 추가할 때만
+        generalSchedule = {
+          id: `hotel-general-${hotelWithRoomList.hotel_id}-${dayKey}`,
+          name: hotelWithRoomList.hotel_name_trans || hotelWithRoomList.hotel_name,
+          time: time === '체크인' ? '14:00' : '숙박',
+          address: hotelWithRoomList.address,
+          category: '숙소',
+          duration: time === '체크인' ? '체크인' : '숙박',
+          notes: hotelWithRoomList.price ? `가격: ${hotelWithRoomList.price}` : (hotelWithRoomList.composite_price_breakdown?.gross_amount ? `가격: ${hotelWithRoomList.composite_price_breakdown.gross_amount} ${hotelWithRoomList.composite_price_breakdown.currency}` : ''),
+          lat: hotelWithRoomList.lat || hotelWithRoomList.latitude,
+          lng: hotelWithRoomList.lng || hotelWithRoomList.longitude
+        };
+      }
       
       setTravelPlans(prevTravelPlans => {
         const updatedPlans = { ...prevTravelPlans };
@@ -176,8 +192,8 @@ const useAccommodationHandlers = () => {
           updatedPlans[dayKey].schedules.push(newSchedule);
         }
         
-        // 일반 일정 추가 (중복 방지)
-        if (!updatedPlans[dayKey].schedules.some(s => s.id === generalSchedule.id)) {
+        // 일반 일정 추가 (수동 추가 시에만, 중복 방지)
+        if (generalSchedule && !updatedPlans[dayKey].schedules.some(s => s.id === generalSchedule.id)) {
           updatedPlans[dayKey].schedules.push(generalSchedule);
         }
         
@@ -187,6 +203,8 @@ const useAccommodationHandlers = () => {
     }
     
     // 체크아웃날 블록 추가
+    const diffOut = Math.round((checkOutDateZero - baseStart) / (1000 * 60 * 60 * 24));
+    const dayKeyOut = dayOrder[diffOut];
     if (dayKeyOut) {
       // 숙박편 일정 (주황색 카드)
       const outSchedule = {
@@ -203,21 +221,23 @@ const useAccommodationHandlers = () => {
         lng: hotelWithRoomList.lng || hotelWithRoomList.longitude
       };
       
-      // 일반 일정 (흰색 카드) - 체크아웃
-      const generalOutSchedule = {
-        id: `hotel-general-${hotelWithRoomList.hotel_id}-${dayKeyOut}-out`,
-        name: hotelWithRoomList.hotel_name_trans || hotelWithRoomList.hotel_name,
-        time: '11:00',
-        address: hotelWithRoomList.address,
-        category: '숙소',
-        duration: '체크아웃',
-        notes: hotelWithRoomList.price ? `가격: ${hotelWithRoomList.price}` : (hotelWithRoomList.composite_price_breakdown?.gross_amount ? `가격: ${hotelWithRoomList.composite_price_breakdown.gross_amount} ${hotelWithRoomList.composite_price_breakdown.currency}` : ''),
-        lat: hotelWithRoomList.lat || hotelWithRoomList.latitude,
-        lng: hotelWithRoomList.lng || hotelWithRoomList.longitude
-      };
-      
+      // 자동 변환의 경우 일반 일정(흰색 카드)은 추가하지 않음
+      let generalOutSchedule = null;
+      if (!isAutoConversion) {
+        // 일반 일정 (흰색 카드) - 체크아웃
+        generalOutSchedule = {
+          id: `hotel-general-${hotelWithRoomList.hotel_id}-${dayKeyOut}-out`,
+          name: hotelWithRoomList.hotel_name_trans || hotelWithRoomList.hotel_name,
+          time: '11:00',
+          address: hotelWithRoomList.address,
+          category: '숙소',
+          duration: '체크아웃',
+          notes: hotelWithRoomList.price ? `가격: ${hotelWithRoomList.price}` : (hotelWithRoomList.composite_price_breakdown?.gross_amount ? `가격: ${hotelWithRoomList.composite_price_breakdown.gross_amount} ${hotelWithRoomList.composite_price_breakdown.currency}` : ''),
+          lat: hotelWithRoomList.lat || hotelWithRoomList.latitude,
+          lng: hotelWithRoomList.lng || hotelWithRoomList.longitude
+        };
+      }
 
-      
       setTravelPlans(prevTravelPlans => {
         const updatedPlans = { ...prevTravelPlans };
         if (!updatedPlans[dayKeyOut]) {
@@ -229,8 +249,8 @@ const useAccommodationHandlers = () => {
           updatedPlans[dayKeyOut].schedules.push(outSchedule);
         }
         
-        // 일반 일정 추가 (중복 방지)
-        if (!updatedPlans[dayKeyOut].schedules.some(s => s.id === generalOutSchedule.id)) {
+        // 일반 일정 추가 (수동 추가 시에만, 중복 방지)
+        if (generalOutSchedule && !updatedPlans[dayKeyOut].schedules.some(s => s.id === generalOutSchedule.id)) {
           updatedPlans[dayKeyOut].schedules.push(generalOutSchedule);
         }
         

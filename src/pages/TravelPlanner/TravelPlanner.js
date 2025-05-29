@@ -759,8 +759,11 @@ const TravelPlanner = ({ loadMode }) => {
     {
       setPlanId,
       setTravelPlans,
-      setDayOrder
-    }
+      setDayOrder,
+      getDayTitle: plannerGetDayTitle,
+      setLoadedAccommodationInfo
+    },
+    addAccommodationToSchedule // 커스텀 숙소 추가 함수 전달
   );
 
   const forceRefreshSelectedDay = useCallback(() => {
@@ -778,6 +781,43 @@ const TravelPlanner = ({ loadMode }) => {
   useEffect(() => {
     setMapResizeTrigger(v => v + 1);
   }, [isSidebarOpen]);
+
+  // 숙소 자동 변환 이벤트 리스너 추가
+  useEffect(() => {
+    const handleAutoConvertAccommodation = (event) => {
+      const customAccommodationData = event.detail;
+      console.log('[TravelPlanner] 숙소 자동 변환 이벤트 수신:', customAccommodationData);
+      
+      try {
+        // 커스텀 숙소 추가 함수 호출 (자동 변환 플래그 추가)
+        const success = addAccommodationToSchedule(
+          customAccommodationData,
+          plannerGetDayTitle,
+          setTravelPlans,
+          startDate,
+          dayOrder,
+          setLoadedAccommodationInfo,
+          true // isAutoConversion = true
+        );
+        
+        if (success) {
+          console.log('[TravelPlanner] ✅ 숙소 자동 변환 성공:', customAccommodationData.hotel.hotel_name);
+        } else {
+          console.error('[TravelPlanner] ❌ 숙소 자동 변환 실패:', customAccommodationData.hotel.hotel_name);
+        }
+      } catch (error) {
+        console.error('[TravelPlanner] 숙소 자동 변환 중 오류:', error);
+      }
+    };
+    
+    // 이벤트 리스너 등록
+    window.addEventListener('autoConvertAccommodation', handleAutoConvertAccommodation);
+    
+    // 컴포넌트 언마운트 시 이벤트 리스너 제거
+    return () => {
+      window.removeEventListener('autoConvertAccommodation', handleAutoConvertAccommodation);
+    };
+  }, [addAccommodationToSchedule, plannerGetDayTitle, setTravelPlans, startDate, dayOrder, setLoadedAccommodationInfo]);
 
   // 저장/수정 버튼 클릭 핸들러
   const handleSaveOrUpdate = useCallback(async () => {

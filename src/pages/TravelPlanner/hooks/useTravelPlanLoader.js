@@ -1015,8 +1015,79 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
       const updatedTravelPlans = result.travelPlans;
       console.log('[useTravelPlanLoader] 항공편/숙박편 정보는 이미 processLoadedData에서 처리됨');
       
+      // *** 숙소 자동 변환 로직 추가 ***
+      const convertAccommodationsToCustom = (travelPlans, dayOrder, startDate) => {
+        console.log('[useTravelPlanLoader] 숙소 자동 변환 시작');
+        const convertedPlans = { ...travelPlans };
+        const accommodationsToConvert = [];
+        const processedHotels = new Set(); // 중복 방지를 위한 Set
+        
+        // 모든 일정에서 숙소 찾기
+        dayOrder.forEach(dayKey => {
+          const dayPlan = convertedPlans[dayKey];
+          if (dayPlan?.schedules) {
+            const nonAccommodationSchedules = [];
+            
+            dayPlan.schedules.forEach(schedule => {
+              // 숙소 판별 로직 (AI 메시지 핸들러와 동일)
+              const isAccommodation = 
+                schedule.category === '숙소' ||
+                schedule.category === '호텔' ||
+                schedule.category === '펜션' ||
+                schedule.category === '게스트하우스' ||
+                schedule.category === '민박' ||
+                schedule.type === 'accommodation' ||
+                (schedule.name && (
+                  schedule.name.includes('호텔') ||
+                  schedule.name.includes('펜션') ||
+                  schedule.name.includes('숙소') ||
+                  schedule.name.includes('게스트하우스') ||
+                  schedule.name.includes('민박')
+                ));
+              
+              if (isAccommodation && schedule.type !== 'accommodation') {
+                // 이미 accommodation 타입이 아닌 숙소만 변환 대상으로 추가
+                // 중복 방지를 위한 고유 키 생성 (호텔명 + 주소 기반)
+                const hotelKey = `${schedule.name}-${schedule.address || ''}`.replace(/\s+/g, '');
+                
+                if (!processedHotels.has(hotelKey)) {
+                  console.log('[useTravelPlanLoader] 변환할 숙소 발견:', schedule);
+                  processedHotels.add(hotelKey);
+                  accommodationsToConvert.push({
+                    ...schedule,
+                    dayKey: dayKey,
+                    hotelKey: hotelKey // 디버깅용
+                  });
+                } else {
+                  console.log('[useTravelPlanLoader] 중복 숙소 스킵:', schedule.name, hotelKey);
+                }
+              } else {
+                // 숙소가 아닌 일정은 그대로 유지
+                nonAccommodationSchedules.push(schedule);
+              }
+            });
+            
+            // 숙소가 제거된 일정으로 업데이트
+            convertedPlans[dayKey] = {
+              ...dayPlan,
+              schedules: nonAccommodationSchedules
+            };
+          }
+        });
+        
+        console.log('[useTravelPlanLoader] 변환할 숙소 목록 (중복 제거 후):', accommodationsToConvert);
+        return { convertedPlans, accommodationsToConvert };
+      };
+      
+      // 숙소 변환 실행
+      const { convertedPlans, accommodationsToConvert } = convertAccommodationsToCustom(
+        updatedTravelPlans, 
+        result.dayOrder, 
+        result.startDate
+      );
+      
       // 상태 업데이트
-      setTravelPlans(updatedTravelPlans);
+      setTravelPlans(convertedPlans);
       setDayOrder(result.dayOrder);
       setSelectedDay(result.selectedDay);
       setPlanId(result.planId);
@@ -1032,10 +1103,66 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
       setSharedEmails(result.sharedEmails || []);
       setOriginalOwner(result.originalOwner || null);
       
+      // 변환된 숙소들을 커스텀 숙소로 추가 (비동기로 처리)
+      if (accommodationsToConvert.length > 0) {
+        console.log('[useTravelPlanLoader] 커스텀 숙소 변환 작업 시작:', accommodationsToConvert.length, '개');
+        
+        // 잠깐 기다린 후 변환 작업 수행 (상태 업데이트 후)
+        setTimeout(() => {
+          accommodationsToConvert.forEach((accommodation, index) => {
+            setTimeout(() => {
+              try {
+                console.log(`[useTravelPlanLoader] 숙소 ${index + 1} 커스텀 변환 시작:`, accommodation);
+                
+                // 체크인 날짜 계산
+                const checkInDate = new Date(result.startDate);
+                checkInDate.setDate(checkInDate.getDate() + parseInt(accommodation.dayKey) - 1);
+                
+                // 체크아웃 날짜 계산 (다음날)
+                const checkOutDate = new Date(checkInDate);
+                checkOutDate.setDate(checkOutDate.getDate() + 1);
+                
+                // 커스텀 숙소 형식으로 변환
+                const customAccommodationData = {
+                  hotel: {
+                    hotel_id: accommodation.id || `auto-converted-${Date.now()}-${index}`,
+                    hotel_name: accommodation.name,
+                    hotel_name_trans: accommodation.name,
+                    address: accommodation.address || '',
+                    address_trans: accommodation.address || '',
+                    latitude: accommodation.lat || null,
+                    longitude: accommodation.lng || null,
+                    main_photo_url: '',
+                    price: accommodation.cost || accommodation.price || '',
+                    checkIn: checkInDate.toISOString().split('T')[0],
+                    checkOut: checkOutDate.toISOString().split('T')[0]
+                  },
+                  checkIn: checkInDate.toISOString().split('T')[0],
+                  checkOut: checkOutDate.toISOString().split('T')[0],
+                  contact: '',
+                  notes: accommodation.notes || `자동 변환된 숙소: ${accommodation.notes || ''}`,
+                  lat: accommodation.lat || null,
+                  lng: accommodation.lng || null,
+                  latitude: accommodation.lat || null,
+                  longitude: accommodation.lng || null
+                };
+                
+                console.log('[useTravelPlanLoader] 커스텀 숙소 데이터 생성:', customAccommodationData);
+                
+                // 이벤트 발송으로 TravelPlanner에서 처리하도록 함
+                window.dispatchEvent(new CustomEvent('autoConvertAccommodation', {
+                  detail: customAccommodationData
+                }));
+                
+              } catch (error) {
+                console.error('[useTravelPlanLoader] 숙소 자동 변환 중 오류:', error);
+              }
+            }, index * 200); // 각 숙소를 200ms 간격으로 처리
+          });
+        }, 1000); // 1초 후 시작
+      }
+      
       console.log('[useTravelPlanLoader] 최종 상태 업데이트 완료. newStartDate:', result.startDate, 'sharedEmail:', result.sharedEmail, 'isSharedPlan:', result.isSharedPlan, 'sharedEmails:', result.sharedEmails, 'originalOwner:', result.originalOwner);
-
-      // 다중 항공편/숙박편 정보는 이미 processLoadedData에서 travel-plans에 추가되었으므로 여기서는 처리하지 않음
-      console.log('[useTravelPlanLoader] 다중 항공편/숙박편 정보는 이미 processLoadedData에서 처리됨');
 
     } catch (error) {
       console.error('[useTravelPlanLoader] 여행 계획 로드 실패:', error);
