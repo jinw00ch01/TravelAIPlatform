@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../components/auth/AuthContext';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
 
 // API 엔드포인트 설정 - 환경변수에서 가져오기
 const API_URL = process.env.REACT_APP_API_URL || 'https://9b5hbw9u25.execute-api.ap-northeast-2.amazonaws.com/Stage';
