@@ -2,11 +2,24 @@ import { useState, useEffect, useCallback } from 'react';
 import { format as formatDateFns } from 'date-fns';
 import { travelApi } from '../../../services/api';
 import useFlightHandlers from './useFlightHandlers';
+import { sortSchedulesByTime } from '../utils/scheduleUtils';
 
 // 날짜 포맷팅 유틸리티 함수 (loader 내부용)
 const formatDateForTitleInternal = (date, dayNumber) => {
   if (!date || isNaN(date.getTime())) return `Day ${dayNumber}`;
   return formatDateFns(date, 'M/d');
+};
+
+// 날짜를 dayKey로 변환하는 유틸리티 함수
+const getDayKeyForDate = (dateStr, startDate) => {
+  if (!dateStr || !startDate) return null;
+  const date = new Date(dateStr);
+  const start = new Date(startDate);
+  if (isNaN(date.getTime()) || isNaN(start.getTime())) return null;
+  
+  const diffTime = Math.abs(date - start);
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  return (diffDays + 1).toString();
 };
 
 const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
@@ -150,11 +163,9 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
         if (data.accommodationInfos && Array.isArray(data.accommodationInfos) && data.accommodationInfos.length > 0) {
           parsedAccommodationInfos = data.accommodationInfos;
           parsedAccommodationInfo = data.accommodationInfos[0]; // 하위 호환성
-          console.log('[useTravelPlanLoader] checkplan API에서 다중 숙박편 정보 추출:', parsedAccommodationInfos.length, '개');
         } else if (data.accommodationInfo) {
           parsedAccommodationInfo = data.accommodationInfo;
           parsedAccommodationInfos = [data.accommodationInfo];
-          console.log('[useTravelPlanLoader] checkplan API에서 단일 숙박편 정보 추출 (하위 호환성)');
         }
         
         // 시작 날짜 설정 (다중 정보 처리 전에 먼저 설정)
@@ -176,12 +187,48 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
         }
         
         // itinerary_schedules 파싱
-        const parsedSchedules = JSON.parse(data.plan.itinerary_schedules);
+        console.log('[useTravelPlanLoader] 🔍 itinerary_schedules 확인:', {
+          존재여부: !!data.plan.itinerary_schedules,
+          타입: typeof data.plan.itinerary_schedules,
+          길이: data.plan.itinerary_schedules?.length || 0,
+          첫100글자: data.plan.itinerary_schedules?.substring(0, 100) || 'N/A'
+        });
         
-        // 이미 정제된 형태의 데이터이므로 그대로 사용
-        newTravelPlans = parsedSchedules;
-        newDayOrder = Object.keys(parsedSchedules).sort((a, b) => parseInt(a) - parseInt(b));
-        newSelectedDay = newDayOrder[0] || '1';
+        // ✅ 수정: itinerary_schedules 존재 여부 확인 후 파싱
+        if (data.plan.itinerary_schedules) {
+          try {
+            const parsedSchedules = JSON.parse(data.plan.itinerary_schedules);
+            console.log('[useTravelPlanLoader] 🔍 파싱된 itinerary_schedules:', {
+              타입: typeof parsedSchedules,
+              키수: Object.keys(parsedSchedules || {}).length,
+              키목록: Object.keys(parsedSchedules || {}),
+              첫번째일정샘플: parsedSchedules?.[Object.keys(parsedSchedules || {})[0]]
+            });
+            
+            // ✅ 수정: 일반 일정을 먼저 복원하고, 이후에 숙박편/항공편 추가
+            newTravelPlans = { ...parsedSchedules };
+            newDayOrder = Object.keys(parsedSchedules).sort((a, b) => parseInt(a) - parseInt(b));
+            newSelectedDay = newDayOrder[0] || '1';
+            
+            console.log('[useTravelPlanLoader] ✅ 일반 일정 복원 완료:', {
+              복원된일차수: Object.keys(newTravelPlans).length,
+              일차별일정수: Object.fromEntries(Object.entries(newTravelPlans).map(([day, plan]) => 
+                [day, { 제목: plan.title, 일정수: plan.schedules?.length || 0 }]
+              ))
+            });
+          } catch (error) {
+            console.error('[useTravelPlanLoader] itinerary_schedules 파싱 실패:', error);
+            console.log('[useTravelPlanLoader] 기본 빈 일정으로 초기화');
+            newTravelPlans = {};
+            newDayOrder = [];
+            newSelectedDay = '1';
+          }
+        } else {
+          console.log('[useTravelPlanLoader] ⚠️ itinerary_schedules 없음 - 기본 빈 일정으로 초기화');
+          newTravelPlans = {};
+          newDayOrder = [];
+          newSelectedDay = '1';
+        }
         
         // ✅ 다중 항공편 정보를 travel-plans 형태로 변환하여 일정에 추가
         if (parsedFlightInfos && parsedFlightInfos.length > 0) {
@@ -245,7 +292,9 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
                   };
                 }
                 
-                newTravelPlans[dayKey].schedules.unshift(flightSchedule); // 항공편은 맨 앞에 추가
+                // ✅ 수정: 기존 일정을 유지하고 항공편을 맨 앞에 추가
+                const existingFlightSchedules = newTravelPlans[dayKey].schedules || [];
+                newTravelPlans[dayKey].schedules = [flightSchedule, ...existingFlightSchedules]; // 항공편은 맨 앞에 추가
                 console.log(`[useTravelPlanLoader] checkplan API - Day ${dayKey}에 항공편 ${index + 1}-${itineraryIndex + 1} 일정 추가 완료`);
               }
             });
@@ -256,107 +305,188 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
         
         // ✅ 다중 숙박편 정보를 travel-plans 형태로 변환하여 일정에 추가
         if (parsedAccommodationInfos && parsedAccommodationInfos.length > 0) {
-          console.log('[useTravelPlanLoader] checkplan API - 다중 숙박편을 일정에 추가 시작:', parsedAccommodationInfos.length, '개');
           
+          // 숙박편 정보에서 실제 여행 시작 날짜 계산
+          const accommodationDates = parsedAccommodationInfos.map(acc => new Date(acc.checkIn));
+          const earliestCheckIn = new Date(Math.min(...accommodationDates));
+          
+          // 실제 여행 시작 날짜와 현재 설정된 시작 날짜가 다르면 보정
+          if (earliestCheckIn.toISOString().split('T')[0] !== newStartDate.toISOString().split('T')[0]) {
+            newStartDate = earliestCheckIn;
+            
+            // dayOrder도 다시 계산
+            const totalDays = Math.max(...Object.keys(newTravelPlans).map(k => parseInt(k)));
+            newDayOrder = Array.from({ length: totalDays }, (_, i) => (i + 1).toString());
+          }
+
           parsedAccommodationInfos.forEach((accommodationInfo, index) => {
             if (!accommodationInfo?.hotel || !accommodationInfo.checkIn || !accommodationInfo.checkOut) {
               console.warn(`[useTravelPlanLoader] checkplan API - 숙박편 ${index + 1} 정보가 불완전함`);
               return;
             }
 
+            console.log(`[useTravelPlanLoader] 숙박편 ${index + 1} 처리 시작:`, {
+              hotelName: accommodationInfo.hotel.hotel_name || accommodationInfo.hotel.hotel_name_trans,
+              originalCheckIn: accommodationInfo.checkIn,
+              originalCheckOut: accommodationInfo.checkOut,
+              fullAccommodationInfo: accommodationInfo
+            });
+
+            // 가격 정보를 여러 필드에서 추출
+            const extractPrice = (accommodationData) => {
+              const priceFields = [
+                accommodationData.hotel?.price,
+                accommodationData.price,
+                accommodationData.room?.price,
+                accommodationData.hotel?.composite_price_breakdown?.gross_amount?.value,
+                accommodationData.composite_price_breakdown?.gross_amount?.value,
+                accommodationData.cost
+              ];
+
+              for (const priceField of priceFields) {
+                if (priceField !== null && priceField !== undefined && priceField !== '') {
+                  return priceField;
+                }
+              }
+              return null;
+            };
+
+            const hotelInfo = accommodationInfo.hotel;
+            const extractedPrice = extractPrice(accommodationInfo);
+            console.log(`[useTravelPlanLoader] 저장된 숙박편 가격 추출:`, {
+              hotelName: hotelInfo.hotel_name || hotelInfo.hotel_name_trans,
+              extractedPrice: extractedPrice,
+              originalPrice: hotelInfo.price,
+              accommodationPrice: accommodationInfo.price
+            });
+
+            // 체크인/체크아웃 날짜를 dayKey로 매핑
             const checkInDate = new Date(accommodationInfo.checkIn);
             const checkOutDate = new Date(accommodationInfo.checkOut);
-            checkInDate.setHours(0, 0, 0, 0);
-            checkOutDate.setHours(0, 0, 0, 0);
-
-            // 체크인과 체크아웃 날짜에 해당하는 day 키 찾기
-            const dayKeys = newDayOrder.filter(dayKey => {
+            
+            // ✅ 수정: 문자열 기반 날짜 비교를 위한 변수를 먼저 정의
+            const checkInStr = checkInDate.toISOString().split('T')[0];
+            const checkOutStr = checkOutDate.toISOString().split('T')[0];
+            
+            const matchingDays = newDayOrder.map(dayKey => {
               const dayDate = new Date(newStartDate);
               dayDate.setDate(dayDate.getDate() + parseInt(dayKey) - 1);
-              dayDate.setHours(0, 0, 0, 0);
+              const dayDateStr = dayDate.toISOString().split('T')[0];
               
-              const isCheckInDay = dayDate.getTime() === checkInDate.getTime();
-              const isCheckOutDay = dayDate.getTime() === checkOutDate.getTime();
-              return isCheckInDay || isCheckOutDay;
-            }).sort((a, b) => parseInt(a) - parseInt(b));
+              return {
+                dayKey,
+                dayDate: dayDateStr,
+                isCheckIn: dayDateStr === checkInStr,
+                isCheckOut: dayDateStr === checkOutStr
+              };
+            });
 
-            if (dayKeys.length > 0) {
-              const hotelInfo = accommodationInfo.hotel;
-              
-              // 기본 스케줄 정보
-              const baseSchedule = {
-                name: hotelInfo.hotel_name || hotelInfo.hotel_name_trans,
-                address: hotelInfo.address || hotelInfo.address_trans,
-                category: '숙소',
-                type: 'accommodation',
-                hotelDetails: accommodationInfo,
-                lat: hotelInfo.latitude,
-                lng: hotelInfo.longitude,
-                notes: hotelInfo.price ? `가격: ${hotelInfo.price}` : ''
+            console.log(`[useTravelPlanLoader] 숙박편 ${index + 1} 날짜 매칭 결과:`, {
+              hotelName: hotelInfo.hotel_name || hotelInfo.hotel_name_trans,
+              checkIn: checkInStr,
+              checkOut: checkOutStr,
+              여행시작날짜: newStartDate.toISOString().split('T')[0],
+              dayOrder: newDayOrder,
+              matchingDays: matchingDays.map(d => ({
+                dayKey: d.dayKey,
+                dayDate: d.dayDate,
+                isCheckIn: d.isCheckIn,
+                isCheckOut: d.isCheckOut,
+                체크인비교: `${d.dayDate} === ${checkInStr} = ${d.isCheckIn}`,
+                체크아웃비교: `${d.dayDate} === ${checkOutStr} = ${d.isCheckOut}`
+              }))
+            });
+
+            // 기본 스케줄 정보
+            const baseSchedule = {
+              name: hotelInfo.hotel_name || hotelInfo.hotel_name_trans,
+              address: hotelInfo.address || hotelInfo.address_trans,
+              category: '숙소',
+              type: 'accommodation',
+              hotelDetails: accommodationInfo,
+              lat: hotelInfo.latitude,
+              lng: hotelInfo.longitude,
+              notes: extractedPrice ? `가격: ${extractedPrice}` : ''
+            };
+
+            // 체크인 일정 추가
+            const checkInDay = matchingDays.find(d => d.isCheckIn);
+            if (checkInDay) {
+              const checkInSchedule = {
+                ...baseSchedule,
+                id: `saved-hotel-${hotelInfo.hotel_id}-${index}-${checkInDay.dayKey}-in`,
+                time: '체크인',
+                duration: '1박'
               };
 
-              // 체크인 날짜에 체크인 일정 추가
-              const checkInDayKey = dayKeys.find(dayKey => {
-                const dayDate = new Date(newStartDate);
-                dayDate.setDate(dayDate.getDate() + parseInt(dayKey) - 1);
-                dayDate.setHours(0, 0, 0, 0);
-                return dayDate.getTime() === checkInDate.getTime();
-              });
+              // ✅ 제거: 일반 숙박 일정 중복 생성하지 않음 (data에서 자동 복원됨)
+              // const checkInGeneralSchedule = { ... }
 
-              if (checkInDayKey) {
-                const checkInSchedule = {
-                  ...baseSchedule,
-                  id: `saved-hotel-${hotelInfo.hotel_id}-${index}-${checkInDayKey}-in`,
-                  time: '체크인',
-                  duration: '1박'
+              if (!newTravelPlans[checkInDay.dayKey]) {
+                const checkInDateObj = new Date(newStartDate);
+                checkInDateObj.setDate(checkInDateObj.getDate() + parseInt(checkInDay.dayKey) - 1);
+                newTravelPlans[checkInDay.dayKey] = {
+                  title: formatDateForTitleInternal(checkInDateObj, parseInt(checkInDay.dayKey)),
+                  schedules: []
                 };
-
-                if (!newTravelPlans[checkInDayKey]) {
-                  const checkInDateObj = new Date(newStartDate);
-                  checkInDateObj.setDate(checkInDateObj.getDate() + parseInt(checkInDayKey) - 1);
-                  newTravelPlans[checkInDayKey] = {
-                    title: formatDateForTitleInternal(checkInDateObj, parseInt(checkInDayKey)),
-                    schedules: []
-                  };
-                }
-                newTravelPlans[checkInDayKey].schedules.push(checkInSchedule);
-                console.log(`[useTravelPlanLoader] checkplan API - 저장된 숙박편 ${index + 1} 체크인 일정 추가 완료 (Day ${checkInDayKey})`);
               }
+              
+              // ✅ 수정: 기존 일정이 있으면 유지하고 숙박편 추가
+              const existingSchedules = newTravelPlans[checkInDay.dayKey].schedules || [];
+              newTravelPlans[checkInDay.dayKey].schedules = [...existingSchedules, checkInSchedule];
+              console.log(`[useTravelPlanLoader] checkplan API - 저장된 숙박편 ${index + 1} 체크인 일정 추가 완료 (Day ${checkInDay.dayKey}, 날짜: ${checkInDay.dayDate})`);
+              console.log(`[useTravelPlanLoader] 추가된 체크인 일정:`, checkInSchedule);
+              // ✅ 제거: 일반 일정 로그 제거
+              // console.log(`[useTravelPlanLoader] 추가된 체크인 일반 일정:`, checkInGeneralSchedule);
+            } else {
+              console.warn(`[useTravelPlanLoader] checkplan API - 숙박편 ${index + 1}의 체크인 날짜(${checkInStr})가 여행 일정 범위에 없음`);
+            }
 
-              // 체크아웃 날짜에 체크아웃 일정 추가
-              const checkOutDayKey = dayKeys.find(dayKey => {
-                const dayDate = new Date(newStartDate);
-                dayDate.setDate(dayDate.getDate() + parseInt(dayKey) - 1);
-                dayDate.setHours(0, 0, 0, 0);
-                return dayDate.getTime() === checkOutDate.getTime();
-              });
+            // 체크아웃 일정 추가 (checkIn과 다를 때만)
+            const checkOutDay = matchingDays.find(d => d.isCheckOut);
+            if (checkOutDay && checkOutDay.dayKey !== checkInDay?.dayKey) {
+              const checkOutSchedule = {
+                ...baseSchedule,
+                id: `saved-hotel-${hotelInfo.hotel_id}-${index}-${checkOutDay.dayKey}-out`,
+                time: '체크아웃',
+                duration: ''
+              };
 
-              if (checkOutDayKey && checkOutDayKey !== checkInDayKey) {
-                const checkOutSchedule = {
-                  ...baseSchedule,
-                  id: `saved-hotel-${hotelInfo.hotel_id}-${index}-${checkOutDayKey}-out`,
-                  time: '체크아웃',
-                  duration: ''
+              // ✅ 제거: 일반 숙박 일정 중복 생성하지 않음 (data에서 자동 복원됨)
+              // const checkOutGeneralSchedule = { ... }
+
+              if (!newTravelPlans[checkOutDay.dayKey]) {
+                const checkOutDateObj = new Date(newStartDate);
+                checkOutDateObj.setDate(checkOutDateObj.getDate() + parseInt(checkOutDay.dayKey) - 1);
+                newTravelPlans[checkOutDay.dayKey] = {
+                  title: formatDateForTitleInternal(checkOutDateObj, parseInt(checkOutDay.dayKey)),
+                  schedules: []
                 };
-
-                if (!newTravelPlans[checkOutDayKey]) {
-                  const checkOutDateObj = new Date(newStartDate);
-                  checkOutDateObj.setDate(checkOutDateObj.getDate() + parseInt(checkOutDayKey) - 1);
-                  newTravelPlans[checkOutDayKey] = {
-                    title: formatDateForTitleInternal(checkOutDateObj, parseInt(checkOutDayKey)),
-                    schedules: []
-                  };
-                }
-                newTravelPlans[checkOutDayKey].schedules.push(checkOutSchedule);
-                console.log(`[useTravelPlanLoader] checkplan API - 저장된 숙박편 ${index + 1} 체크아웃 일정 추가 완료 (Day ${checkOutDayKey})`);
               }
+              
+              // ✅ 수정: 기존 일정이 있으면 유지하고 체크아웃 일정 추가
+              const existingCheckOutSchedules = newTravelPlans[checkOutDay.dayKey].schedules || [];
+              newTravelPlans[checkOutDay.dayKey].schedules = [...existingCheckOutSchedules, checkOutSchedule];
+              console.log(`[useTravelPlanLoader] checkplan API - 저장된 숙박편 ${index + 1} 체크아웃 일정 추가 완료 (Day ${checkOutDay.dayKey}, 날짜: ${checkOutDay.dayDate})`);
+              console.log(`[useTravelPlanLoader] 추가된 체크아웃 일정:`, checkOutSchedule);
+              // ✅ 제거: 일반 일정 로그 제거
+              // console.log(`[useTravelPlanLoader] 추가된 체크아웃 일반 일정:`, checkOutGeneralSchedule);
+            } else if (checkOutDay && checkOutDay.dayKey === checkInDay?.dayKey) {
+              console.log(`[useTravelPlanLoader] checkplan API - 숙박편 ${index + 1}의 체크인과 체크아웃이 같은 날짜라 체크아웃 일정 스킵`);
+            } else {
+              console.warn(`[useTravelPlanLoader] checkplan API - 숙박편 ${index + 1}의 체크아웃 날짜(${checkOutStr})가 여행 일정 범위에 없음`);
             }
           });
           
           console.log('[useTravelPlanLoader] checkplan API - 다중 숙박편 일정 추가 완료');
+          
+          // ✅ 로딩 시 시간 순서대로 일정 정렬 (숙박편은 같은 시간대에서 뒤로 배치)
+          Object.keys(newTravelPlans).forEach(dayKey => {
+            if (newTravelPlans[dayKey]?.schedules?.length > 0) {
+              newTravelPlans[dayKey].schedules = sortSchedulesByTime(newTravelPlans[dayKey].schedules);
+            }
+          });
         }
-        
-
         
         console.log('[useTravelPlanLoader] checkplanfunction API 데이터 처리 완료');
         isDataProcessed = true;
@@ -557,11 +687,23 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
         
         // ✅ travel-plans 다중 숙박편 정보를 일정에 추가
         if (parsedAccommodationInfos && parsedAccommodationInfos.length > 0) {
-          console.log('[useTravelPlanLoader] travel-plans - 다중 숙박편을 일정에 추가 시작:', parsedAccommodationInfos.length, '개');
           
+          // 숙박편 정보에서 실제 여행 시작 날짜 계산
+          const accommodationDates = parsedAccommodationInfos.map(acc => new Date(acc.checkIn));
+          const earliestCheckIn = new Date(Math.min(...accommodationDates));
+          
+          // 실제 여행 시작 날짜와 현재 설정된 시작 날짜가 다르면 보정
+          if (earliestCheckIn.toISOString().split('T')[0] !== newStartDate.toISOString().split('T')[0]) {
+            newStartDate = earliestCheckIn;
+            
+            // dayOrder도 다시 계산
+            const totalDays = Math.max(...Object.keys(newTravelPlans).map(k => parseInt(k)));
+            newDayOrder = Array.from({ length: totalDays }, (_, i) => (i + 1).toString());
+          }
+
           parsedAccommodationInfos.forEach((accommodationInfo, index) => {
             if (!accommodationInfo?.hotel || !accommodationInfo.checkIn || !accommodationInfo.checkOut) {
-              console.warn(`[useTravelPlanLoader] travel-plans - 숙박편 ${index + 1} 정보가 불완전함`);
+              console.warn(`[useTravelPlanLoader] checkplan API - 숙박편 ${index + 1} 정보가 불완전함`);
               return;
             }
 
@@ -584,6 +726,67 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
             if (dayKeys.length > 0) {
               const hotelInfo = accommodationInfo.hotel;
               
+              // 가격 정보를 여러 필드에서 추출
+              const extractPrice = (accommodationData) => {
+                const priceFields = [
+                  accommodationData.hotel?.price,
+                  accommodationData.price,
+                  accommodationData.room?.price,
+                  accommodationData.hotel?.composite_price_breakdown?.gross_amount?.value,
+                  accommodationData.composite_price_breakdown?.gross_amount?.value,
+                  accommodationData.cost
+                ];
+
+                for (const priceField of priceFields) {
+                  if (priceField !== null && priceField !== undefined && priceField !== '') {
+                    return priceField;
+                  }
+                }
+                return null;
+              };
+
+              const extractedPrice = extractPrice(accommodationInfo);
+              console.log(`[useTravelPlanLoader] 저장된 숙박편 가격 추출:`, {
+                hotelName: hotelInfo.hotel_name || hotelInfo.hotel_name_trans,
+                extractedPrice: extractedPrice,
+                originalPrice: hotelInfo.price,
+                accommodationPrice: accommodationInfo.price
+              });
+              
+              // 체크인/체크아웃 날짜를 dayKey로 매핑
+              // ✅ 수정: 문자열 기반 날짜 비교를 위한 변수를 먼저 정의
+              const checkInStr = checkInDate.toISOString().split('T')[0];
+              const checkOutStr = checkOutDate.toISOString().split('T')[0];
+              
+              const matchingDays = newDayOrder.map(dayKey => {
+                const dayDate = new Date(newStartDate);
+                dayDate.setDate(dayDate.getDate() + parseInt(dayKey) - 1);
+                const dayDateStr = dayDate.toISOString().split('T')[0];
+                
+                return {
+                  dayKey,
+                  dayDate: dayDateStr,
+                  isCheckIn: dayDateStr === checkInStr,
+                  isCheckOut: dayDateStr === checkOutStr
+                };
+              });
+
+              console.log(`[useTravelPlanLoader] 숙박편 ${index + 1} 날짜 매칭 결과:`, {
+                hotelName: hotelInfo.hotel_name || hotelInfo.hotel_name_trans,
+                checkIn: checkInStr,
+                checkOut: checkOutStr,
+                여행시작날짜: newStartDate.toISOString().split('T')[0],
+                dayOrder: newDayOrder,
+                matchingDays: matchingDays.map(d => ({
+                  dayKey: d.dayKey,
+                  dayDate: d.dayDate,
+                  isCheckIn: d.isCheckIn,
+                  isCheckOut: d.isCheckOut,
+                  체크인비교: `${d.dayDate} === ${checkInStr} = ${d.isCheckIn}`,
+                  체크아웃비교: `${d.dayDate} === ${checkOutStr} = ${d.isCheckOut}`
+                }))
+              });
+
               // 기본 스케줄 정보
               const baseSchedule = {
                 name: hotelInfo.hotel_name || hotelInfo.hotel_name_trans,
@@ -593,68 +796,94 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
                 hotelDetails: accommodationInfo,
                 lat: hotelInfo.latitude,
                 lng: hotelInfo.longitude,
-                notes: hotelInfo.price ? `가격: ${hotelInfo.price}` : ''
+                notes: extractedPrice ? `가격: ${extractedPrice}` : ''
               };
 
               // 체크인 날짜에 체크인 일정 추가
-              const checkInDayKey = dayKeys.find(dayKey => {
-                const dayDate = new Date(newStartDate);
-                dayDate.setDate(dayDate.getDate() + parseInt(dayKey) - 1);
-                dayDate.setHours(0, 0, 0, 0);
-                return dayDate.getTime() === checkInDate.getTime();
-              });
-
-              if (checkInDayKey) {
+              const checkInDay = matchingDays.find(d => d.isCheckIn);
+              if (checkInDay) {
                 const checkInSchedule = {
                   ...baseSchedule,
-                  id: `travel-hotel-${hotelInfo.hotel_id}-${index}-${checkInDayKey}-in`,
+                  id: `saved-hotel-${hotelInfo.hotel_id}-${index}-${checkInDay.dayKey}-in`,
                   time: '체크인',
                   duration: '1박'
                 };
 
-                if (!newTravelPlans[checkInDayKey]) {
+                // ✅ 제거: 일반 숙박 일정 중복 생성하지 않음 (data에서 자동 복원됨)
+                // const checkInGeneralSchedule = { ... }
+
+                if (!newTravelPlans[checkInDay.dayKey]) {
                   const checkInDateObj = new Date(newStartDate);
-                  checkInDateObj.setDate(checkInDateObj.getDate() + parseInt(checkInDayKey) - 1);
-                  newTravelPlans[checkInDayKey] = {
-                    title: formatDateForTitleInternal(checkInDateObj, parseInt(checkInDayKey)),
+                  checkInDateObj.setDate(checkInDateObj.getDate() + parseInt(checkInDay.dayKey) - 1);
+                  newTravelPlans[checkInDay.dayKey] = {
+                    title: formatDateForTitleInternal(checkInDateObj, parseInt(checkInDay.dayKey)),
                     schedules: []
                   };
                 }
-                newTravelPlans[checkInDayKey].schedules.push(checkInSchedule);
-                console.log(`[useTravelPlanLoader] travel-plans - 숙박편 ${index + 1} 체크인 일정 추가 완료 (Day ${checkInDayKey})`);
+                
+                // ✅ 수정: 기존 일정이 있으면 유지하고 숙박편 추가
+                const existingSchedules = newTravelPlans[checkInDay.dayKey].schedules || [];
+                newTravelPlans[checkInDay.dayKey].schedules = [...existingSchedules, checkInSchedule];
+                console.log(`[useTravelPlanLoader] checkplan API - 저장된 숙박편 ${index + 1} 체크인 일정 추가 완료 (Day ${checkInDay.dayKey}, 날짜: ${checkInDay.dayDate})`);
+                console.log(`[useTravelPlanLoader] 추가된 체크인 일정:`, checkInSchedule);
+                // ✅ 제거: 일반 일정 로그 제거
+                // console.log(`[useTravelPlanLoader] 추가된 체크인 일반 일정:`, checkInGeneralSchedule);
+              } else {
+                console.warn(`[useTravelPlanLoader] checkplan API - 숙박편 ${index + 1}의 체크인 날짜(${checkInStr})가 여행 일정 범위에 없음`);
               }
 
               // 체크아웃 날짜에 체크아웃 일정 추가
-              const checkOutDayKey = dayKeys.find(dayKey => {
-                const dayDate = new Date(newStartDate);
-                dayDate.setDate(dayDate.getDate() + parseInt(dayKey) - 1);
-                dayDate.setHours(0, 0, 0, 0);
-                return dayDate.getTime() === checkOutDate.getTime();
-              });
-
-              if (checkOutDayKey && checkOutDayKey !== checkInDayKey) {
+              const checkOutDay = matchingDays.find(d => d.isCheckOut);
+              if (checkOutDay && checkOutDay.dayKey !== checkInDay?.dayKey) {
                 const checkOutSchedule = {
                   ...baseSchedule,
-                  id: `travel-hotel-${hotelInfo.hotel_id}-${index}-${checkOutDayKey}-out`,
+                  id: `saved-hotel-${hotelInfo.hotel_id}-${index}-${checkOutDay.dayKey}-out`,
                   time: '체크아웃',
                   duration: ''
                 };
 
-                if (!newTravelPlans[checkOutDayKey]) {
+                // ✅ 제거: 일반 숙박 일정 중복 생성하지 않음 (data에서 자동 복원됨)
+                // const checkOutGeneralSchedule = { ... }
+
+                if (!newTravelPlans[checkOutDay.dayKey]) {
                   const checkOutDateObj = new Date(newStartDate);
-                  checkOutDateObj.setDate(checkOutDateObj.getDate() + parseInt(checkOutDayKey) - 1);
-                  newTravelPlans[checkOutDayKey] = {
-                    title: formatDateForTitleInternal(checkOutDateObj, parseInt(checkOutDayKey)),
+                  checkOutDateObj.setDate(checkOutDateObj.getDate() + parseInt(checkOutDay.dayKey) - 1);
+                  newTravelPlans[checkOutDay.dayKey] = {
+                    title: formatDateForTitleInternal(checkOutDateObj, parseInt(checkOutDay.dayKey)),
                     schedules: []
                   };
                 }
-                newTravelPlans[checkOutDayKey].schedules.push(checkOutSchedule);
-                console.log(`[useTravelPlanLoader] travel-plans - 숙박편 ${index + 1} 체크아웃 일정 추가 완료 (Day ${checkOutDayKey})`);
+                
+                // ✅ 수정: 기존 일정이 있으면 유지하고 체크아웃 일정 추가
+                const existingCheckOutSchedules = newTravelPlans[checkOutDay.dayKey].schedules || [];
+                newTravelPlans[checkOutDay.dayKey].schedules = [...existingCheckOutSchedules, checkOutSchedule];
+                console.log(`[useTravelPlanLoader] checkplan API - 저장된 숙박편 ${index + 1} 체크아웃 일정 추가 완료 (Day ${checkOutDay.dayKey}, 날짜: ${checkOutDay.dayDate})`);
+                console.log(`[useTravelPlanLoader] 추가된 체크아웃 일정:`, checkOutSchedule);
+                // ✅ 제거: 일반 일정 로그 제거
+                // console.log(`[useTravelPlanLoader] 추가된 체크아웃 일반 일정:`, checkOutGeneralSchedule);
+              } else if (checkOutDay && checkOutDay.dayKey === checkInDay?.dayKey) {
+                console.log(`[useTravelPlanLoader] checkplan API - 숙박편 ${index + 1}의 체크인과 체크아웃이 같은 날짜라 체크아웃 일정 스킵`);
+              } else {
+                console.warn(`[useTravelPlanLoader] checkplan API - 숙박편 ${index + 1}의 체크아웃 날짜(${checkOutStr})가 여행 일정 범위에 없음`);
               }
+            } else {
+              console.warn(`[useTravelPlanLoader] checkplan API - 숙박편 ${index + 1}의 체크인/체크아웃 날짜가 모두 여행 일정 범위에 없음:`, {
+                checkIn: checkInDate.toISOString().split('T')[0],
+                checkOut: checkOutDate.toISOString().split('T')[0],
+                travelStart: newStartDate.toISOString().split('T')[0],
+                dayOrder: newDayOrder
+              });
             }
           });
           
           console.log('[useTravelPlanLoader] travel-plans - 다중 숙박편 일정 추가 완료');
+          
+          // ✅ 로딩 시 시간 순서대로 일정 정렬 (숙박편은 같은 시간대에서 뒤로 배치)
+          Object.keys(newTravelPlans).forEach(dayKey => {
+            if (newTravelPlans[dayKey]?.schedules?.length > 0) {
+              newTravelPlans[dayKey].schedules = sortSchedulesByTime(newTravelPlans[dayKey].schedules);
+            }
+          });
         }
       } else if (data?.plan?.[0]?.plan_data?.candidates?.[0]?.content?.parts?.[0]?.text) {
         console.log('[useTravelPlanLoader] AI 생성 데이터 파싱 시도 (Gemini)');
@@ -841,7 +1070,7 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
                 
                 // AI 생성 데이터를 저장된 DB 구조와 동일하게 맞춤
                 const formattedSchedules = Array.isArray(dayPlan.schedules) ? dayPlan.schedules.map(schedule => {
-                  const isAccommodation = schedule.category === '숙소' || schedule.type === 'accommodation';
+                  const isAccommodation = schedule.type === 'accommodation';
                   
                   // 숙소 시간 처리 로직
                   let timeValue = '14:00';  // 기본값
@@ -858,7 +1087,7 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
                     type: isAccommodation ? 'accommodation' : (schedule.type || 'activity'),
                     time: timeValue,
                     duration: schedule.duration || (isAccommodation ? '1박' : '2시간'),
-                    category: isAccommodation ? '숙소' : (schedule.category || '관광')
+                    category: schedule.category || (isAccommodation ? '숙소' : '관광')
                   };
 
                   // 숙소인 경우 추가 필드와 hotelDetails
@@ -914,6 +1143,14 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
               
               newDayOrder.sort((a, b) => parseInt(a) - parseInt(b));
               newSelectedDay = newDayOrder.length > 0 ? newDayOrder[0] : '1';
+              
+              // ✅ 로딩 시 시간 순서대로 일정 정렬 (숙박편은 같은 시간대에서 뒤로 배치)
+              Object.keys(newTravelPlans).forEach(dayKey => {
+                if (newTravelPlans[dayKey]?.schedules?.length > 0) {
+                  newTravelPlans[dayKey].schedules = sortSchedulesByTime(newTravelPlans[dayKey].schedules);
+                }
+              });
+              
               console.log('[useTravelPlanLoader] AI 생성 데이터 최종 처리 완료:', Object.keys(newTravelPlans).length, '일차');
             } else {
               console.warn('[useTravelPlanLoader] AI (Gemini) 데이터 최종 파싱/구성 실패 (parsedData 없거나 days 비어있음)');
@@ -1015,76 +1252,184 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
       const updatedTravelPlans = result.travelPlans;
       console.log('[useTravelPlanLoader] 항공편/숙박편 정보는 이미 processLoadedData에서 처리됨');
       
-      // *** 숙소 자동 변환 로직 추가 ***
-      const convertAccommodationsToCustom = (travelPlans, dayOrder, startDate) => {
-        console.log('[useTravelPlanLoader] 숙소 자동 변환 시작');
-        const convertedPlans = { ...travelPlans };
-        const accommodationsToConvert = [];
-        const processedHotels = new Set(); // 중복 방지를 위한 Set
+      // *** 숙소 자동 변환 로직 개선 ***
+      // ✅ 수정: 저장된 숙박 정보가 있으면 자동 변환 로직 완전히 건너뛰기
+      const hasLoadedAccommodations = result.loadedAccommodationInfos && result.loadedAccommodationInfos.length > 0;
+      let convertedPlans = updatedTravelPlans;
+      let accommodationsToConvert = [];
+      
+      if (!hasLoadedAccommodations) {
+        console.log('[useTravelPlanLoader] 자동 변환 로직 실행 - 저장된 숙박 정보 없음');
         
-        // 모든 일정에서 숙소 찾기
-        dayOrder.forEach(dayKey => {
-          const dayPlan = convertedPlans[dayKey];
-          if (dayPlan?.schedules) {
-            const nonAccommodationSchedules = [];
-            
-            dayPlan.schedules.forEach(schedule => {
-              // 숙소 판별 로직 (AI 메시지 핸들러와 동일)
-              const isAccommodation = 
-                schedule.category === '숙소' ||
-                schedule.category === '호텔' ||
-                schedule.category === '펜션' ||
-                schedule.category === '게스트하우스' ||
-                schedule.category === '민박' ||
-                schedule.type === 'accommodation' ||
-                (schedule.name && (
-                  schedule.name.includes('호텔') ||
-                  schedule.name.includes('펜션') ||
-                  schedule.name.includes('숙소') ||
-                  schedule.name.includes('게스트하우스') ||
-                  schedule.name.includes('민박')
-                ));
+        const convertAccommodationsToCustom = (travelPlans, dayOrder, startDate) => {
+          console.log('[useTravelPlanLoader] 숙소 자동 변환 시작 (개선된 로직)');
+          const convertedPlans = { ...travelPlans };
+          const accommodationsToConvert = [];
+          
+          // 1단계: 모든 숙소 일정을 수집하고 일반 일정에서 제거
+          const allAccommodations = [];
+          dayOrder.forEach(dayKey => {
+            const dayPlan = convertedPlans[dayKey];
+            if (dayPlan?.schedules) {
+              const nonAccommodationSchedules = [];
               
-              if (isAccommodation && schedule.type !== 'accommodation') {
-                // 이미 accommodation 타입이 아닌 숙소만 변환 대상으로 추가
-                // 중복 방지를 위한 고유 키 생성 (호텔명 + 주소 기반)
-                const hotelKey = `${schedule.name}-${schedule.address || ''}`.replace(/\s+/g, '');
+              dayPlan.schedules.forEach(schedule => {
+                // 숙소 판별 로직
+                const isAccommodation = 
+                  schedule.category === '숙소' ||
+                  schedule.category === '호텔' ||
+                  schedule.category === '펜션' ||
+                  schedule.category === '게스트하우스' ||
+                  schedule.category === '민박' ||
+                  schedule.type === 'accommodation' ||
+                  (schedule.name && (
+                    schedule.name.includes('호텔') ||
+                    schedule.name.includes('펜션') ||
+                    schedule.name.includes('숙소') ||
+                    schedule.name.includes('게스트하우스') ||
+                    schedule.name.includes('민박')
+                  ));
                 
-                if (!processedHotels.has(hotelKey)) {
-                  console.log('[useTravelPlanLoader] 변환할 숙소 발견:', schedule);
-                  processedHotels.add(hotelKey);
-                  accommodationsToConvert.push({
+                if (isAccommodation && schedule.type !== 'accommodation') {
+                  // 숙소 정보를 수집
+                  allAccommodations.push({
                     ...schedule,
-                    dayKey: dayKey,
-                    hotelKey: hotelKey // 디버깅용
+                    dayKey: parseInt(dayKey),
+                    dayIndex: parseInt(dayKey) - 1 // 0부터 시작하는 인덱스
                   });
+                  console.log(`[useTravelPlanLoader] 숙소 발견 (Day ${dayKey}):`, schedule.name);
                 } else {
-                  console.log('[useTravelPlanLoader] 중복 숙소 스킵:', schedule.name, hotelKey);
+                  // 숙소가 아닌 일정은 그대로 유지
+                  nonAccommodationSchedules.push(schedule);
                 }
-              } else {
-                // 숙소가 아닌 일정은 그대로 유지
-                nonAccommodationSchedules.push(schedule);
-              }
-            });
+              });
+              
+              // 숙소가 제거된 일정으로 업데이트
+              convertedPlans[dayKey] = {
+                ...dayPlan,
+                schedules: nonAccommodationSchedules
+              };
+            }
+          });
+
+          // 2단계: 숙소들을 이름별로 그룹화하고 연속된 날짜 범위 계산
+          const hotelGroups = {};
+          allAccommodations.forEach(accommodation => {
+            const hotelKey = accommodation.name.trim();
+            if (!hotelGroups[hotelKey]) {
+              hotelGroups[hotelKey] = [];
+            }
+            hotelGroups[hotelKey].push(accommodation);
+          });
+
+          // 3단계: 각 호텔 그룹에서 연속된 날짜 범위를 찾아 숙박편 생성
+          Object.entries(hotelGroups).forEach(([hotelName, accommodations]) => {
+            // 날짜순으로 정렬
+            accommodations.sort((a, b) => a.dayIndex - b.dayIndex);
             
-            // 숙소가 제거된 일정으로 업데이트
-            convertedPlans[dayKey] = {
-              ...dayPlan,
-              schedules: nonAccommodationSchedules
-            };
+            console.log(`[useTravelPlanLoader] ${hotelName} 처리:`, accommodations.map(a => `Day${a.dayKey}`).join(', '));
+            
+            // 연속된 날짜 그룹 찾기
+            const consecutiveGroups = [];
+            let currentGroup = [accommodations[0]];
+            
+            for (let i = 1; i < accommodations.length; i++) {
+              const prev = accommodations[i - 1];
+              const current = accommodations[i];
+              
+              // 연속된 날짜인지 확인
+              if (current.dayIndex === prev.dayIndex + 1) {
+                currentGroup.push(current);
+              } else {
+                // 연속되지 않으면 새 그룹 시작
+                consecutiveGroups.push(currentGroup);
+                currentGroup = [current];
+              }
+            }
+            consecutiveGroups.push(currentGroup); // 마지막 그룹 추가
+            
+            // 각 연속 그룹에 대해 숙박편 생성
+            consecutiveGroups.forEach((group, groupIndex) => {
+              const firstDay = group[0];
+              const lastDay = group[group.length - 1];
+              
+              // 체크인 날짜: 첫째 날
+              const checkInDate = new Date(startDate);
+              checkInDate.setDate(checkInDate.getDate() + firstDay.dayIndex);
+              
+              // ✅ 수정: 체크아웃 날짜 계산 개선
+              // 숙박 일정이 있는 마지막 날의 다음날이 체크아웃
+              const checkOutDate = new Date(startDate);
+              checkOutDate.setDate(checkOutDate.getDate() + lastDay.dayIndex + 1);
+              
+              console.log(`[useTravelPlanLoader] ${hotelName} 그룹 ${groupIndex + 1} 날짜 계산:`, {
+                firstDayIndex: firstDay.dayIndex,
+                lastDayIndex: lastDay.dayIndex,
+                checkIn: checkInDate.toISOString().split('T')[0],
+                checkOut: checkOutDate.toISOString().split('T')[0],
+                nights: group.length,
+                days: group.map(g => `Day${g.dayKey}`).join('-'),
+                상세: {
+                  '시작날짜': startDate.toISOString().split('T')[0],
+                  '체크인계산': `시작날짜 + ${firstDay.dayIndex}일`,
+                  '체크아웃계산': `시작날짜 + ${lastDay.dayIndex + 1}일`
+                }
+              });
+              
+              // 대표 숙소 정보 (첫 번째 것 사용)
+              const representativeAccommodation = firstDay;
+              
+              const customAccommodationData = {
+                hotel: {
+                  hotel_id: representativeAccommodation.id || `auto-converted-${hotelName.replace(/\s+/g, '')}-${Date.now()}-${groupIndex}`,
+                  hotel_name: representativeAccommodation.name,
+                  hotel_name_trans: representativeAccommodation.name,
+                  address: representativeAccommodation.address || '',
+                  address_trans: representativeAccommodation.address || '',
+                  latitude: representativeAccommodation.lat || null,
+                  longitude: representativeAccommodation.lng || null,
+                  main_photo_url: '',
+                  price: representativeAccommodation.cost || representativeAccommodation.price || '',
+                  checkIn: checkInDate.toISOString().split('T')[0],
+                  checkOut: checkOutDate.toISOString().split('T')[0]
+                },
+                checkIn: checkInDate.toISOString().split('T')[0],
+                checkOut: checkOutDate.toISOString().split('T')[0],
+                contact: '',
+                notes: representativeAccommodation.notes || `${group.length}박 숙박`,
+                lat: representativeAccommodation.lat || null,
+                lng: representativeAccommodation.lng || null,
+                latitude: representativeAccommodation.lat || null,
+                longitude: representativeAccommodation.lng || null
+              };
+              
+              accommodationsToConvert.push(customAccommodationData);
+            });
+          });
+          
+          console.log('[useTravelPlanLoader] 변환할 숙소 목록 (개선된 로직):', accommodationsToConvert.length, '개');
+          return { convertedPlans, accommodationsToConvert };
+        };
+        
+        const convertResult = convertAccommodationsToCustom(
+          updatedTravelPlans, 
+          result.dayOrder, 
+          result.startDate
+        );
+        convertedPlans = convertResult.convertedPlans;
+        accommodationsToConvert = convertResult.accommodationsToConvert;
+        
+        // ✅ 로딩 시 시간 순서대로 일정 정렬 (숙박편은 같은 시간대에서 뒤로 배치)
+        Object.keys(convertedPlans).forEach(dayKey => {
+          if (convertedPlans[dayKey]?.schedules?.length > 0) {
+            convertedPlans[dayKey].schedules = sortSchedulesByTime(convertedPlans[dayKey].schedules);
           }
         });
-        
-        console.log('[useTravelPlanLoader] 변환할 숙소 목록 (중복 제거 후):', accommodationsToConvert);
-        return { convertedPlans, accommodationsToConvert };
-      };
-      
-      // 숙소 변환 실행
-      const { convertedPlans, accommodationsToConvert } = convertAccommodationsToCustom(
-        updatedTravelPlans, 
-        result.dayOrder, 
-        result.startDate
-      );
+      } else {
+        console.log('[useTravelPlanLoader] 자동 변환 로직 건너뛰기 - 저장된 숙박 정보 있음:', {
+          loadedCount: result.loadedAccommodationInfos.length
+        });
+      }
       
       // 상태 업데이트
       setTravelPlans(convertedPlans);
@@ -1103,51 +1448,40 @@ const useTravelPlanLoader = (user, planIdFromUrl, loadMode) => {
       setSharedEmails(result.sharedEmails || []);
       setOriginalOwner(result.originalOwner || null);
       
-      // 변환된 숙소들을 커스텀 숙소로 추가 (비동기로 처리)
-      if (accommodationsToConvert.length > 0) {
-        console.log('[useTravelPlanLoader] 커스텀 숙소 변환 작업 시작:', accommodationsToConvert.length, '개');
+      // ✅ 추가: 로딩 완료 후 최종 상태 로그
+      console.log('[useTravelPlanLoader] 📋 로딩 완료 - 최종 travelPlans 상태:', convertedPlans);
+      console.log('[useTravelPlanLoader] 📋 로딩 완료 - 각 일차별 일정 요약:');
+      Object.entries(convertedPlans).forEach(([dayKey, dayPlan]) => {
+        console.log(`[useTravelPlanLoader] Day ${dayKey} (${dayPlan.title}):`, {
+          총일정수: dayPlan.schedules?.length || 0,
+          숙박일정: dayPlan.schedules?.filter(s => s.type === 'accommodation').length || 0,
+          일반일정: dayPlan.schedules?.filter(s => s.type !== 'accommodation' && s.type !== 'Flight_Departure' && s.type !== 'Flight_Return' && s.type !== 'Flight_OneWay').length || 0,
+          항공일정: dayPlan.schedules?.filter(s => s.type === 'Flight_Departure' || s.type === 'Flight_Return' || s.type === 'Flight_OneWay').length || 0,
+          상세일정: dayPlan.schedules?.map(s => ({ name: s.name, type: s.type, category: s.category, time: s.time })) || []
+        });
+      });
+      
+      // ✅ 수정: 저장된 accommodationInfos가 있을 때는 자동 변환 로직 실행하지 않음
+      console.log('[useTravelPlanLoader] 🏨 숙박 정보 상태 확인:', {
+        hasLoadedAccommodations: hasLoadedAccommodations,
+        loadedCount: result.loadedAccommodationInfos?.length || 0,
+        accommodationsToConvertCount: accommodationsToConvert.length
+      });
+
+      // 변환된 숙소들을 커스텀 숙소로 추가 (저장된 숙박 정보가 없을 때만)
+      if (accommodationsToConvert.length > 0 && !hasLoadedAccommodations) {
+        console.log('[useTravelPlanLoader] 커스텀 숙소 변환 작업 시작 (개선된 로직):', accommodationsToConvert.length, '개');
         
         // 잠깐 기다린 후 변환 작업 수행 (상태 업데이트 후)
         setTimeout(() => {
-          accommodationsToConvert.forEach((accommodation, index) => {
+          accommodationsToConvert.forEach((customAccommodationData, index) => {
             setTimeout(() => {
               try {
-                console.log(`[useTravelPlanLoader] 숙소 ${index + 1} 커스텀 변환 시작:`, accommodation);
-                
-                // 체크인 날짜 계산
-                const checkInDate = new Date(result.startDate);
-                checkInDate.setDate(checkInDate.getDate() + parseInt(accommodation.dayKey) - 1);
-                
-                // 체크아웃 날짜 계산 (다음날)
-                const checkOutDate = new Date(checkInDate);
-                checkOutDate.setDate(checkOutDate.getDate() + 1);
-                
-                // 커스텀 숙소 형식으로 변환
-                const customAccommodationData = {
-                  hotel: {
-                    hotel_id: accommodation.id || `auto-converted-${Date.now()}-${index}`,
-                    hotel_name: accommodation.name,
-                    hotel_name_trans: accommodation.name,
-                    address: accommodation.address || '',
-                    address_trans: accommodation.address || '',
-                    latitude: accommodation.lat || null,
-                    longitude: accommodation.lng || null,
-                    main_photo_url: '',
-                    price: accommodation.cost || accommodation.price || '',
-                    checkIn: checkInDate.toISOString().split('T')[0],
-                    checkOut: checkOutDate.toISOString().split('T')[0]
-                  },
-                  checkIn: checkInDate.toISOString().split('T')[0],
-                  checkOut: checkOutDate.toISOString().split('T')[0],
-                  contact: '',
-                  notes: accommodation.notes || `자동 변환된 숙소: ${accommodation.notes || ''}`,
-                  lat: accommodation.lat || null,
-                  lng: accommodation.lng || null,
-                  latitude: accommodation.lat || null,
-                  longitude: accommodation.lng || null
-                };
-                
-                console.log('[useTravelPlanLoader] 커스텀 숙소 데이터 생성:', customAccommodationData);
+                console.log(`[useTravelPlanLoader] 숙소 ${index + 1} 커스텀 변환 시작:`, {
+                  name: customAccommodationData.hotel.hotel_name,
+                  checkIn: customAccommodationData.checkIn,
+                  checkOut: customAccommodationData.checkOut
+                });
                 
                 // 이벤트 발송으로 TravelPlanner에서 처리하도록 함
                 window.dispatchEvent(new CustomEvent('autoConvertAccommodation', {

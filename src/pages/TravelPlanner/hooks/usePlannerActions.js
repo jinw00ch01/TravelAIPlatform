@@ -117,7 +117,7 @@ const usePlannerActions = ({
     for (const dayKey of dayKeys) {
       const schedules = travelPlans[dayKey]?.schedules || [];
       const checkInSchedules = schedules.filter(s => 
-        s.type === 'accommodation' && s.time === '체크인' && s.hotelDetails
+        s.type === 'accommodation' && s.hotelDetails
       );
       
       for (const schedule of checkInSchedules) {
@@ -282,11 +282,9 @@ const usePlannerActions = ({
     try {
       // 다중 숙소 정보 추출 (체크인 날짜 순서로)
       const accommodationInfos = extractAccommodationInfos();
-      console.log('[usePlannerActions] 수정용 숙소 정보들 추출:', accommodationInfos);
 
       // 다중 항공편 정보 추출 (날짜 순서로)
       const flightInfos = extractFlightInfos();
-      console.log('[usePlannerActions] 수정용 항공편 정보들 추출:', flightInfos);
 
       // 수정 모드: updateTravelPlan 사용 (plan_data만 수정)
       const updateData = {
@@ -295,13 +293,23 @@ const usePlannerActions = ({
             title: travelPlans[dayKey].title,
             schedules: (travelPlans[dayKey].schedules || [])
               .filter(schedule => 
-                schedule.type !== 'accommodation' && 
+                // ✅ 수정: hotelDetails가 있는 숙박편만 제외, 일반 숙소 일정은 유지
+                !(schedule.type === 'accommodation' && schedule.hotelDetails) && 
                 schedule.type !== 'Flight_Departure' && 
                 schedule.type !== 'Flight_Return' && 
                 schedule.type !== 'Flight_OneWay'
               )
               .map(schedule => {
                 const { hotelDetails, flightOfferDetails, ...restOfSchedule } = schedule;
+                
+                console.log(`[usePlannerActions] 💾 저장 Map 처리: ${schedule.name}`, {
+                  원본_type: schedule.type,
+                  카테고리: schedule.category,
+                  최종_type: restOfSchedule.type,
+                  최종_카테고리: restOfSchedule.category,
+                  최종_시간: restOfSchedule.time
+                });
+                
                 return { ...restOfSchedule };
               })
           };
@@ -435,11 +443,9 @@ const usePlannerActions = ({
     try {
       // 다중 숙소 정보 추출 (체크인 날짜 순서로)
       const accommodationInfos = extractAccommodationInfos();
-      console.log('[usePlannerActions] 추출된 숙소 정보들:', accommodationInfos);
 
       // 다중 항공편 정보 추출 (날짜 순서로)
       const flightInfos = extractFlightInfos();
-      console.log('[usePlannerActions] 추출된 항공편 정보들:', flightInfos);
 
       // 백엔드가 기대하는 data 형태로 변환 (일반 일정에서 숙소 및 항공편 일정 제외)
       const planData = {
@@ -449,13 +455,23 @@ const usePlannerActions = ({
             title: travelPlans[dayKey].title,
             schedules: (travelPlans[dayKey].schedules || [])
               .filter(schedule => 
-                schedule.type !== 'accommodation' && 
+                // ✅ 수정: hotelDetails가 있는 숙박편만 제외, 일반 숙소 일정은 유지
+                !(schedule.type === 'accommodation' && schedule.hotelDetails) && 
                 schedule.type !== 'Flight_Departure' && 
                 schedule.type !== 'Flight_Return' && 
                 schedule.type !== 'Flight_OneWay'
               )
               .map(schedule => {
                 const { hotelDetails, flightOfferDetails, ...restOfSchedule } = schedule;
+                
+                console.log(`[usePlannerActions] 💾 저장 Map 처리: ${schedule.name}`, {
+                  원본_type: schedule.type,
+                  카테고리: schedule.category,
+                  최종_type: restOfSchedule.type,
+                  최종_카테고리: restOfSchedule.category,
+                  최종_시간: restOfSchedule.time
+                });
+                
                 return { ...restOfSchedule };
               })
           };
@@ -477,7 +493,92 @@ const usePlannerActions = ({
         console.log('[usePlannerActions] 공유 이메일 추가:', planData.shared_email);
       }
 
-      console.log('[usePlannerActions] 최종 저장 데이터:', planData);
+      console.log('[usePlannerActions] 저장 전 planData 최종 확인:', {
+        일반일정수: Object.keys(planData.data).length,
+        일차별일정수: Object.fromEntries(Object.entries(planData.data).map(([day, plan]) => 
+          [day, { 제목: plan.title, 일정수: plan.schedules?.length || 0 }]
+        )),
+        항공편수: planData.flightInfos?.length || 0,
+        숙박편수: planData.accommodationInfos?.length || 0
+      });
+      
+      // ✅ 추가: 저장 데이터 구조 상세 로그
+      console.log('[usePlannerActions] 💾 저장 데이터 상세 분석:');
+      console.log('[usePlannerActions] 📅 일반 일정 (data):', planData.data);
+      console.log('[usePlannerActions] ✈️ 항공편 정보 (flightInfos):', planData.flightInfos);
+      
+      // ✅ 추가: 저장 전 원본 travelPlans 로깅
+      console.log('[usePlannerActions] 🔍 저장 전 원본 travelPlans:');
+      Object.entries(travelPlans).forEach(([dayKey, dayPlan]) => {
+        console.log(`[usePlannerActions] Day ${dayKey} 원본 일정:`, {
+          제목: dayPlan.title,
+          일정수: dayPlan.schedules?.length || 0,
+          전체일정: dayPlan.schedules?.map(s => ({ 
+            id: s.id, 
+            name: s.name, 
+            type: s.type, 
+            category: s.category, 
+            time: s.time,
+            hasHotelDetails: !!s.hotelDetails 
+          })) || []
+        });
+      });
+      
+      // ✅ 추가: 필터링 과정 상세 로깅
+      console.log('[usePlannerActions] 🔧 필터링 과정 상세:');
+      Object.entries(travelPlans).forEach(([dayKey, dayPlan]) => {
+        const originalSchedules = dayPlan.schedules || [];
+        console.log(`[usePlannerActions] Day ${dayKey} 필터링 전:`, originalSchedules.length, '개');
+        
+        originalSchedules.forEach((schedule, index) => {
+          const shouldExclude = schedule.type === 'accommodation' && schedule.hotelDetails;
+          const shouldExcludeFlight = schedule.type === 'Flight_Departure' || 
+                                    schedule.type === 'Flight_Return' || 
+                                    schedule.type === 'Flight_OneWay';
+          
+          console.log(`[usePlannerActions] Day ${dayKey}-${index}: ${schedule.name}`, {
+            type: schedule.type,
+            category: schedule.category,
+            time: schedule.time,
+            hasHotelDetails: !!schedule.hotelDetails,
+            shouldExclude: shouldExclude,
+            shouldExcludeFlight: shouldExcludeFlight,
+            최종포함여부: !shouldExclude && !shouldExcludeFlight
+          });
+        });
+        
+        const filteredSchedules = originalSchedules.filter(schedule => 
+          !(schedule.type === 'accommodation' && schedule.hotelDetails) && 
+          schedule.type !== 'Flight_Departure' && 
+          schedule.type !== 'Flight_Return' && 
+          schedule.type !== 'Flight_OneWay'
+        );
+        
+        console.log(`[usePlannerActions] Day ${dayKey} 필터링 후:`, filteredSchedules.length, '개');
+        filteredSchedules.forEach(s => {
+          console.log(`[usePlannerActions] Day ${dayKey} 저장될 일정:`, {
+            name: s.name,
+            type: s.type,
+            category: s.category,
+            time: s.time
+          });
+        });
+      });
+      
+      Object.entries(planData.data).forEach(([dayKey, dayPlan]) => {
+        console.log(`[usePlannerActions] Day ${dayKey} 저장될 일반 일정:`, {
+          제목: dayPlan.title,
+          일정수: dayPlan.schedules?.length || 0,
+          일정목록: dayPlan.schedules?.map(s => ({ 
+            name: s.name, 
+            type: s.type, 
+            category: s.category, 
+            time: s.time,
+            hasType: !!s.type,
+            typeString: String(s.type)
+          })) || []
+        });
+      });
 
       // 새로 저장 모드: savePlan 사용
       console.log('[usePlannerActions] 새로운 계획 저장 모드');
@@ -511,8 +612,18 @@ const usePlannerActions = ({
     }
 
     // 숙소인 경우 특별 처리
-    if (place.category === '숙소' || place.type === 'accommodation') {
+    if (place.type === 'accommodation') {
       console.log('Processing as accommodation');
+      
+      // ✅ 수정: checkIn/checkOut에 실제 날짜 계산하여 저장
+      const checkInDate = new Date(startDate);
+      checkInDate.setDate(checkInDate.getDate() + parseInt(selectedDay) - 1);
+      const checkInDateStr = checkInDate.toISOString().split('T')[0]; // YYYY-MM-DD
+      
+      // 기본적으로 1박으로 설정 (체크아웃은 다음날)
+      const checkOutDate = new Date(checkInDate);
+      checkOutDate.setDate(checkOutDate.getDate() + 1);
+      const checkOutDateStr = checkOutDate.toISOString().split('T')[0]; // YYYY-MM-DD
       
       const hotelDetails = {
         hotel: {
@@ -525,11 +636,20 @@ const usePlannerActions = ({
           longitude: place.lng,
           main_photo_url: place.photo_url || '',
           price: place.price || '',
-          checkIn: place.checkInTime || '14:00',
-          checkOut: place.checkOutTime || '11:00'
-        }
+          checkIn: place.checkInTime || '14:00',  // 체크인 시간
+          checkOut: place.checkOutTime || '11:00'  // 체크아웃 시간
+        },
+        // ✅ 추가: 실제 체크인/체크아웃 날짜
+        checkIn: checkInDateStr,
+        checkOut: checkOutDateStr,
+        contact: '',
+        notes: place.price ? `가격: ${place.price}` : '',
+        lat: place.lat,
+        lng: place.lng,
+        latitude: place.lat,
+        longitude: place.lng
       };
-      console.log('Created hotelDetails:', hotelDetails);
+      console.log('Created hotelDetails with dates:', hotelDetails);
 
       const newSchedule = {
         id: Date.now().toString(),

@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import axios from 'axios';
 import { fetchAuthSession } from 'aws-amplify/auth';
+import { sortSchedulesByTime } from '../utils/scheduleUtils';
 
 // API_URL - API 엔드포인트 기본 URL
 const API_URL = 'https://9b5hbw9u25.execute-api.ap-northeast-2.amazonaws.com/Stage';
@@ -104,9 +105,14 @@ const useAIMessageHandler = (planData, updatePlanData) => {
                 // 예시에서는 day.day를 사용합니다.
                 const dayKey = day.day ? day.day.toString() : (day.date || Math.random().toString(36).substr(2, 9)); 
                 
+                // ✅ AI 생성 일정에 시간 정렬 적용
+                const sortedSchedules = day.schedules && Array.isArray(day.schedules) 
+                  ? sortSchedulesByTime(day.schedules) 
+                  : [];
+                
                 newTravelPlans[dayKey] = { 
                   title: day.title || `Day ${dayKey}`, // title이 없을 경우 대비
-                  schedules: day.schedules || [] 
+                  schedules: sortedSchedules
                 };
                 newDayOrder.push(dayKey);
               });
