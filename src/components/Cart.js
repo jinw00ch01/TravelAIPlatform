@@ -444,7 +444,7 @@ const Cart = () => {
 
           if (responseData.success === true) {
             alert(`결제가 완료되었습니다!\n총 결제금액: ${formatPrice(calculateTotal())}\n여행 계획이 결제 완료 상태로 업데이트되었습니다.`);
-            navigate('/');
+            navigate('/itinerary');
           } else {
             const errorMessage = responseData.message || 'paid_plan 업데이트에 실패했습니다.';
             alert(`결제 처리 중 오류가 발생했습니다: ${errorMessage}`);
