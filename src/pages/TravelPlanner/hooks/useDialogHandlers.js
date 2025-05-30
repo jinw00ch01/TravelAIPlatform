@@ -108,8 +108,8 @@ const useDialogHandlers = () => {
     setShareMessage('');
   }, []);
 
-  const handleSharePlan = useCallback(async (plannerHandleSharePlan, planId) => {
-    if (!planId || planId === 'new') {
+  const handleSharePlan = useCallback(async (plannerHandleSharePlan, planIdToShare) => {
+    if (!planIdToShare || planIdToShare === 'new') {
       setShareMessage('저장된 계획만 공유할 수 있습니다. 먼저 계획을 저장해주세요.');
       return;
     }

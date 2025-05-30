@@ -17,6 +17,7 @@ import {
   renderFareDetails,
   renderItineraryDetails
 } from '../utils/flightFormatters';
+import { format } from 'date-fns';
 
 const FlightPlan = ({
   fullWidth = false,
@@ -96,6 +97,32 @@ const FlightPlan = ({
     }
   }, [isOneWay, searchParams.returnDate]);
 
+  // 검색 버튼 클릭 시 호출될 함수
+  const onSearchClick = () => {
+    const departureDateString = searchParams.departureDate
+      ? format(searchParams.departureDate, "yyyy-MM-dd")
+      : null;
+    const returnDateString = searchParams.returnDate
+      ? format(searchParams.returnDate, "yyyy-MM-dd")
+      : null;
+
+    const flightApiParams = {
+      originLocationCode: searchParams.selectedOrigin?.iataCode,
+      destinationLocationCode: searchParams.selectedDestination?.iataCode,
+      departureDate: departureDateString,
+      returnDate: !isOneWay && returnDateString ? returnDateString : null,
+      adults: searchParams.adults || 1,
+      children: searchParams.children || 0,
+      infants: searchParams.infants || 0,
+      travelClass: searchParams.travelClass || undefined,
+      currencyCode: searchParams.currencyCode || 'KRW',
+      maxPrice: searchParams.maxPrice || undefined,
+      nonStop: searchParams.nonStop || false,
+    };
+
+    // 부모 컴포넌트로부터 받은 handleFlightSearch prop 호출
+    handleFlightSearch(flightApiParams);
+  };
 
   const renderSearchForm = () => (
     <Box className="p-4">
@@ -328,7 +355,7 @@ const FlightPlan = ({
       <Button
         variant="contained"
         color="primary"
-        onClick={handleFlightSearch}
+        onClick={onSearchClick}
         disabled={isLoadingFlights}
         className="w-full"
         size="large"

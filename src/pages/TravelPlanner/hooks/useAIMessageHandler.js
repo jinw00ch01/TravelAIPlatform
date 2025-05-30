@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import axios from 'axios';
 import { fetchAuthSession } from 'aws-amplify/auth';
+import { sortSchedulesByTime } from '../utils/scheduleUtils';
 
 // API_URL - API 엔드포인트 기본 URL
 const API_URL = 'https://9b5hbw9u25.execute-api.ap-northeast-2.amazonaws.com/Stage';
@@ -74,11 +75,17 @@ const useAIMessageHandler = (planData, updatePlanData) => {
     console.log('AI 계획 수정 API에 전송하는 최종 요청 본문:', JSON.stringify(requestBody, null, 2));
 
     try {
+      // 사용자에게 처리 중임을 알림
+      currentCallback({ 
+        type: 'info', 
+        content: 'AI가 계획을 수정하고 있습니다. 최대 30초까지 소요될 수 있습니다...' 
+      });
+
       const response = await axios.post(apiUrl, requestBody, {
-        timeout: 75000, // 타임아웃을 75초로 늘림
+        timeout: 28000, // API Gateway 타임아웃(29초)보다 약간 짧게 설정
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': authToken // Authorization 헤더 추가
+          'Authorization': authToken
         }
       });
 
@@ -104,9 +111,14 @@ const useAIMessageHandler = (planData, updatePlanData) => {
                 // 예시에서는 day.day를 사용합니다.
                 const dayKey = day.day ? day.day.toString() : (day.date || Math.random().toString(36).substr(2, 9)); 
                 
+                // ✅ AI 생성 일정에 시간 정렬 적용
+                const sortedSchedules = day.schedules && Array.isArray(day.schedules) 
+                  ? sortSchedulesByTime(day.schedules) 
+                  : [];
+                
                 newTravelPlans[dayKey] = { 
                   title: day.title || `Day ${dayKey}`, // title이 없을 경우 대비
-                  schedules: day.schedules || [] 
+                  schedules: sortedSchedules
                 };
                 newDayOrder.push(dayKey);
               });
@@ -146,6 +158,15 @@ const useAIMessageHandler = (planData, updatePlanData) => {
       console.error('AI 계획 수정 중 오류 발생:', error);
       if (error.response) {
         console.error('서버 응답 오류:', error.response.status, error.response.data);
+        
+        // 504 Gateway Timeout 특별 처리
+        if (error.response.status === 504) {
+          currentCallback({
+            type: 'error',
+            content: 'AI 응답 시간이 초과되었습니다 (30초 제한). 요청사항을 더 간단하게 나누어서 다시 시도해주세요. 예: "오사카 맛집 추천" → "2일차 점심 추천"'
+          });
+          return;
+        }
       } else if (error.request) {
         console.error('네트워크 오류 (응답 없음):', error.request);
       } else {
