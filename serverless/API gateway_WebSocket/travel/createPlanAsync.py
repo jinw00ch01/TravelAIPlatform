@@ -125,6 +125,11 @@ def lambda_handler(event, context):
             adults = request_data.get('adults', 1)
             children = request_data.get('children', 0)
             
+            # Base64 이미지 처리 추가
+            images = request_data.get('images', [])  # Base64 이미지 배열
+            has_images = len(images) > 0
+            print(f"수신된 이미지 개수 ({connection_id}): {len(images)}")
+            
             # 다중 항공편/숙박편 지원 (하위 호환성 유지)
             flight_info = request_data.get('flightInfo', None)  # 단일 항공편 (하위 호환성)
             flight_infos = request_data.get('flightInfos', None)  # 다중 항공편 (새로운 방식)
@@ -350,7 +355,19 @@ def lambda_handler(event, context):
 {start_date} ~ {end_date}, 이 날짜에 맞게 계획하세요.
 
 <인원수>
-어른 : {adults}, 유아 {children}
+어른 : {adults}, 유아 {children}"""
+
+            # 이미지가 있는 경우 추가 안내
+            if has_images:
+                prompt_text += f"""
+
+<첨부된 이미지>
+사용자가 {len(images)}개의 이미지를 첨부했습니다. 이 이미지들을 분석하여 여행 계획에 반영해주세요.
+- 이미지에 나타난 장소, 음식, 활동 등을 파악하여 유사한 경험을 할 수 있는 일정을 포함하세요.
+- 이미지의 분위기나 테마를 고려하여 여행 스타일을 맞춰주세요.
+- 이미지에서 특정 관심사를 발견하면 관련된 장소나 활동을 추천해주세요."""
+
+            prompt_text += """
 
 <규칙>
 모든 장소는 실제로 있는 장소여야 해. 호텔, 장소, 식당을 너가 검색해서 잡아줘.
@@ -383,13 +400,48 @@ JSON 예시
                 raise Exception("환경변수 'GEMINI_API_KEY'가 설정되지 않았습니다.")
             
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-            payload = {
-                "contents": [{"parts": [{"text": prompt_text}]}], 
-                "generationConfig": {
-                    "temperature": 0.3,
-                    "maxOutputTokens": 8192  # 출력 토큰 제한을 8192로 증가 (기본값보다 높게 설정)
+            
+            # 이미지가 있는 경우와 없는 경우 페이로드 구성
+            if has_images:
+                # 이미지가 있는 경우: 텍스트와 이미지를 함께 전송
+                parts = [{"text": prompt_text}]
+                
+                # Base64 이미지들을 parts에 추가
+                for i, image_data in enumerate(images):
+                    # "data:image/jpeg;base64," 접두사 제거
+                    if image_data.startswith('data:image/'):
+                        mime_type = image_data.split(';')[0].split(':')[1]  # "image/jpeg" 추출
+                        base64_data = image_data.split(',')[1]  # Base64 데이터만 추출
+                    else:
+                        # 접두사가 없는 경우 기본값 사용
+                        mime_type = "image/jpeg"
+                        base64_data = image_data
+                    
+                    parts.append({
+                        "inline_data": {
+                            "mime_type": mime_type,
+                            "data": base64_data
+                        }
+                    })
+                    print(f"이미지 {i+1} 추가됨 ({connection_id}): {mime_type}, 데이터 길이: {len(base64_data)}")
+                
+                payload = {
+                    "contents": [{"parts": parts}],
+                    "generationConfig": {
+                        "temperature": 0.3,
+                        "maxOutputTokens": 8192
+                    }
                 }
-            }
+            else:
+                # 이미지가 없는 경우: 기존 방식 (텍스트만)
+                payload = {
+                    "contents": [{"parts": [{"text": prompt_text}]}], 
+                    "generationConfig": {
+                        "temperature": 0.3,
+                        "maxOutputTokens": 8192  # 출력 토큰 제한을 8192로 증가 (기본값보다 높게 설정)
+                    }
+                }
+            
             headers = {"Content-Type": "application/json"}
 
             gemini_request_start_time = time.time()

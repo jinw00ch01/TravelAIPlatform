@@ -139,6 +139,81 @@ class WebSocketService {
       this.sendMessage(messageData);
     });
   }
+
+  // AI 여행 계획 수정 요청 (신규 추가)
+  async modifyTravelPlanAsync(modificationDetails, authToken = null) {
+    if (!this.isConnected) {
+      await this.connect();
+    }
+
+    return new Promise((resolve, reject) => {
+      // 타임아웃 설정 (예: 3분, Gemini API 응답 시간을 고려하여 조정 가능)
+      const timeout = setTimeout(() => {
+        this.removeMessageHandler('plan_modified');
+        this.removeMessageHandler('ai_modification_error'); // 오류 액션 이름은 백엔드와 일치 필요
+        this.removeMessageHandler('modification_request_received'); // 추가된 핸들러도 정리
+        this.removeMessageHandler('status_update'); // status_update 핸들러도 정리
+        reject(new Error('AI 계획 수정 요청 시간이 초과되었습니다. (3분)'));
+      }, 180000);
+
+      // 성공 핸들러 (예: 'plan_modified' 액션)
+      this.onMessage('plan_modified', (data) => {
+        clearTimeout(timeout);
+        this.removeMessageHandler('plan_modified');
+        this.removeMessageHandler('ai_modification_error');
+        this.removeMessageHandler('modification_request_received');
+        this.removeMessageHandler('status_update');
+        console.log('[WebSocket] plan_modified 처리 완료:', data);
+        resolve(data); // 백엔드가 보내주는 수정 결과 데이터
+      });
+
+      // 오류 핸들러 (예: 'ai_modification_error' 액션)
+      this.onMessage('ai_modification_error', (data) => {
+        clearTimeout(timeout);
+        this.removeMessageHandler('plan_modified');
+        this.removeMessageHandler('ai_modification_error');
+        this.removeMessageHandler('modification_request_received');
+        this.removeMessageHandler('status_update');
+        console.log('[WebSocket] ai_modification_error 처리 완료:', data);
+        reject(new Error(data.message || 'AI 계획 수정 중 알 수 없는 오류가 발생했습니다'));
+      });
+
+      // 요청 접수 확인 핸들러 (신규 추가)
+      this.onMessage('modification_request_received', (data) => {
+        console.log('[WebSocket] modification_request_received 처리:', data);
+        // 요청이 접수되었다는 것만 로깅하고, Promise는 plan_modified나 ai_modification_error에서 resolve/reject
+      });
+
+      // 상태 업데이트 핸들러 (신규 추가)
+      this.onMessage('status_update', (data) => {
+        console.log('[WebSocket] status_update 처리:', data);
+        // 상태 업데이트 메시지를 로깅하고, Promise는 plan_modified나 ai_modification_error에서 resolve/reject
+      });
+
+      let token = authToken;
+      if (!token) {
+        token = localStorage.getItem('idToken') || localStorage.getItem('accessToken') || 'test-token';
+      }
+      if (!token || typeof token !== 'string') {
+        console.warn('[WebSocket] 수정 요청 토큰이 유효하지 않습니다. 타입:', typeof token, '값:', token);
+        token = 'test-token';
+      }
+      if (token && !token.startsWith('Bearer ')) {
+        token = `Bearer ${token}`;
+      }
+      console.log('[WebSocket] 수정 요청 시 사용할 토큰 (처음 20자):', token.substring(0, 20) + '...');
+
+      // 백엔드 requestPlanModificationHandler.py (가칭)로 보낼 메시지
+      // modificationDetails에는 planId, dayOrder, travelPlans, startDate, message (사용자 요구사항) 등이 포함되어야 함
+      const messageData = {
+        action: 'requestPlanModification', // API Gateway 라우팅을 위한 액션
+        ...modificationDetails,
+        authToken: token
+      };
+
+      this.sendMessage(messageData);
+    });
+  }
 }
 
 // 싱글톤 인스턴스
