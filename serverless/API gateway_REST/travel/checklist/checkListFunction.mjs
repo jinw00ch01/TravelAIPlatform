@@ -118,9 +118,6 @@ export const handler = async (event) => {
         const filteredPlans = scanResult.Items.filter(plan => {
           if (!plan.shared_email) return false;
           
-          // 자신이 소유한 계획은 제외
-          if (plan.user_id === userEmail) return false;
-          
           const sharedEmails = plan.shared_email.split(',').map(email => email.trim());
           const isShared = sharedEmails.includes(userEmail);
           
